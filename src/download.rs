@@ -1,17 +1,17 @@
 //extern crate reqwest;
 
-use reqwest::{Error, Response};
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use super::config;
 use super::file;
 use super::mod_info::ModInfo;
+use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::{Error, Response};
 
 // API reference:
 // https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0#/Mods/get_v1_games_game_domain_name_mods_id.json
 static URL_MOD_PREFIX: &str = "https://api.nexusmods.com/v1/games/";
 static URL_SUFFIX: &str = ".json";
 
-pub fn get_mod_info(game: &str ,mod_id: &u32) -> Option<ModInfo> {
+pub fn get_mod_info(game: &str, mod_id: &u32) -> Option<ModInfo> {
     let o = file::read_mod_info(&mod_id);
 
     if o.is_some() {
@@ -27,10 +27,7 @@ fn download_mod_info(game: &str, mod_id: &u32) -> Option<ModInfo> {
     let headers: HeaderMap = construct_headers();
     let client = reqwest::Client::new();
     println!("Sending request to: {}", url);
-    let resp: Result<Response, Error> = client
-        .get(&url)
-        .headers(headers)
-        .send();
+    let resp: Result<Response, Error> = client.get(&url).headers(headers).send();
     // This can probably be refactored somehow, but I'm still figuring out Options and Results
     let mut r: Response;
     match resp {
@@ -45,7 +42,7 @@ fn download_mod_info(game: &str, mod_id: &u32) -> Option<ModInfo> {
     if r.status().is_success() {
         // It's probably reasonable to crash if we can't parse the json
         let mi: ModInfo = r.json().ok().unwrap();
-        file::save_mod_info(&mi);
+        file::save_mod_info(&mi).expect("Unable to write to db dir.");
         return Some(mi)
     } else {
         return None
