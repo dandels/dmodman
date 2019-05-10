@@ -1,7 +1,11 @@
+extern crate chrono;
+extern crate reqwest;
+
 mod cmdline;
 mod config;
 mod download;
 mod file;
+mod log;
 mod mod_info;
 
 fn main() {

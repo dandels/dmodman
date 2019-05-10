@@ -34,7 +34,7 @@ pub fn read_mod_info(mod_id: &u32) -> Option<ModInfo> {
             return Some(mi)
         }
         Err(_) => {
-            println!("Unable to read mod info from cache.");
+            println!("Unable to find mod info in cache.");
             return None
         }
     }

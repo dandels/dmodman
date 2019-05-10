@@ -1,7 +1,6 @@
-//extern crate reqwest;
-
 use super::config;
 use super::file;
+use super::log;
 use super::mod_info::ModInfo;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::{Error, Response};
@@ -29,23 +28,26 @@ fn download_mod_info(game: &str, mod_id: &u32) -> Option<ModInfo> {
     println!("Sending request to: {}", url);
     let resp: Result<Response, Error> = client.get(&url).headers(headers).send();
     // This can probably be refactored somehow, but I'm still figuring out Options and Results
-    let mut r: Response;
     match resp {
-        Ok(v) => r = v,
+        Ok(mut v) => {
+            let headers = &v.headers();
+            log::info("Response headers:");
+            log::append(&format!("{:#?}\n", headers));
+            println!("Got response: {}", v.status());
+            if v.status().is_success() {
+                // It's probably reasonable to crash if we can't parse the json
+                let mi: ModInfo = v.json().ok().unwrap();
+                file::save_mod_info(&mi).expect("Unable to write to db dir.");
+                return Some(mi)
+            } else {
+                log::err(&(String::from("API request not OK, was: ") + v.status().as_str()));
+                return None
+            }
+        }
         Err(_) => {
             println!("Network request to \"{}\" failed", url);
-            return None
+            return None;
         }
-    }
-    // TODO: handle network problems by informing user in some way
-    println!("Got response: {}", r.status());
-    if r.status().is_success() {
-        // It's probably reasonable to crash if we can't parse the json
-        let mi: ModInfo = r.json().ok().unwrap();
-        file::save_mod_info(&mi).expect("Unable to write to db dir.");
-        return Some(mi)
-    } else {
-        return None
     }
 }
 

@@ -1,7 +1,7 @@
 use super::file;
 use std::path::PathBuf;
 
-fn get_data_dir() -> PathBuf {
+pub fn get_data_dir() -> PathBuf {
     let mut data_dir: PathBuf = dirs::data_local_dir().unwrap();
     data_dir.push("dmodman");
     file::create_dir_if_not_exist(&data_dir);
