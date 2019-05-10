@@ -1,45 +1,18 @@
-#![allow(dead_code)]
-extern crate reqwest;
+mod cmdline;
+mod config;
+mod download;
+mod file;
+mod mod_info;
 
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-use std::fs::File;
-use std::io::prelude::*;
+fn main() {
+    let o: Option<(String, u32)> = cmdline::check_args();
+    if !o.is_some() {
+        return;
+    }
+    let t = o.unwrap();
+    let game: String = t.0;
+    let mod_id: u32 = t.1;
 
-fn main() -> Result<(), Box<std::error::Error>> {
-    let site = "https://api.nexusmods.com/v1/games";
-    let game = "/morrowind";
-    let modendpoint = "/46599.json";
-    let _updateendpoint = "/mods/updated.json?period=1w";
-    let endpoint: &str = modendpoint;
-    let address = String::from(site) + game + endpoint;
-    let apikey: String = file_to_string("apikey");
-
-    let headers: HeaderMap = construct_headers(&apikey);
-    let client = reqwest::Client::new();
-    let mut resp = client
-        .get(&address)
-        .headers(headers)
-        .send()?;
-    let json: serde_json::Value = resp.json()?;
-    //println!("{:#?}", resp);
-    //println!("{:#?}", json);
-
-    Ok(())
-}
-
-fn file_to_string(name: &str) -> String {
-    let mut f = File::open(name).expect("Unable to open file");
-    let mut contents: String = String::new();
-    f.read_to_string(&mut contents).unwrap();
-    contents.trim().to_owned()
-}
-
-fn construct_headers(apikey: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    let apiheader: HeaderValue = HeaderValue::from_str(apikey).unwrap();
-    headers.insert("apikey", apiheader);
-    headers.insert(USER_AGENT, HeaderValue::from_static("reqwest"));
-    assert!(headers.contains_key(USER_AGENT));
-    assert!(headers.contains_key("apikey"));
-    headers
+    let mi = download::get_mod_info(&game, &mod_id).expect("");
+    println!("{}", mi.name);
 }
