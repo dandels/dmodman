@@ -15,6 +15,13 @@ pub fn get_config_dir() -> PathBuf {
     config_dir
 }
 
+pub fn get_download_list_dir() -> PathBuf {
+    let mut cache_dir = get_data_dir();
+    cache_dir.push("mod_download_list");
+    file::create_dir_if_not_exist(&cache_dir);
+    cache_dir
+}
+
 pub fn get_cache_dir() -> PathBuf {
     let mut cache_dir = get_data_dir();
     cache_dir.push("mod_info_cache");
@@ -31,11 +38,19 @@ pub fn get_api_key() -> String {
     return file::file_to_string(&apikey).expect(errmsg);
 }
 
-// TODO implement actual settings
-pub fn get_game() -> String {
+fn get_game_config_path() -> String {
     let mut file = get_config_dir();
     file.push("game");
-    let s: &str = file.to_str().unwrap();
-    let errmsg: &str = &format!("Unable to read game option from {}", s);
-    return file::file_to_string(&file).expect(errmsg);
+    file.to_str().unwrap().to_string()
+}
+
+// TODO implement actual settings
+pub fn get_game() -> Result<String, std::io::Error> {
+    let mut file = get_config_dir();
+    file.push("game");
+    return file::file_to_string(&file)
+}
+
+pub fn set_game(game: &str) -> Result<(), std::io::Error> {
+    return file::write_file(&PathBuf::from(get_game_config_path()), game)
 }

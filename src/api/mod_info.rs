@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ModInfo {
     pub name: String,
     pub summary: String,
@@ -25,14 +25,14 @@ pub struct ModInfo {
     pub endorsement: Endorsement,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Endorsement {
     pub endorse_status: String,
     pub timestamp: Option<u32>,
     pub version: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct UserInfo {
     pub member_group_id: u32,
     pub member_id: u32,

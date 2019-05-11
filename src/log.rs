@@ -19,7 +19,8 @@ pub fn append(msg: &str) {
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
-        .open(log).expect("");
+        .open(log)
+        .expect("");
     file.write_all(msg.as_bytes()).expect(WRITE_ERR);
 }
 
