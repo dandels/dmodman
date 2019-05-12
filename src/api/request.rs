@@ -1,6 +1,7 @@
 use crate::api::{DownloadLocation, FileList, ModInfo};
 use crate::config;
 use crate::db;
+use crate::file;
 use crate::log;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::{Error, Response};
@@ -46,13 +47,15 @@ pub fn download_mod_file(game: &str, mod_id: &u32, file_id: &u64, query: &str) {
     match resp {
         Some(mut v) => {
             let dls: DownloadLocation = v.json().expect("Unable to parse list of download locations");
-            let a = dls.location.get("URI").unwrap().as_str().unwrap();
+            let dl_link = dls.location.get("URI").unwrap().as_str().unwrap();
             let fl = request_file_list(&game, &mod_id).unwrap();
             let file: &super::FileInfo = fl.files.iter().find(|x| x.file_id == *file_id).unwrap();
-            let url: Url = Url::parse(a).expect("Download link is not a valid URL");
+            let url: Url = Url::parse(dl_link).expect("Download link is not a valid URL");
             let file_name = &file.file_name;
             //We should maybe check the md5sum in the download link
             let mut path = PathBuf::from(file_location);
+            path.push(mod_id.to_string());
+            file::create_dir_if_not_exist(&path.clone());
             path.push(&file_name);
 
             let mut buffer = std::fs::File::create(path).expect("Unable to save download to disk");
