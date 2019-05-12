@@ -5,14 +5,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::PathBuf;
 
-//pub fn save_mod_file(game: &str, fname: String, stream: &Stream<Item = Vec<u8>, Error = std::error::Error>) -> Result<(), std::io::Error> {
-//    println!("{} {}", game, fname);
-//    let file_location = config::get_download_dir(&game);
-//    let file: File;
-//    stream.for_each(move |chunk| file.write_all(&chunk).map_err(Into::into));
-//    Ok(())
-//}
-
 pub fn save_mod_info(mi: &ModInfo) -> Result<(), std::io::Error> {
     let mut path = PathBuf::from(config::get_cache_dir());
     path.push(&mi.domain_name);
