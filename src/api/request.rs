@@ -1,96 +1,141 @@
-use crate::api::{DownloadList, ModInfo};
+use crate::api::{DownloadLocation, FileList, ModInfo};
 use crate::config;
-use crate::file;
+use crate::db;
 use crate::log;
-use crate::utils;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::{Error, Response};
+use std::path::PathBuf;
+use url::Url;
 
 // API reference:
 // https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0#/Mods/get_v1_games_game_domain_name_mods_id.json
-const URL_MOD_PREFIX: &str = "https://api.nexusmods.com/v1/games/";
+const URL_API: &str = "https://api.nexusmods.com/v1/";
 const URL_SUFFIX: &str = ".json";
 
-pub fn get_download_list(game: &str, mod_id: &u32) -> Option<DownloadList> {
-    let o = file::read_download_list(&game, &mod_id);
+pub fn get_file_list(game: &str, mod_id: &u32) -> Option<FileList> {
+    let o = db::read_file_list(&game, &mod_id);
 
     if o.is_some() {
         return o;
     } else {
-        return download_file_list(game, mod_id);
+        return request_file_list(game, mod_id);
     }
 }
 
 pub fn get_mod_info(game: &str, mod_id: &u32) -> Option<ModInfo> {
-    let o = file::read_mod_info(&game, &mod_id);
+    let o = db::read_mod_info(&game, &mod_id);
 
     if o.is_some() {
         return o;
     } else {
-        return download_mod_info(game, mod_id);
+        return request_mod_info(game, mod_id);
     }
 }
 
-//TODO refactor into methods to avoid repetition
-fn download_mod_info(game: &str, mod_id: &u32) -> Option<ModInfo> {
-    let endpoint = format!("/mods/{}", &mod_id);
-    let url: String = String::from(URL_MOD_PREFIX) + game + &endpoint + URL_SUFFIX;
-    let headers: HeaderMap = construct_headers();
-    let client = reqwest::Client::new();
-    println!("Sending request to: {}", url);
-    let resp: Result<Response, Error> = client.get(&url).headers(headers).send();
+/* TODO unwind this spaghetti.
+ * Maybe don't perform an extra API request per downloaded file
+ * Especially, implement an alternative way to determine the file name from the download url.
+ * Url::parse url encodes the file name, which isn't desirable, so we query the API for the correct
+ * file name, since we're going to use the information to check for updates anyways.
+ */
+pub fn download_mod_file(game: &str, mod_id: &u32, file_id: &u64, query: &str) {
+    let endpoint = format!("games/{}/mods/{}/files/{}/download_link.json?{}", &game, &mod_id, &file_id, &query);
+    let builder = construct_request(&endpoint);
+    let file_location = config::get_download_dir(&game);
+    let resp = send_req(builder);
     match resp {
-        Ok(mut v) => {
+        Some(mut v) => {
+            let dls: DownloadLocation = v.json().expect("Unable to parse list of download locations");
+            let a = dls.location.get("URI").unwrap().as_str().unwrap();
+            let fl = request_file_list(&game, &mod_id).unwrap();
+            let file: &super::FileInfo = fl.files.iter().find(|x| x.file_id == *file_id).unwrap();
+            let url: Url = Url::parse(a).expect("Download link is not a valid URL");
+            let file_name = &file.file_name;
+            //We should maybe check the md5sum in the download link
+            let mut path = PathBuf::from(file_location);
+            path.push(&file_name);
+
+            let mut buffer = std::fs::File::create(path).expect("Unable to save download to disk");
+
+            let client = reqwest::Client::new();
+            let mut headers = HeaderMap::new();
+            let version = String::from("dmodman ") + clap::crate_version!();
+            headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
+            let builder = client.get(url).headers(headers);
+            match builder.send() {
+                Ok(mut v) => {
+                    let _f = v.copy_to(&mut buffer);
+                },
+                Err(v) => {
+                    panic!(v)
+                }
+            }
+            println!("Succesfully downloaded file.");
+        },
+        None => {
+            println!("Unable to get download link from API");
+            return
+        }
+    }
+
+}
+
+fn request_mod_info(game: &str, mod_id: &u32) -> Option<ModInfo> {
+    let endpoint = format!("games/{}/mods/{}{}", &game, &mod_id, URL_SUFFIX);
+    let builder = construct_request(&endpoint);
+    let json = send_req(builder);
+    match json {
+        Some(mut v) => {
+            let mi: ModInfo = v.json().expect("Unable to read response as mod info");
+            db::save_mod_info(&mi).expect("Unable to write to db dir.");
+            Some(mi)
+        }
+        None => None
+    }
+}
+
+fn request_file_list(game: &str, mod_id: &u32) -> Option<FileList> {
+    let endpoint = format!("games/{}/mods/{}/files{}", &game, &mod_id, URL_SUFFIX);
+    let builder = construct_request(&endpoint);
+    let json = send_req(builder);
+    match json {
+        Some(mut v) => {
+            let fl: FileList = v.json().expect("Unable to read response as file list");
+            db::save_file_list(&game, &mod_id, &fl).expect("Unable to write to db dir.");
+            Some(fl)
+        }
+        None => None
+    }
+}
+fn send_req(builder: reqwest::RequestBuilder) -> Option<Response> {
+    let resp: Result<Response, Error> = builder.send();
+    match resp {
+        Ok(v) => {
             let headers = &v.headers();
             log::info("Response headers:");
             log::append(&format!("{:#?}\n", headers));
-            println!("Got response: {}", v.status());
             if v.status().is_success() {
-                // It's probably reasonable to crash if we can't parse the json
-                let mi: ModInfo = v.json().ok().unwrap();
-                file::save_mod_info(&mi).expect("Unable to write to db dir.");
-                return Some(mi)
+                return Some(v)
             } else {
-                log::err(&(String::from("API request not OK, was: ") + v.status().as_str()));
+                println!("Canceling request, expected status OK, was: {}", v.status());
+                log::err(&(String::from("API response not OK, was: ") + v.status().as_str() + " " + v.url().as_str()));
                 return None
             }
         }
         Err(_) => {
-            println!("Network request to \"{}\" failed", url);
-            return None;
+            println!("Network request failed");
+            return None
         }
     }
 }
 
-fn download_file_list(game: &str, mod_id: &u32) -> Option<DownloadList> {
-    let endpoint = format!("/mods/{}/files", &mod_id);
-    let url: String = String::from(URL_MOD_PREFIX) + game + &endpoint + URL_SUFFIX;
+fn construct_request(endpoint: &str) -> reqwest::RequestBuilder {
+    let url: String = String::from(URL_API) + endpoint;
+    println!("Sending request to: {}", &url);
     let headers: HeaderMap = construct_headers();
     let client = reqwest::Client::new();
-    println!("Sending request to: {}", url);
-    let resp: Result<Response, Error> = client.get(&url).headers(headers).send();
-    match resp {
-        Ok(mut v) => {
-            let headers = &v.headers();
-            log::info("Response headers:");
-            log::append(&format!("{:#?}\n", headers));
-            println!("Got response: {}", v.status());
-            if v.status().is_success() {
-                // It's probably reasonable to crash if we can't parse the json
-                let dl: DownloadList = v.json().unwrap();
-                file::save_download_list(&game, &mod_id, &dl).expect("Unable to write to db dir.");
-                return Some(dl)
-            } else {
-                log::err(&(String::from("API request not OK, was: ") + v.status().as_str()));
-                return None
-            }
-        }
-        Err(_) => {
-            println!("Network request to \"{}\" failed", url);
-            return None;
-        }
-    }
-
+    let builder = client.get(&url).headers(headers);
+    builder
 }
 
 fn construct_headers() -> HeaderMap {
@@ -98,7 +143,7 @@ fn construct_headers() -> HeaderMap {
     let apikey = config::get_api_key();
     let mut headers = HeaderMap::new();
     let apiheader: HeaderValue = HeaderValue::from_str(apikey.trim()).unwrap();
-    let version = String::from("dmodman") + &utils::get_version();
+    let version = String::from("dmodman ") + clap::crate_version!();
     headers.insert(apikey_header_name, apiheader);
     headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
     assert!(headers.contains_key(USER_AGENT));

@@ -1,76 +1,94 @@
 mod api;
 mod config;
+mod db;
 mod file;
 mod log;
-mod utils;
 
 use clap::{App, Arg, ArgGroup};
-use std::io;
+
+const ARG_LISTFILES: &str = "listfiles";
+const ARG_GAME: &str = "game";
+const ARG_UNNAMED: &str = "nxm_url";
+const ARG_QUERY: &str = "query";
 
 fn main() {
-    let ver: &str = &utils::get_version();
-    let mut opts: Vec<&str> = Vec::new();
-    let arg_download = "download";
-    let arg_query = "query";
-    opts.push(arg_download);
-    opts.push(arg_query);
+    let ver: &str = clap::crate_version!();
+    let mut mandatory_args: Vec<&str> = Vec::new();
+    mandatory_args.push(ARG_LISTFILES);
+    mandatory_args.push(ARG_QUERY);
+    mandatory_args.push(ARG_UNNAMED);
+
     let matches = App::new("dmodman")
         .version(ver)
         .author("dandels")
-        .about("A third-party command line frontend to the Nexusmods API")
-        .arg(Arg::with_name("game")
+        .about("A third-party command line frontend to the Nexusmods API.")
+        .arg(Arg::with_name(ARG_UNNAMED)
+                .value_name("NXM_URL")
+                .help("A nxm:// url to download.")
+        )
+        .arg(Arg::with_name(ARG_GAME)
                 .short("g")
                 .long("game")
                 .value_name("GAME")
                 .help("The game to manage. Required if the default game is not configured."),
         )
-        .arg(Arg::with_name(arg_query)
+        .arg(Arg::with_name(ARG_QUERY)
                 .short("q")
-                .long(arg_query)
+                .long("query")
                 .value_name("MOD_ID")
                 .help("Fetch information about a mod."),
         )
-        .arg(Arg::with_name(arg_download)
+        .arg(Arg::with_name(ARG_LISTFILES)
                 .short("d")
-                .long(arg_download)
+                .long("download")
                 .value_name("MOD_ID")
                 .help("List and download files of a mod."),
         )
-        .group(ArgGroup::with_name("operation")
-               .args(&opts)
+        .group(ArgGroup::with_name("mandatory")
+               .args(&mandatory_args)
                .required(true))
         .get_matches();
 
+    if matches.is_present(ARG_UNNAMED) {
+        if matches.value_of(ARG_UNNAMED).as_ref().unwrap().starts_with("nxm://") {
+            api::nxmhandler::handle_nxm_url(matches.value_of(ARG_UNNAMED).unwrap());
+            return
+        } else {
+            println!("Please provide a nxm url or specify an operation. See -h or --help for details, or consult the readme.");
+            return
+        }
+    }
+
     let game: String;
-    if matches.is_present("game") {
-        game = matches.value_of("game").unwrap().to_string();
+    if matches.is_present(ARG_GAME) {
+        game = matches.value_of(ARG_GAME).unwrap().to_string();
     } else {
-        let g = config::get_game();
-        match g {
+        let res = config::get_game();
+        match res {
             Ok(v) => game = v,
             Err(_) => {
-                let mut buffer = String::new();
-                io::stdin().read_line(&mut buffer).unwrap();
-                match buffer.trim_end() {
-                    "" => return,
-                    input => game = input.to_owned(),
-                }
-                config::set_game(&game).expect("Unable to write game setting to file.")
+                println!("The game to manage was neither specified nor found in the configuration file.");
+                return
             }
         }
-        println!("Using game from config: {}", game);
     }
-    if matches.is_present(arg_query) {
-        let q = matches.value_of(arg_query);
-        let mod_id: u32 = q.unwrap().to_string().parse().unwrap();
+    if matches.is_present(ARG_QUERY) {
+        let q = matches.value_of(ARG_QUERY);
+        let mod_id: u32 = q.unwrap().to_string().parse().expect("Invalid query. The provided argument must be a valid integer.");
         let mi = api::request::get_mod_info(&game, &mod_id).expect("Unable to get mod info");
+        // Do something with query result
         println!("{}", mi.name);
-    } else if matches.is_present(arg_download) {
-        let q = matches.value_of(arg_download);
+    } else if matches.is_present(ARG_LISTFILES) {
+        let q = matches.value_of(ARG_LISTFILES);
         let mod_id: u32 = q.unwrap().to_string().parse().unwrap();
-        let fi: api::DownloadList = api::request::get_download_list(&game, &mod_id).expect("Unable to get file info");
-        for file in fi.files.iter() {
-            println!("{}", file.name);
+        let mut fi: api::FileList = api::request::get_file_list(&game, &mod_id).expect("Unable to get file info");
+        // Do something with dl results
+        fi.files.sort();
+        for file in fi.files.iter().filter(|x| x.category_name.as_ref().unwrap_or(&"".to_string()) != "OLD_VERSION") {
+            println!("{:?} FILES", file.category_name.as_ref().unwrap_or(&"UNCATEGORIZED".to_string()));
+            println!("{}, {}", file.name, file.version.as_ref().unwrap_or(&"".to_string()));
         }
+        println!("-----------------------");
+    } else {
     }
 }

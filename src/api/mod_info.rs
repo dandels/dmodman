@@ -5,7 +5,7 @@ pub struct ModInfo {
     pub name: String,
     pub summary: String,
     pub description: String,
-    pub picture_url: String,
+    pub picture_url: Option<String>,
     pub mod_id: u32,
     pub game_id: u32,
     pub domain_name: String,
