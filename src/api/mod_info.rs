@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+// TODO several of these should probably be Options
 #[derive(Serialize, Deserialize)]
 pub struct ModInfo {
     pub name: String,
@@ -21,7 +22,7 @@ pub struct ModInfo {
     pub contains_adult_content: bool,
     pub status: String,
     pub available: bool,
-    pub user: UserInfo,
+    pub user: Option<UserInfo>,
     pub endorsement: Endorsement,
 }
 

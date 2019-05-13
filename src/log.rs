@@ -15,7 +15,7 @@ pub fn err(msg: &str) {
 }
 
 pub fn append(msg: &str) {
-    let log = get_log_file();
+    let log = log_file();
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
@@ -30,8 +30,8 @@ fn time() -> String {
     time
 }
 
-fn get_log_file() -> PathBuf {
-    let mut data_dir = config::get_data_dir();
+fn log_file() -> PathBuf {
+    let mut data_dir = config::data_dir();
     data_dir.push("log");
     data_dir
 }
