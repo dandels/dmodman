@@ -1,30 +1,25 @@
 use super::config;
 use super::file;
-use crate::api::{DownloadLocation, FileList, ModInfo};
+use crate::api::{DownloadLocation, FileList, ModInfo, NxmUrl};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Error;
 use std::path::PathBuf;
 
-pub fn save_dl_loc(
-    game: &str,
-    mod_id: &u32,
-    file_id: &u64,
-    dl: &DownloadLocation,
-) -> Result<(), Error> {
+pub fn save_dl_loc(nxm: &NxmUrl, dl: &DownloadLocation) -> Result<(), Error> {
     let mut path = PathBuf::from(config::dl_cache_dir());
-    path.push(&game);
-    path.push(mod_id.to_string());
+    path.push(&nxm.domain_name);
+    path.push(&nxm.mod_id.to_string());
     file::create_dir_if_not_exist(&path);
-    path.push(file_id.to_string() + ".json");
+    path.push(nxm.file_id.to_string() + ".json");
     let mut file = File::create(&path)?;
     let data = serde_json::to_string_pretty(dl)?;
     file.write_all(data.as_bytes())?;
     Ok(())
 }
 
-pub fn read_dl_loc(game: &str, mod_id: &u32, file_id: &u64) -> Result<DownloadLocation, Error> {
-    let path = config::dl_loc_for_file(&game, &mod_id, &file_id);
+pub fn read_dl_loc(nxm: &NxmUrl) -> Result<DownloadLocation, Error> {
+    let path = config::dl_loc_for_file(&nxm.domain_name, &nxm.mod_id, &nxm.file_id);
     let contents = file::read_to_string(&path)?;
     let dl: DownloadLocation = serde_json::from_str(&contents).unwrap();
     Ok(dl)

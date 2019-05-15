@@ -9,13 +9,13 @@ pub fn dl_cache_dir() -> PathBuf {
 
 pub fn data_dir() -> PathBuf {
     let mut data_dir: PathBuf = dirs::data_local_dir().unwrap();
-    data_dir.push("dmodman");
+    data_dir.push(clap::crate_name!());
     data_dir
 }
 
 pub fn config_dir() -> PathBuf {
     let mut config_dir: PathBuf = dirs::config_dir().unwrap();
-    config_dir.push("dmodman");
+    config_dir.push(clap::crate_name!());
     config_dir
 }
 
@@ -35,7 +35,9 @@ pub fn cache_dir() -> PathBuf {
 pub fn api_key() -> Result<String, std::io::Error> {
     let mut apikey: PathBuf = config_dir();
     apikey.push("apikey");
-    return file::read_to_string(&apikey);
+    let contents = file::read_to_string(&apikey)?;
+    let ret = contents.trim();
+    Ok(ret.to_string())
 }
 
 // TODO implement actual settings
@@ -47,7 +49,7 @@ pub fn game() -> Result<String, std::io::Error> {
 
 pub fn download_dir(game: &str) -> PathBuf {
     let mut data_dir: PathBuf = dirs::data_local_dir().unwrap();
-    data_dir.push("dmodman");
+    data_dir.push(clap::crate_name!());
     data_dir.push("downloads");
     data_dir.push(game);
     data_dir

@@ -79,5 +79,3 @@ impl PartialEq for FileInfo {
         self.category_name == other.category_name
     }
 }
-
-
