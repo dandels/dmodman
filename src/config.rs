@@ -1,81 +1,64 @@
-use super::file;
+use std::fs::File;
+use std::io::Read;
 use std::path::PathBuf;
 
-pub fn dl_cache_dir() -> PathBuf {
-    let mut cache_dir = data_dir();
-    cache_dir.push("mod_dl_cache");
-    cache_dir
-}
+// TODO implement actual settings for all these things
 
-pub fn data_dir() -> PathBuf {
-    let mut data_dir: PathBuf = dirs::data_local_dir().unwrap();
-    data_dir.push(clap::crate_name!());
-    data_dir
-}
-
-pub fn config_dir() -> PathBuf {
-    let mut config_dir: PathBuf = dirs::config_dir().unwrap();
-    config_dir.push(clap::crate_name!());
-    config_dir
-}
-
-pub fn file_list_dir() -> PathBuf {
-    let mut cache_dir = data_dir();
-    cache_dir.push("mod_file_list");
-    cache_dir
-}
-
-pub fn cache_dir() -> PathBuf {
-    let mut cache_dir = data_dir();
-    cache_dir.push("mod_info_cache");
-    cache_dir
-}
-
-// TODO don't read this for every request
+// TODO don't read this for every request?
 pub fn api_key() -> Result<String, std::io::Error> {
-    let mut apikey: PathBuf = config_dir();
-    apikey.push("apikey");
-    let contents = file::read_to_string(&apikey)?;
+    let mut path: PathBuf = config_dir();
+    path.push("apikey");
+    let mut contents = String::new();
+    let _n = File::open(path)?.read_to_string(&mut contents);
     let ret = contents.trim();
     Ok(ret.to_string())
 }
 
-// TODO implement actual settings
 pub fn game() -> Result<String, std::io::Error> {
-    let mut file = config_dir();
-    file.push("game");
-    return file::read_to_string(&file);
+    let mut path = config_dir();
+    path.push("game");
+    let mut contents = String::new();
+    let _n = File::open(path)?.read_to_string(&mut contents);
+    let trimmed = contents.trim();
+    Ok(trimmed.to_string())
 }
 
-pub fn download_dir(game: &str) -> PathBuf {
-    let mut data_dir: PathBuf = dirs::data_local_dir().unwrap();
+fn data_dir() -> PathBuf {
+    let mut data_dir: PathBuf = dirs::data_local_dir().expect("Unable to find cache dir location.");
     data_dir.push(clap::crate_name!());
-    data_dir.push("downloads");
-    data_dir.push(game);
     data_dir
 }
 
-pub fn dl_loc_for_file(game: &str, mod_id: &u32, file_id: &u64) -> PathBuf {
-    let mut path = file_list_dir();
-    path.push(game);
-    path.push(mod_id.to_string());
-    file::create_dir_if_not_exist(&path);
-    path.push(file_id.to_string() + ".json");
+pub fn log_dir() -> PathBuf {
+    return data_dir();
+}
+
+fn config_dir() -> PathBuf {
+    let mut path: PathBuf = dirs::config_dir().expect("Unable to find config dir location.");
+    path.push(clap::crate_name!());
     path
 }
 
-pub fn file_list_path(game: &str, mod_id: &u32) -> PathBuf {
-    let mut path = file_list_dir();
+pub fn downloads(game: &str) -> PathBuf {
+    let mut path = data_dir();
+    path.push("downloads");
     path.push(game);
-    file::create_dir_if_not_exist(&path);
-    path.push(mod_id.to_string() + ".json");
     path
 }
 
-pub fn mod_info_path(game: &str, mod_id: &u32) -> PathBuf {
-    let mut path = cache_dir();
-    path.push(&game);
-    file::create_dir_if_not_exist(&path);
-    path.push(mod_id.to_string() + ".json");
+pub fn dl_links() -> PathBuf {
+    let mut path = data_dir();
+    path.push("download_links");
+    path
+}
+pub fn file_lists() -> PathBuf {
+    let mut path = data_dir();
+    path.push("file_lists");
+    path
+}
+
+pub fn mod_info() -> PathBuf {
+    let mut path = data_dir();
+    path.push("mod_info");
     path
 }

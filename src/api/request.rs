@@ -1,7 +1,6 @@
-use crate::api::{DownloadLocation, FileList, ModInfo, NxmUrl};
+use crate::api::{DownloadLink, FileList, ModInfo, NxmUrl};
 use crate::cache;
 use crate::config;
-use crate::file;
 use crate::log;
 use crate::utils;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
@@ -15,12 +14,11 @@ pub const URL_API: &str = "https://api.nexusmods.com/v1/";
 
 pub fn handle_nxm_url(url: &str) -> Result<(), reqwest::Error> {
     let nxm = NxmUrl::parse(url).expect("Malformed nxm url");
-    let cached: Result<DownloadLocation, std::io::Error> = cache::read_dl_loc(&nxm);
-    let dl: DownloadLocation;
     if nxm.is_expired() {
         panic!("This nxm link has expired.");
     }
-    dl = cached.unwrap_or_else(|_| request_dl_link(&nxm).unwrap());
+    let cached = cache::read_dl_link(&nxm);
+    let dl: DownloadLink = cached.unwrap_or_else(|_| request_dl_link(&nxm).unwrap());
     let url: Url = Url::parse(
         dl.location
             .get("URI")
@@ -58,13 +56,13 @@ pub fn get_mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, reqwest::Error>
     }
 }
 
-pub fn request_dl_link(nxm: &NxmUrl) -> Result<DownloadLocation, Error> {
+pub fn request_dl_link(nxm: &NxmUrl) -> Result<DownloadLink, Error> {
     let endpoint = format!(
         "games/{}/mods/{}/files/{}/download_link.json?{}",
         &nxm.domain_name, &nxm.mod_id, &nxm.file_id, &nxm.query
     );
     let mut resp = send_req(construct_api_request(&endpoint))?;
-    let dl: DownloadLocation;
+    let dl: DownloadLink;
     let json = resp.json();
     match json {
         Ok(v) => dl = v,
@@ -73,16 +71,16 @@ pub fn request_dl_link(nxm: &NxmUrl) -> Result<DownloadLocation, Error> {
             panic!("Unexpected response from the API. See the log for more details.");
         }
     }
-    cache::save_dl_loc(&nxm, &dl).expect("Unable to write to download location cache.");
+    cache::save_dl_link(&nxm, &dl).expect("Unable to write to download link cache.");
     Ok(dl)
 }
 
 pub fn download_mod_file(nxm: NxmUrl, url: Url) -> Result<(), Error> {
     let file_name = utils::file_name_from_url(&url);
-    let file_location = config::download_dir(&nxm.domain_name);
+    let file_location = config::downloads(&nxm.domain_name);
     let mut path = PathBuf::from(file_location);
     path.push(nxm.mod_id.to_string());
-    file::create_dir_if_not_exist(&path.clone());
+    utils::mkdir_recursive(&path.clone());
     path.push(&file_name.to_string());
 
     /* The md5sum in the download link is not a valid md5sum. It might be using some weird

@@ -31,7 +31,7 @@ fn time() -> String {
 }
 
 fn log_file() -> PathBuf {
-    let mut data_dir = config::data_dir();
+    let mut data_dir = config::log_dir();
     data_dir.push("log");
     data_dir
 }

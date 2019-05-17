@@ -1,3 +1,6 @@
+use md5::{Digest, Md5};
+use std::fs::File;
+use std::path::PathBuf;
 use url::Url;
 
 pub fn file_name_from_url(url: &Url) -> String {
@@ -6,4 +9,22 @@ pub fn file_name_from_url(url: &Url) -> String {
     let decode = percent_encoding::percent_decode(encoded.as_bytes());
     let file_name = decode.decode_utf8_lossy().to_ascii_lowercase();
     file_name
+}
+
+pub fn md5sum(path: &PathBuf) -> Result<String, std::io::Error> {
+    let mut file = File::open(path)?;
+    let mut hasher = Md5::new();
+    let n = std::io::copy(&mut file, &mut hasher);
+    let hash = hasher.result();
+    println!("Path: {:?}", &path);
+    println!("Bytes processed: {:?}", n);
+    println!("Hash value: {:x}", hash);
+    Ok(format!("{:x}", hash))
+}
+
+pub fn mkdir_recursive(path: &PathBuf) {
+    std::fs::create_dir_all(path.clone().to_str().unwrap()).expect(&format!(
+        "Unable to create directory at {}",
+        path.to_str().unwrap()
+    ));
 }
