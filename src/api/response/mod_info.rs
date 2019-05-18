@@ -23,7 +23,7 @@ pub struct ModInfo {
     pub status: String,
     pub available: bool,
     pub user: Option<UserInfo>,
-    pub endorsement: Endorsement,
+    pub endorsement: Option<Endorsement>,
 }
 
 #[derive(Serialize, Deserialize)]

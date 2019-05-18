@@ -1,14 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-#[derive(Serialize, Deserialize)]
-pub struct FileList {
-    pub files: Vec<FileInfo>,
-    pub file_updates: Vec<Update>,
-}
-
 #[derive(Eq, Serialize, Deserialize)]
-pub struct FileInfo {
+pub struct FileDetails {
     pub file_id: u64,
     pub name: String,
     pub version: Option<String>,
@@ -26,18 +20,8 @@ pub struct FileInfo {
     pub changelog_html: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Update {
-    pub old_file_id: u64,
-    pub new_file_id: u64,
-    pub old_file_name: String,
-    pub new_file_name: String,
-    pub uploaded_timestamp: u64,
-    pub uploaded_time: String,
-}
-
-impl Ord for FileInfo {
-    fn cmp(&self, other: &FileInfo) -> Ordering {
+impl Ord for FileDetails {
+    fn cmp(&self, other: &FileDetails) -> Ordering {
         // main, update, optional, old_version or miscellaneous
         if self.category_name == Some("MAIN".to_string()) {
             return Ordering::Less;
@@ -68,14 +52,14 @@ impl Ord for FileInfo {
     }
 }
 
-impl PartialOrd for FileInfo {
-    fn partial_cmp(&self, other: &FileInfo) -> Option<Ordering> {
+impl PartialOrd for FileDetails {
+    fn partial_cmp(&self, other: &FileDetails) -> Option<Ordering> {
         Some(self.name.cmp(&other.name))
     }
 }
 
-impl PartialEq for FileInfo {
-    fn eq(&self, other: &FileInfo) -> bool {
+impl PartialEq for FileDetails {
+    fn eq(&self, other: &FileDetails) -> bool {
         self.category_name == other.category_name
     }
 }

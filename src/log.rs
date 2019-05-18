@@ -10,6 +10,7 @@ pub fn info(msg: &str) {
     append(&(time() + ": [INFO] - " + msg + "\n"));
 }
 
+#[allow(dead_code)]
 pub fn err(msg: &str) {
     append(&(time() + ": [ERROR] - " + msg + "\n"));
 }

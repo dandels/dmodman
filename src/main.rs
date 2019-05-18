@@ -2,6 +2,7 @@ mod api;
 mod cache;
 mod config;
 mod log;
+mod lookup;
 mod utils;
 
 use clap::{App, AppSettings, Arg, ArgGroup};
@@ -84,7 +85,12 @@ fn main() {
     if matches.is_present(ARG_UNNAMED) {
         let url = matches.value_of(ARG_UNNAMED).unwrap();
         if url.starts_with("nxm://") {
-            handle_nxm_url(&url);
+            let _dl_loc = lookup::handle_nxm_url(url).expect("Download failed");
+            /* We should consider checking the md5sum of the file, but we need to do an additional
+             * API request to do so, since it's unknown how to interpret the md5 in the download
+             * link query parameters.
+             */
+            println!("Download succesful");
         } else {
             println!("Please provide a nxm url or specify an operation. See -h or --help for details, or consult the readme.");
         }
@@ -98,7 +104,7 @@ fn main() {
 
     if matches.is_present(ARG_ARCHIVE) {
         let file_name = matches.value_of(ARG_ARCHIVE).unwrap();
-        lookup_file(&game, &file_name);
+        md5search(&game, &file_name);
         return;
     }
 
@@ -131,16 +137,11 @@ fn main() {
     panic!("Reached end of main function without returning. This code should be unreachable.");
 }
 
-fn handle_nxm_url(url: &str) {
-    let _dl_loc = api::request::handle_nxm_url(url).expect("Download failed");
-    // We could print something useful here.
-}
-
 fn list_files(game: &str, mod_id: &u32) {
-    let mut fi: api::FileList = api::request::get_file_list(&game, &mod_id).expect(ERR_QUERY);
+    let mut fl = lookup::file_list(&game, &mod_id).expect(ERR_QUERY);
     // Do something with dl results
-    fi.files.sort();
-    for file in fi
+    fl.files.sort();
+    for file in fl
         .files
         .iter()
         .filter(|x| x.category_name.as_ref().unwrap_or(&"".to_string()) != "OLD_VERSION")
@@ -160,15 +161,19 @@ fn list_files(game: &str, mod_id: &u32) {
     println!("-----------------------");
 }
 
-fn lookup_file(game: &str, file_name: &str) {
+fn md5search(game: &str, file_name: &str) {
     let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
     path.push(file_name);
     let md5 = utils::md5sum(&path).unwrap();
-    println!("{}", md5);
+    let search = lookup::md5(game, &md5);
+    println!(
+        "Mod name: {} \nFile name: {}",
+        &search.mod_info.name, &search.md5_file_details.name
+    );
 }
 
 fn query_mod_info(game: &str, mod_id: &u32) {
-    let mi = api::request::get_mod_info(&game, &mod_id).expect(ERR_QUERY);
+    let mi = lookup::mod_info(&game, &mod_id).expect(ERR_QUERY);
     // Do something with query result
     println!("{}", mi.name);
 }
