@@ -17,11 +17,11 @@ pub struct Md5Search {
     pub md5_file_details: Md5FileDetails,
 }
 
-#[derive(Serialize, Deserialize)]
 /* This is mostly the same as FileDetails, but it doesn't have a description field or size field.
  * FileDetails on the other hand lacks the md5 sum.
  * We should try use composition here and hope that serde is able to deserialize it.
  */
+#[derive(Serialize, Deserialize)]
 pub struct Md5FileDetails {
     pub file_id: u64,
     pub name: String,
@@ -39,11 +39,10 @@ pub struct Md5FileDetails {
     pub md5: String,
 }
 
-pub fn parse_results(md5res: Md5SearchResults) -> Md5Search {
-    let result = md5res.results.to_owned();
-    let mijson = result["mod"].to_owned();
+pub fn parse_results(results: &Map<String, Value>) -> Md5Search {
+    let mijson = results["mod"].to_owned();
     let mi: ModInfo = serde_json::from_value(mijson).unwrap();
-    let fdjson = result["file_details"].to_owned();
+    let fdjson = results["file_details"].to_owned();
     let fd: Md5FileDetails = serde_json::from_value(fdjson).unwrap();
     return Md5Search {
         mod_info: mi,

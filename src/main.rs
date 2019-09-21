@@ -3,6 +3,7 @@ mod cache;
 mod config;
 mod log;
 mod lookup;
+mod update;
 mod utils;
 
 use clap::{App, AppSettings, Arg, ArgGroup};
@@ -86,10 +87,6 @@ fn main() {
         let url = matches.value_of(ARG_UNNAMED).unwrap();
         if url.starts_with("nxm://") {
             let _dl_loc = lookup::handle_nxm_url(url).expect("Download failed");
-            /* We should consider checking the md5sum of the file, but we need to do an additional
-             * API request to do so, since it's unknown how to interpret the md5 in the download
-             * link query parameters.
-             */
             println!("Download succesful");
         } else {
             println!("Please provide a nxm url or specify an operation. See -h or --help for details, or consult the readme.");
@@ -131,6 +128,7 @@ fn main() {
     }
 
     if matches.is_present(ARG_UPDATE) {
+        update::check_game(&game).unwrap();
         return;
     }
 
@@ -162,14 +160,13 @@ fn list_files(game: &str, mod_id: &u32) {
 }
 
 fn md5search(game: &str, file_name: &str) {
-    let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
-    path.push(file_name);
-    let md5 = utils::md5sum(&path).unwrap();
-    let search = lookup::md5(game, &md5);
-    println!(
-        "Mod name: {} \nFile name: {}",
-        &search.mod_info.name, &search.md5_file_details.name
-    );
+    //let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
+    //path.push(file_name);
+    //let search = api::response::md5search::parse_results(lookup::md5search(game, &path).unwrap());
+    //println!(
+    //    "Mod name: {} \nFile name: {}",
+    //    &search.mod_info.name, &search.md5_file_details.name
+    //);
 }
 
 fn query_mod_info(game: &str, mod_id: &u32) {

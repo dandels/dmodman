@@ -39,10 +39,16 @@ fn config_dir() -> PathBuf {
     path
 }
 
-pub fn downloads(game: &str) -> PathBuf {
+pub fn downloads() -> PathBuf {
     let mut path = data_dir();
     path.push("downloads");
-    path.push(game);
+    path
+}
+
+pub fn download_location_for(game: &str, mod_id: &u32) -> PathBuf {
+    let mut path = downloads();
+    path.push(&game);
+    path.push(&mod_id.to_string());
     path
 }
 

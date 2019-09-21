@@ -1,6 +1,6 @@
 use super::config;
 use super::utils;
-use crate::api::response::{DownloadLink, FileList, Md5SearchResults, ModInfo, NxmUrl};
+use crate::api::response::{md5search, DownloadLink, FileList, Md5SearchResults, ModInfo, NxmUrl};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Error;
@@ -80,31 +80,37 @@ pub fn read_file_list(game: &str, mod_id: &u32) -> Result<FileList, Error> {
     Ok(fl)
 }
 
-fn md5search_path(game: &str, md5: &str) -> PathBuf {
-    let mut path = config::md5search();
+fn md5search_path(game: &str, mod_id: &u32, file_name: &str) -> PathBuf {
+    let mut path = config::downloads();
     path.push(&game);
+    path.push(&mod_id.to_string());
     utils::mkdir_recursive(&path);
-    path.push(md5.to_string() + ".json");
+    path.push(file_name.to_string() + ".json");
     path
 }
 
-pub fn save_md5search(
-    game: &str,
-    md5: &str,
-    results: &Md5SearchResults,
-) -> Result<(), std::io::Error> {
-    let path = md5search_path(game, &md5);
+pub fn save_md5search(game: &str, results: &Md5SearchResults) -> Result<(), std::io::Error> {
+    let search = md5search::parse_results(&results.results.clone());
+    let path = md5search_path(
+        &game,
+        &search.mod_info.mod_id,
+        &search.md5_file_details.file_name,
+    );
     let mut file = File::create(&path)?;
     let data = serde_json::to_string_pretty(&results)?;
     file.write_all(data.as_bytes())?;
     Ok(())
 }
 
-pub fn read_md5search(game: &str, md5: &str) -> Result<Md5SearchResults, Error> {
-    let path = md5search_path(&game, &md5);
+pub fn read_md5search(path: &PathBuf) -> Result<Md5SearchResults, Error> {
+    let ext = path.extension();
+    let mut path = path.clone();
+    if ext != Some("json".as_ref()) {
+        path.set_file_name(path.file_name().unwrap().to_str().unwrap().to_owned() + ".json");
+    }
     let mut contents = String::new();
     File::open(path)?.read_to_string(&mut contents)?;
     let results: Md5SearchResults =
-        serde_json::from_str(&contents).expect("Unable to parse file list in cache");
+        serde_json::from_str(&contents).expect("Unable to parse file info in cache");
     Ok(results)
 }

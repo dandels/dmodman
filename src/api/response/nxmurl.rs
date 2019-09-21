@@ -18,7 +18,7 @@ impl NxmUrl {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_millis();
-        return self.expires < now;
+        return self.expires > now;
     }
 
     pub fn parse(url: &str) -> Result<NxmUrl, ParseError> {

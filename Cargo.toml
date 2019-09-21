@@ -17,4 +17,4 @@ url = "1.7"
 
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.
-lto=true
+#lto=true
