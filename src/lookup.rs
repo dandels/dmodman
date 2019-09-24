@@ -4,7 +4,7 @@ use crate::api::response::*;
 use std::path::PathBuf;
 use url::Url;
 
-pub fn handle_nxm_url(url: &str) -> Result<Md5SearchResults, String> {
+pub fn handle_nxm_url(url: &str) -> Option<Md5SearchResults> {
     let nxm = NxmUrl::parse(url).expect("Malformed nxm url");
     if nxm.is_expired() {
         panic!("This nxm link has expired.");
@@ -27,23 +27,28 @@ pub fn handle_nxm_url(url: &str) -> Result<Md5SearchResults, String> {
     match md5result {
         Some(r) => {
             let search = parse_results(&r.results.clone());
+            println!("{} {}", nxm.file_id, search.md5_file_details.file_id);
             if nxm.file_id == search.md5_file_details.file_id {
-                return Ok(r);
+                return Some(r);
             } else {
-                return Err(format!("Download was succesful, but an API lookup for this md5 returned a different file.\n\
+                println!("Download was succesful, but an API lookup for this md5 returned a different file.\n\
                                     Ours:   {} ({})\n\
                                     Theirs: {} ({}))",
                        &file_name, nxm.file_id,
                        search.md5_file_details.file_name, search.md5_file_details.file_id
-                       ));
+                       );
+                return Some(r);
             }
         }
-        None => Err(format!(
-            "Downloading of {:?} was succesful but the API does not recognize any file with this md5sum. \
-             If you downloaded an old file, this message is harmless. Otherwise, this could indicate that\
-             the file was corrupted during the download.",
-            &file_name
-        )),
+        None => {
+            println!(
+                "Downloading of {:?} was succesful, but the API does not recognize any file with this md5sum. \
+                 If you downloaded an old file, this message is harmless. Otherwise, this could indicate that \
+                 the file was corrupted during the download.",
+                &file_name
+            );
+            return None;
+        }
     }
 }
 
@@ -98,8 +103,8 @@ pub fn md5search(game: &str, path: &PathBuf) -> Option<Md5SearchResults> {
                     println!("Succesfully looked up {:?} via API.", path);
                     results = r;
                 }
-                Err(_e) => {
-                    println!("Ignoring file {:?}", path);
+                Err(e) => {
+                    println!("{}", e);
                     return None;
                 }
             }

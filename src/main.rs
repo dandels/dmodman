@@ -14,6 +14,7 @@ const ARG_GAME: &str = "game";
 const ARG_QUERY: &str = "query";
 const ARG_UNNAMED: &str = "nxm_url";
 const ARG_UPDATE: &str = "update";
+const ARG_UPDATE_TARGET: &str = "target";
 
 const VAL_GAME: &str = "GAME";
 const VAL_FILE: &str = "FILE";
@@ -73,7 +74,7 @@ fn main() {
             Arg::with_name(ARG_UPDATE)
                 .short("u")
                 .long("update")
-                .value_name("target")
+                .value_name(ARG_UPDATE_TARGET)
                 .help("Check \"mod_id\", \"installed\" or \"all\" mods for updates."),
         )
         .group(
@@ -86,8 +87,10 @@ fn main() {
     if matches.is_present(ARG_UNNAMED) {
         let url = matches.value_of(ARG_UNNAMED).unwrap();
         if url.starts_with("nxm://") {
-            let _dl_loc = lookup::handle_nxm_url(url).expect("Download failed");
-            println!("Download succesful");
+            match lookup::handle_nxm_url(url) {
+                Some(_v) => println!("Download complete"),
+                None => println!("Download finished with warnings.")
+            }
         } else {
             println!(
                 "Please provide a nxm url or specify an operation. See -h or --help for
@@ -131,7 +134,15 @@ fn main() {
     }
 
     if matches.is_present(ARG_UPDATE) {
-        // TODO
+        match matches.value_of(ARG_UPDATE_TARGET) {
+            Some("all") | None => {
+                let mod_ids = update::check_game(&game);
+                for id in mod_ids {
+                    println!("Mod has updates: {}", id);
+                }
+            }
+            Some(&_) => println!("Not implemented")
+        }
         return;
     }
 
@@ -163,13 +174,14 @@ fn list_files(game: &str, mod_id: &u32) {
 }
 
 fn md5search(game: &str, file_name: &str) {
-    //let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
-    //path.push(file_name);
-    //let search = api::response::md5search::parse_results(lookup::md5search(game, &path).unwrap());
-    //println!(
-    //    "Mod name: {} \nFile name: {}",
-    //    &search.mod_info.name, &search.md5_file_details.name
-    //);
+    let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
+    path.push(file_name);
+    let search =
+        api::response::md5search::parse_results(&lookup::md5search(game, &path).unwrap().results);
+    println!(
+        "Mod name: {} \nFile name: {}",
+        &search.mod_info.name, &search.md5_file_details.name
+    );
 }
 
 fn query_mod_info(game: &str, mod_id: &u32) {
