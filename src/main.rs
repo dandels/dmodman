@@ -1,3 +1,7 @@
+/* This file mainly serves the purpose of testing the backend and demonstrating how to use it.
+ * Ideally there would be an interactive frontend, eg. ncurses or a GUI.
+ */
+
 mod api;
 mod cache;
 mod config;

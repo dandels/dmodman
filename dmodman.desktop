@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=dmodman nxm handler
+Exec=dmodman %u
+Icon=terminal-icon
+Type=Application
+#Set this to true if you want a terminal window to remain open during the
+#download
+Terminal=false
+MimeType=x-scheme-handler/nxm;
