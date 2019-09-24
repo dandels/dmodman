@@ -76,7 +76,7 @@ fn main() {
                 .short("u")
                 .long("update")
                 .value_name(ARG_UPDATE_TARGET)
-                .help("Check \"mod_id\", \"installed\" or \"all\" mods for updates."),
+                .help("Check \"mod_id\" or \"all\" mods for updates."),
         )
         .group(
             ArgGroup::with_name("exclusive")
