@@ -14,12 +14,10 @@ pub const API_URL: &str = "https://api.nexusmods.com/v1/";
 pub fn md5search(game: &str, md5: &str) -> Result<Md5SearchResults, Error> {
     let endpoint = format!("games/{}/mods/md5_search/{}.json", &game, &md5);
     let builder = construct_api_request(&endpoint);
-    match send_req(builder) {
-        Ok(r) => match r.error_for_status() {
-            Ok(mut v) => Ok(v.json().expect("Unable to parse md5 lookup response.")),
-            Err(v) => Err(v),
-        },
-        Err(v) => Err(v),
+    let resp = send_req(builder)?;
+    match resp.error_for_status() {
+        Ok(mut r) => Ok(r.json().expect("Unable to parse md5 lookup response.")),
+        Err(r) => Err(r),
     }
 }
 
@@ -29,13 +27,11 @@ pub fn dl_link(nxm: &NxmUrl) -> Result<DownloadLink, Error> {
         &nxm.domain_name, &nxm.mod_id, &nxm.file_id, &nxm.query
     );
     let builder = construct_api_request(&endpoint);
-    match send_req(builder) {
-        Ok(r) => match r.error_for_status() {
-            Ok(mut v) => Ok(v
-                .json()
-                .expect("Unable to read download link from response.")),
-            Err(v) => Err(v),
-        },
+    let resp = send_req(builder)?;
+    match resp.error_for_status() {
+        Ok(mut v) => Ok(v
+            .json()
+            .expect("Unable to read download link from response.")),
         Err(v) => Err(v),
     }
 }
@@ -43,25 +39,20 @@ pub fn dl_link(nxm: &NxmUrl) -> Result<DownloadLink, Error> {
 pub fn mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, Error> {
     let endpoint = format!("games/{}/mods/{}.json", &game, &mod_id);
     let builder = construct_api_request(&endpoint);
-    match send_req(builder) {
-        Ok(r) => match r.error_for_status() {
-            Ok(mut v) => Ok(v.json().expect("Unable to read response as mod info")),
-            Err(v) => Err(v),
-        },
-        Err(v) => return Err(v),
+    let resp = send_req(builder)?;
+    match resp.error_for_status() {
+        Ok(mut v) => Ok(v.json().expect("Unable to read response as mod info")),
+        Err(v) => Err(v),
     }
 }
 
 pub fn file_list(game: &str, mod_id: &u32) -> Result<FileList, Error> {
     let endpoint = format!("games/{}/mods/{}/files.json", &game, &mod_id);
     let builder = construct_api_request(&endpoint);
-    let resp = send_req(builder);
-    match resp {
-        Ok(r) => match r.error_for_status() {
-            Ok(mut v) => Ok(v.json().expect("Unable to read response as file list")),
-            Err(v) => Err(v),
-        },
-        Err(v) => return Err(v),
+    let resp = send_req(builder)?;
+    match resp.error_for_status() {
+        Ok(mut v) => Ok(v.json().expect("Unable to read response as file list")),
+        Err(v) => Err(v),
     }
 }
 
