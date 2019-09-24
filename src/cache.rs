@@ -1,6 +1,6 @@
 use super::config;
 use super::utils;
-use crate::api::response::{md5search, DownloadLink, FileList, Md5SearchResults, ModInfo, NxmUrl};
+use crate::api::{md5search, DownloadLink, FileList, Md5SearchResults, ModInfo, NxmUrl};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Error;

@@ -1,6 +1,6 @@
-use super::api::request;
-use super::api::response::FileList;
+use super::api::FileList;
 use super::config;
+use super::request;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;

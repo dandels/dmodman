@@ -3,6 +3,7 @@ mod cache;
 mod config;
 mod log;
 mod lookup;
+mod request;
 mod update;
 mod utils;
 
@@ -177,7 +178,7 @@ fn md5search(game: &str, file_name: &str) {
     let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
     path.push(file_name);
     let search =
-        api::response::md5search::parse_results(&lookup::md5search(game, &path).unwrap().results);
+        api::md5search::parse_results(&lookup::md5search(game, &path).unwrap().results);
     println!(
         "Mod name: {} \nFile name: {}",
         &search.mod_info.name, &search.md5_file_details.name
