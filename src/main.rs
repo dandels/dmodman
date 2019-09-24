@@ -89,7 +89,10 @@ fn main() {
             let _dl_loc = lookup::handle_nxm_url(url).expect("Download failed");
             println!("Download succesful");
         } else {
-            println!("Please provide a nxm url or specify an operation. See -h or --help for details, or consult the readme.");
+            println!(
+                "Please provide a nxm url or specify an operation. See -h or --help for
+                     details, or consult the readme."
+            );
         }
         return;
     }
@@ -128,7 +131,7 @@ fn main() {
     }
 
     if matches.is_present(ARG_UPDATE) {
-        update::check_game(&game).unwrap();
+        // TODO
         return;
     }
 
