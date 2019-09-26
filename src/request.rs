@@ -11,6 +11,7 @@ use url::Url;
 // https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0#/Mods/get_v1_games_game_domain_name_mods_id.json
 pub const API_URL: &str = "https://api.nexusmods.com/v1/";
 
+// The functions here violate DRY. Figure out how to fix that.
 pub fn md5search(game: &str, md5: &str) -> Result<Md5SearchResults, Error> {
     let endpoint = format!("games/{}/mods/md5_search/{}.json", &game, &md5);
     let builder = construct_api_request(&endpoint);

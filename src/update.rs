@@ -16,19 +16,26 @@ pub fn check_game(game: &str) -> Vec<u32> {
             let name = path.file_name().unwrap().to_str().unwrap();
             let parsed: Result<u32, std::num::ParseIntError> = name.parse();
             match parsed {
-                Ok(mod_id) => match check_mod_dir(&path, &game, &mod_id) {
-                    Ok(v) => {
-                        if v {
-                            updatable_mods.push(mod_id);
+                Ok(mod_id) => {
+                    // TODO: move cache functionality to request.rs
+                    let mut filelist = request::file_list(&game, &mod_id)
+                        .expect("Unable to fetch file list from API.");
+                    filelist.file_updates.sort_by_key(|a| a.uploaded_timestamp);
+
+                    match check_mod_dir(&path, &filelist) {
+                        Ok(v) => {
+                            if v {
+                                updatable_mods.push(mod_id);
+                            }
+                        }
+                        Err(e) => {
+                            println!(
+                                "Encountered error when checking mod directory {:?}: {:?}",
+                                path, e
+                            );
                         }
                     }
-                    Err(e) => {
-                        println!(
-                            "Encountered error when checking mod directory {:?}: {:?}",
-                            path, e
-                        );
-                    }
-                },
+                }
                 Err(_e) => {
                     println!("Ignoring non-mod directory in {}/{}", game, name);
                 }
@@ -38,13 +45,7 @@ pub fn check_game(game: &str) -> Vec<u32> {
     return updatable_mods;
 }
 
-fn check_mod_dir<'a>(moddir: &PathBuf, game: &str, mod_id: &u32) -> Result<bool, std::io::Error> {
-    // TODO: move cache functionality to request.rs
-    let mut filelist =
-        request::file_list(&game, &mod_id).expect("Unable to fetch file list from API.");
-
-    filelist.file_updates.sort_by_key(|a| a.uploaded_timestamp);
-
+fn check_mod_dir<'a>(moddir: &PathBuf, filelist: &FileList) -> Result<bool, std::io::Error> {
     for entry in fs::read_dir(moddir)? {
         let path = entry?.path();
         if path.is_file() && path.extension().and_then(OsStr::to_str) != Some("json") {
@@ -70,7 +71,7 @@ fn file_has_update(filelist: &FileList, path: &PathBuf, moddir: PathBuf) -> bool
      * file id's in the API response.
      * This should actually be rewritten to not rely on that behavior.
      */
-
+    
     let mut fname = path.file_name().unwrap().to_str().unwrap();
     let mut has_update = false;
     loop {
