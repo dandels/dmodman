@@ -8,6 +8,7 @@ mod config;
 mod log;
 mod lookup;
 mod request;
+mod ui;
 mod update;
 mod utils;
 
@@ -94,7 +95,7 @@ fn main() {
         if url.starts_with("nxm://") {
             match lookup::handle_nxm_url(url) {
                 Some(_v) => println!("Download complete"),
-                None => println!("Download finished with warnings.")
+                None => println!("Download finished with warnings."),
             }
         } else {
             println!(
@@ -146,7 +147,7 @@ fn main() {
                     println!("Mod has updates: {}", id);
                 }
             }
-            Some(&_) => println!("Not implemented")
+            Some(&_) => println!("Not implemented"),
         }
         return;
     }
@@ -158,31 +159,27 @@ fn list_files(game: &str, mod_id: &u32) {
     let mut fl = lookup::file_list(&game, &mod_id).expect(ERR_QUERY);
     // Do something with dl results
     fl.files.sort();
+    let headers = vec!["Filename", "Version", "Category", "Kilobytes"];
+    let mut rows: Vec<Vec<String>> = Vec::new();
     for file in fl
         .files
         .iter()
         .filter(|x| x.category_name.as_ref().unwrap_or(&"".to_string()) != "OLD_VERSION")
     {
-        println!(
-            "{:?} FILES",
-            file.category_name
-                .as_ref()
-                .unwrap_or(&"UNCATEGORIZED".to_string())
-        );
-        println!(
-            "{}, {}",
-            file.name,
-            file.version.as_ref().unwrap_or(&"".to_string())
-        );
+        let filename = file.name.to_owned();
+        let ver = file.version.to_owned().unwrap_or("".to_string());
+        let category = file.category_name.to_owned().unwrap_or("".to_string());
+        let size = file.size_kb.to_string();
+        let data: Vec<String> = vec![filename, ver, category, size];
+        rows.push(data);
     }
-    println!("-----------------------");
+    ui::term::init(headers, &rows).unwrap();
 }
 
 fn md5search(game: &str, file_name: &str) {
     let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
     path.push(file_name);
-    let search =
-        api::md5search::parse_results(&lookup::md5search(game, &path).unwrap().results);
+    let search = api::md5search::parse_results(&lookup::md5search(game, &path).unwrap().results);
     println!(
         "Mod name: {} \nFile name: {}",
         &search.mod_info.name, &search.md5_file_details.name
