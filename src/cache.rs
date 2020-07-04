@@ -49,7 +49,7 @@ pub fn save_mod_info(mi: &ModInfo) -> Result<(), std::io::Error> {
 
 pub fn read_mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, Error> {
     let path = mod_info_path(&game, &mod_id);
-    let mut contents = String::new();;
+    let mut contents = String::new();
     let _n = File::open(path)?.read_to_string(&mut contents)?;
     let mi: ModInfo =
         serde_json::from_str(&contents).expect("Unable to parse mod info file in cache");
@@ -81,7 +81,7 @@ pub fn read_file_list(game: &str, mod_id: &u32) -> Result<FileList, Error> {
 }
 
 fn md5search_path(game: &str, mod_id: &u32, file_name: &str) -> PathBuf {
-    let mut path = config::downloads();
+    let mut path = config::md5search();
     path.push(&game);
     path.push(&mod_id.to_string());
     utils::mkdir_recursive(&path);
