@@ -10,14 +10,7 @@ pub fn handle_nxm_url(url: &str) -> Option<Md5SearchResults> {
     }
     let cached = cache::read_dl_link(&nxm);
     let dl: DownloadLink = cached.unwrap_or_else(|_| request::dl_link(&nxm).unwrap());
-    let url: Url = Url::parse(
-        dl.location
-            .get("URI")
-            .expect("Unable to read download link from API response.")
-            .as_str()
-            .unwrap(),
-    )
-    .expect("Download link is not a valid URL");
+    let url: Url = Url::parse(&dl.location.uri).expect("Download link is not a valid URL");
     let path = request::download_mod_file(&nxm, url).unwrap();
     cache::save_dl_link(&nxm, &dl).expect("Unable to write to download link cache.");
     // Best effort integrity check of the downloaded file

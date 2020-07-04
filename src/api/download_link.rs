@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DownloadLink {
-    /* Keys are:
-     * "name", "short_name", "URI"
-     */
-    pub location: Map<String, Value>,
+    pub location: Location,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Location {
+    pub name: String,
+    pub short_name: String,
+    pub uri: String,
 }
