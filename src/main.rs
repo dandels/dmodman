@@ -1,7 +1,3 @@
-/* This file mainly serves the purpose of testing the backend and demonstrating how to use it.
- * Ideally there would be an interactive frontend, eg. ncurses or a GUI.
- */
-
 mod api;
 mod cache;
 mod config;
@@ -159,7 +155,12 @@ fn list_files(game: &str, mod_id: &u32) {
     let mut fl = lookup::file_list(&game, &mod_id).expect(ERR_QUERY);
     // Do something with dl results
     fl.files.sort();
-    let headers = vec!["Filename", "Version", "Category", "Kilobytes"];
+    let headers = vec![
+        "Filename".to_owned(),
+        "Version".to_owned(),
+        "Category".to_owned(),
+        "Size (MiB)".to_owned(),
+    ];
     let mut rows: Vec<Vec<String>> = Vec::new();
     for file in fl
         .files
@@ -169,11 +170,11 @@ fn list_files(game: &str, mod_id: &u32) {
         let filename = file.name.to_owned();
         let ver = file.version.to_owned().unwrap_or("".to_string());
         let category = file.category_name.to_owned().unwrap_or("".to_string());
-        let size = file.size_kb.to_string();
+        let size = (file.size_kb * 1000 / (1024 * 1024)).to_string();
         let data: Vec<String> = vec![filename, ver, category, size];
         rows.push(data);
     }
-    ui::term::init(headers, &rows).unwrap();
+    ui::term::init(headers, rows).unwrap();
 }
 
 fn md5search(game: &str, file_name: &str) {
