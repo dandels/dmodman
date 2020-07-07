@@ -7,16 +7,18 @@ edition = "2018"
 [dependencies]
 clap = "2.33"
 chrono = "0.4"
-dirs = "1.0"
-md-5 = "0.8"
-percent-encoding = "1.0"
-reqwest = "0.9"
+config = "0.10"
+dirs = "3.0"
+failure = "0.1"
+futures = "0.3"
+md-5 = "0.9"
+percent-encoding = "2.1"
+reqwest = { version = "0.10", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-url = "1.7"
+url = "2.1"
 termion = "1.5"
 tui = "0.9"
-failure = "0.1"
 
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.
