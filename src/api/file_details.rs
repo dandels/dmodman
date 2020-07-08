@@ -68,25 +68,3 @@ impl PartialEq for FileDetails {
         self.category_name == other.category_name
     }
 }
-
-impl Clone for FileDetails {
-    fn clone(&self) -> Self {
-        FileDetails {
-            file_id: self.file_id,
-            name: self.name.clone(),
-            version: self.version.clone(),
-            category_id: self.category_id,
-            category_name: self.category_name.clone(),
-            is_primary: self.is_primary,
-            size: self.size,
-            file_name: self.file_name.clone(),
-            uploaded_timestamp: self.uploaded_timestamp,
-            uploaded_time: self.uploaded_time.clone(),
-            mod_version: self.mod_version.clone(),
-            external_virus_scan_url: self.external_virus_scan_url.clone(),
-            description: self.description.clone(),
-            size_kb: self.size_kb,
-            changelog_html: self.changelog_html.clone(),
-        }
-    }
-}

@@ -1,3 +1,6 @@
+/* The NXM link format isn't part of the API, but included here for convenience.
+ */
+
 use std::time::{SystemTime, UNIX_EPOCH};
 use url::{ParseError, Url};
 
@@ -52,7 +55,8 @@ impl NxmUrl {
 }
 
 /* The nxm link protocol isn't synced with the API protocol for all games. At least these two are
- * special cases, but there might be more. */
+ * special cases, but there might be more.
+ */
 pub fn check_game_special_case(game: String) -> String {
     let g = game.to_ascii_lowercase();
     match g.as_str() {

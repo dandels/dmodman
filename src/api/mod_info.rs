@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 // TODO several of these should probably be Options
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ModInfo {
     pub name: String,
     pub summary: String,
@@ -26,14 +26,14 @@ pub struct ModInfo {
     pub endorsement: Option<Endorsement>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Endorsement {
     pub endorse_status: String,
     pub timestamp: Option<u32>,
     pub version: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UserInfo {
     pub member_group_id: u32,
     pub member_id: u32,
