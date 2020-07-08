@@ -1,3 +1,4 @@
+use log::debug;
 use md5::{Digest, Md5};
 use std::fs::File;
 use std::path::PathBuf;
@@ -13,9 +14,11 @@ pub fn file_name_from_url(url: &Url) -> String {
 
 pub fn md5sum(path: &PathBuf) -> Result<String, std::io::Error> {
     let mut file = File::open(path)?;
+    //let mut reader = BufReader::new(file);
     let mut hasher = Md5::new();
-    let _bytes_read = std::io::copy(&mut file, &mut hasher);
-    let hash = hasher.result();
+    let bytes_read = std::io::copy(&mut file, &mut hasher)?;
+    debug!("Bytes read: {}", bytes_read);
+    let hash = hasher.finalize();
     Ok(format!("{:x}", hash))
 }
 

@@ -69,8 +69,8 @@ pub fn mod_info() -> PathBuf {
     path
 }
 
-pub fn md5search() -> PathBuf {
+pub fn md5_search() -> PathBuf {
     let mut path = data_dir();
-    path.push("md5search");
+    path.push("md5_search");
     path
 }

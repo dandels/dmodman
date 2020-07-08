@@ -1,12 +1,41 @@
 use super::config;
 use chrono::Local;
+use log::{LevelFilter, Metadata, Record, SetLoggerError};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
+struct Logger;
+
+impl log::Log for Logger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= log::max_level()
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("{} - {}", record.level(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+pub fn init(loglevel: LevelFilter) -> Result<(), SetLoggerError> {
+    static LOGGER: Logger = Logger {};
+    log::set_logger(&LOGGER).map(|()| {
+        log::set_max_level(loglevel);
+    })
+}
+
 static WRITE_ERR: &str = "Unable to write to log file.";
 
+//static lock: RwLock<Vec<String>> = RwLock::new(vec![]);
+
+// TODO figure out how to deal with asynchronous logging
+
 pub fn info(msg: &str) {
+    // TODO implement checking of log level both via setting and command line argument
     append(&(time() + ": [INFO] - " + msg + "\n"));
 }
 

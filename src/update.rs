@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-pub fn check_game(game: &str) -> Vec<u32> {
+pub async fn check_game(game: &str) -> Vec<u32> {
     let mut dls = config::downloads();
     dls.push(&game);
     let mut updatable_mods: Vec<u32> = Vec::new();
@@ -18,7 +18,7 @@ pub fn check_game(game: &str) -> Vec<u32> {
             match parsed {
                 Ok(mod_id) => {
                     // TODO: move cache functionality to request.rs
-                    let mut filelist = request::file_list(&game, &mod_id)
+                    let mut filelist = request::file_list(&game, &mod_id).await
                         .expect("Unable to fetch file list from API.");
                     filelist.file_updates.sort_by_key(|a| a.uploaded_timestamp);
 

@@ -13,6 +13,14 @@ use tui::Terminal;
 use super::event::{Event, Events};
 use super::table::StatefulTable;
 
+/* Planned windows:
+ * - Downloaded mods (with filters for installed, uninstalled and sorting)
+ * - Enabled plugins (for Skyrim, Morrowind, etc)
+ * - Downloads
+ * - Errors
+ * - Files of mod
+ */
+
 pub fn init(headers: Vec<String>, items: Vec<Vec<String>>) -> Result<(), failure::Error> {
     let selected_style = Style::default().fg(Color::Yellow).modifier(Modifier::BOLD);
     let normal_style = Style::default().fg(Color::White);
