@@ -21,7 +21,10 @@ use super::table::StatefulTable;
  * - Files of mod
  */
 
-pub fn init(headers: Vec<String>, items: Vec<Vec<String>>) -> Result<(), failure::Error> {
+pub fn init(
+    headers: Vec<String>,
+    items: Vec<Vec<String>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let selected_style = Style::default().fg(Color::Yellow).modifier(Modifier::BOLD);
     let normal_style = Style::default().fg(Color::White);
 

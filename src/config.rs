@@ -1,3 +1,4 @@
+use super::api::error::DownloadError;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -5,13 +6,17 @@ use std::path::PathBuf;
 // TODO implement actual settings for all these things
 
 // TODO don't read this for every request?
-pub fn api_key() -> Result<String, std::io::Error> {
+pub fn api_key() -> Result<String, DownloadError> {
     let mut path: PathBuf = config_dir();
     path.push("apikey");
     let mut contents = String::new();
-    let _n = File::open(path)?.read_to_string(&mut contents);
-    let ret = contents.trim();
-    Ok(ret.to_string())
+    match File::open(path) {
+        Ok(mut f) => {
+            f.read_to_string(&mut contents)?;
+            Ok(contents.trim().to_string())
+        }
+        Err(_e) => Err(DownloadError::ApiKeyMissing),
+    }
 }
 
 pub fn game() -> Result<String, std::io::Error> {
@@ -19,8 +24,7 @@ pub fn game() -> Result<String, std::io::Error> {
     path.push("game");
     let mut contents = String::new();
     let _n = File::open(path)?.read_to_string(&mut contents);
-    let trimmed = contents.trim();
-    Ok(trimmed.to_string())
+    Ok(contents.trim().to_string())
 }
 
 fn data_dir() -> PathBuf {

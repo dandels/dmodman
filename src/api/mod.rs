@@ -1,4 +1,5 @@
 pub mod download_link;
+pub mod error;
 pub mod file_details;
 pub mod file_list;
 pub mod md5_search;

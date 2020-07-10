@@ -1,9 +1,11 @@
 use crate::api::*;
+use super::api::error::*;
+use crate::cache;
 use crate::config;
 use crate::utils;
-use log::{debug, error, info, trace};
+use log::{debug};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-use reqwest::{Error, Response};
+use reqwest::Response;
 use std::io::Write;
 use std::path::PathBuf;
 use url::Url;
@@ -13,74 +15,59 @@ use url::Url;
 pub const API_URL: &str = "https://api.nexusmods.com/v1/";
 
 // The functions here have a lot of repetition. Figure out how to fix that.
-pub async fn find_by_md5(game: &str, md5: &str) -> Result<Md5Search, Error> {
+pub async fn find_by_md5(game: &str, md5: &str) -> Result<Md5Search, DownloadError> {
     let endpoint = format!("games/{}/mods/md5_search/{}.json", &game, &md5);
-    let resp = send_api_request(&endpoint).await?.error_for_status();
-    match resp {
-        Ok(v) => v.json().await,
-        Err(e) => Err(e)
-    }
+    let resp = send_api_request(&endpoint).await?.error_for_status()?;
+    let search: Md5Search = resp.json().await?;
+    cache::save_md5_search(&game, &search)?;
+    Ok(search)
 }
 
-pub async fn nxm_dl_link(nxm: &NxmUrl) -> Result<DownloadLink, Error> {
+pub async fn nxm_dl_link(nxm: &NxmUrl) -> Result<DownloadLink, DownloadError> {
     let endpoint = format!(
         "games/{}/mods/{}/files/{}/download_link.json?{}",
         &nxm.domain_name, &nxm.mod_id, &nxm.file_id, &nxm.query
     );
-    let resp = send_api_request(&endpoint).await?;
-    match resp.error_for_status() {
-        Ok(r) => Ok(r
-            .json().await
-            .expect("Unable to read download link from response.")),
-        Err(e) => Err(e),
-    }
+    let resp = send_api_request(&endpoint).await?.error_for_status()?;
+    let dl: DownloadLink = resp.json().await?;
+    cache::save_dl_link(&nxm, &dl).unwrap();
+    Ok(dl)
 }
 
-pub async fn mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, Error> {
+pub async fn mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, DownloadError> {
     let endpoint = format!("games/{}/mods/{}.json", &game, &mod_id);
-    let resp = send_api_request(&endpoint).await?;
-    match resp.error_for_status() {
-        Ok(r) => Ok(r.json().await.expect("Unable to read response as mod info")),
-        Err(e) => Err(e),
-    }
+    let resp = send_api_request(&endpoint).await?.error_for_status()?;
+    let mi: ModInfo = resp.json().await?;
+    cache::save_mod_info(&mi)?;
+    Ok(mi)
 }
 
-pub async fn file_list(game: &str, mod_id: &u32) -> Result<FileList, Error> {
+pub async fn file_list(game: &str, mod_id: &u32) -> Result<FileList, DownloadError> {
     let endpoint = format!("games/{}/mods/{}/files.json", &game, &mod_id);
-    match send_api_request(&endpoint).await?.error_for_status() {
-        Ok(r) => Ok(r.json().await.expect("Unable to read response as file list")),
-        Err(e) => Err(e),
-    }
+    let resp = send_api_request(&endpoint).await?.error_for_status()?;
+    let fl: FileList = resp.json().await?;
+    cache::save_file_list(&game, &mod_id, &fl)?;
+    Ok(fl)
 }
 
-pub async fn download_mod_file(nxm: &NxmUrl, url: Url) -> Result<PathBuf, Error> {
+pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, DownloadError> {
     let file_name = utils::file_name_from_url(&url);
     let mut path = config::download_location_for(&nxm.domain_name, &nxm.mod_id);
-    utils::mkdir_recursive(&path.clone());
+    std::fs::create_dir_all(path.clone().to_str().unwrap())?;
     path.push(&file_name.to_string());
-
-    download_buffered(url, &path).await?;
+    download_buffered(&url, &path).await?;
     Ok(path)
 }
 
-async fn download_buffered(url: Url, path: &PathBuf) -> Result<(), reqwest::Error> {
-    let mut buffer = std::fs::File::create(path).expect("Unable to save download to disk");
-    let builder = construct_request(url);
+async fn download_buffered(url: &Url, path: &PathBuf) -> Result<(), DownloadError> {
+    let mut buffer = std::fs::File::create(path)?;
+    let builder = build_request(&url);
     let resp: reqwest::Response = builder.send().await?;
-    match buffer.write_all(&resp.bytes().await?) {
-        Ok(v) => {
-            debug!("Download of {:?} succesful", path.file_name());
-            Ok(v)
-        },
-        Err(e) => {
-            error!("Download of {:?} finished with errors:\n{}", path.file_name(), e);
-            Ok(())
-        }
-    }
+    Ok(buffer.write_all(&resp.bytes().await?)?)
 }
 
-async fn send_api_request(endpoint: &str) -> Result<Response, reqwest::Error> {
-    let builder = construct_api_request(&endpoint);
+async fn send_api_request(endpoint: &str) -> Result<Response, DownloadError> {
+    let builder = build_api_request(&endpoint)?;
     let resp = builder.send().await?;
     debug!("Response headers: {:#?}\n", resp.headers());
     debug!(
@@ -91,25 +78,39 @@ async fn send_api_request(endpoint: &str) -> Result<Response, reqwest::Error> {
     Ok(resp)
 }
 
-fn construct_api_request(endpoint: &str) -> reqwest::RequestBuilder {
+fn build_api_request(endpoint: &str) -> Result<reqwest::RequestBuilder, DownloadError> {
     let url: Url = Url::parse(&(String::from(API_URL) + endpoint)).unwrap();
-    // This can probably be made more concise
-    let apiheader =
-        HeaderValue::from_str(&config::api_key().expect("No API key found in config")).unwrap();
+    let apikey = config::api_key()?;
     let mut headers = HeaderMap::new();
-    headers.insert("apikey", apiheader);
-    let builder = construct_request(url).headers(headers);
-    builder
+    headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
+    let builder = build_request(&url).headers(headers);
+    Ok(builder)
 }
 
-fn construct_request(url: Url) -> reqwest::RequestBuilder {
+fn build_request(url: &Url) -> reqwest::RequestBuilder {
     debug!("Building request to: {}", &url);
     let mut headers = HeaderMap::new();
     let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
     headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
-    assert!(headers.contains_key(USER_AGENT));
-
     let client = reqwest::Client::new();
-    let builder = client.get(url).headers(headers);
+    let builder = client.get(url.clone()).headers(headers);
     builder
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::api::error::*;
+    use crate::request;
+    use crate::test;
+
+    #[test]
+    fn no_apikey() -> Result<(), DownloadError> {
+        test::setup();
+        println!("{:?}", dirs::config_dir());
+        let req = request::build_api_request("http://localhost");
+        if let Err(DownloadError::ApiKeyMissing) = req {
+            return Ok(())
+        }
+        panic!("Expected error due to missing API key")
+    }
 }

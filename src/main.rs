@@ -5,11 +5,12 @@ mod config;
 mod logger;
 mod lookup;
 mod request;
+mod test;
 mod ui;
 mod update;
 mod utils;
 
-use log::{debug, error, info, trace, warn, LevelFilter};
+use log::{error, info, trace, LevelFilter};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid integer.";
@@ -155,8 +156,8 @@ async fn list_files(is_interactive: bool, game: &str, mod_id: &u32) {
 async fn handle_md5_search(game: &str, file_name: &str) {
     let mut path = std::env::current_dir().expect("Current directory doesn't exist.");
     path.push(file_name);
-    let results =lookup::by_md5(game, &path).await.unwrap();
-    let search: api::md5_search::Md5Search= { results.unwrap() };
+    // TODO handle different error cases in frontend code
+    let search =lookup::by_md5(game, &path).await.unwrap();
     trace!(
         "Mod name: {} \nFile name: {}",
         &search.results.r#mod.name,

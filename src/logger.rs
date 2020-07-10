@@ -34,6 +34,7 @@ static WRITE_ERR: &str = "Unable to write to log file.";
 
 // TODO figure out how to deal with asynchronous logging
 
+#[allow(dead_code)]
 pub fn info(msg: &str) {
     // TODO implement checking of log level both via setting and command line argument
     append(&(time() + ": [INFO] - " + msg + "\n"));

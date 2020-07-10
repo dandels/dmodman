@@ -21,10 +21,3 @@ pub fn md5sum(path: &PathBuf) -> Result<String, std::io::Error> {
     let hash = hasher.finalize();
     Ok(format!("{:x}", hash))
 }
-
-pub fn mkdir_recursive(path: &PathBuf) {
-    std::fs::create_dir_all(path.clone().to_str().unwrap()).expect(&format!(
-        "Unable to create directory at {}",
-        path.to_str().unwrap()
-    ));
-}
