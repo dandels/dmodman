@@ -1,3 +1,5 @@
+use super::Cacheable;
+use crate::config;
 use serde::{Deserialize, Serialize};
 
 // TODO several of these should probably be Options
@@ -38,4 +40,8 @@ pub struct UserInfo {
     pub member_group_id: u32,
     pub member_id: u32,
     pub name: String,
+}
+
+impl Cacheable for ModInfo {
+    const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_MOD_INFO;
 }

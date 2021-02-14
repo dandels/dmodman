@@ -1,24 +1,15 @@
 use super::config;
 use crate::api::*;
 use std::fs::File;
-use std::io::{Error, Read, Write};
+use std::io::{Error, Read};
 use std::path::PathBuf;
 
 fn dl_link_path(nxm: &NxmUrl) -> Result<PathBuf, Error> {
-    let mut path = PathBuf::from(config::dl_links());
+    let mut path = PathBuf::from(config::CACHE_DIR_DL_LINKS);
     path.push(&nxm.domain_name);
-    path.push(&nxm.mod_id.to_string());
-    std::fs::create_dir_all(path.clone().to_str().unwrap())?;
+    path.push(nxm.mod_id.to_string());
     path.push(nxm.file_id.to_string() + ".json");
     Ok(path)
-}
-
-pub fn save_dl_link(nxm: &NxmUrl, dl: &DownloadLink) -> Result<(), Error> {
-    let path = dl_link_path(nxm)?;
-    let mut file = File::create(&path)?;
-    let data = serde_json::to_string_pretty(dl)?;
-    file.write_all(data.as_bytes())?;
-    Ok(())
 }
 
 pub fn read_dl_link(nxm: &NxmUrl) -> Result<DownloadLink, Error> {
@@ -29,82 +20,13 @@ pub fn read_dl_link(nxm: &NxmUrl) -> Result<DownloadLink, Error> {
     Ok(dl)
 }
 
-fn mod_info_path(game: &str, mod_id: &u32) -> Result<PathBuf, Error> {
-    let mut path = config::mod_info();
-    path.push(game);
-    std::fs::create_dir_all(path.clone().to_str().unwrap())?;
-    path.push(mod_id.to_string() + ".json");
-    Ok(path)
-}
-
-pub fn save_mod_info(mi: &ModInfo) -> Result<(), Error> {
-    let path = mod_info_path(&mi.domain_name, &mi.mod_id)?;
-    let data = serde_json::to_string_pretty(mi)?;
-    let mut file = File::create(&path)?;
-    file.write_all(data.as_bytes())?;
-    Ok(())
-}
-
 pub fn read_mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, Error> {
-    let path = mod_info_path(&game, &mod_id)?;
+    let mut path = PathBuf::from(config::CACHE_DIR_MOD_INFO);
+    path.push(game);
+    path.push(mod_id.to_string() + ".json");
     let mut contents = String::new();
     let _n = File::open(path)?.read_to_string(&mut contents)?;
     let mi: ModInfo =
         serde_json::from_str(&contents).expect("Unable to parse mod info file in cache");
     Ok(mi)
-}
-
-fn file_list_path(game: &str, mod_id: &u32) -> Result<PathBuf, Error> {
-    let mut path = config::file_lists();
-    path.push(game);
-    std::fs::create_dir_all(path.clone().to_str().unwrap())?;
-    path.push(mod_id.to_string() + ".json");
-    Ok(path)
-}
-
-pub fn save_file_list(game: &str, mod_id: &u32, fl: &FileList) -> Result<(), Error> {
-    let path = file_list_path(&game, &mod_id)?;
-    let mut file = File::create(&path)?;
-    let data = serde_json::to_string_pretty(fl)?;
-    file.write_all(data.as_bytes())?;
-    Ok(())
-}
-
-pub fn read_file_list(game: &str, mod_id: &u32) -> Result<FileList, Error> {
-    let path = file_list_path(&game, &mod_id)?;
-    let mut contents = String::new();
-    File::open(path)?.read_to_string(&mut contents)?;
-    let fl: FileList = serde_json::from_str(&contents).expect("Unable to parse file list in cache");
-    Ok(fl)
-}
-
-fn md5_search_path(game: &str, mod_id: &u32, file_name: &str) -> Result<PathBuf, Error> {
-    let mut path = config::md5_search();
-    path.push(&game);
-    path.push(&mod_id.to_string());
-    std::fs::create_dir_all(path.clone().to_str().unwrap())?;
-    path.push(file_name.to_string() + ".json");
-    Ok(path)
-}
-
-pub fn save_md5_search(game: &str, search: &Md5Search) -> Result<(), Error> {
-    let path = md5_search_path(
-        &game,
-        &search.results.r#mod.mod_id,
-        &search.results.file_details.file_name,
-    )?;
-    let mut file = File::create(&path)?;
-    let data = serde_json::to_string_pretty(&search)?;
-    file.write_all(data.as_bytes())?;
-    Ok(())
-}
-
-pub fn read_md5_search(path: &PathBuf) -> Result<Md5Search, Error> {
-    let mut path = path.clone();
-    if path.extension() != Some("json".as_ref()) {
-        path.set_file_name(path.file_name().unwrap().to_str().unwrap().to_owned() + ".json");
-    }
-    let mut contents = String::new();
-    File::open(path)?.read_to_string(&mut contents)?;
-    Ok(serde_json::from_str(&contents).expect("Unable to parse file info in cache"))
 }

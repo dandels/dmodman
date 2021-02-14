@@ -13,6 +13,7 @@ mod utils;
 use log::{error, info, trace, LevelFilter};
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
+
 const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid integer.";
 const ERR_MOD: &str = "Unable to query mod info from API.";
 
@@ -31,7 +32,7 @@ fn main() {
         logger::init(get_loglevel(None)).unwrap();
     }
 
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
     if matches.is_present(cmd::ARG_UNNAMED) {
         let url = matches.value_of(cmd::ARG_UNNAMED).unwrap();
@@ -88,7 +89,7 @@ fn main() {
             Some("all") | None => {
                 let mod_ids = rt.block_on(update::check_game(&game));
                 for id in mod_ids {
-                    info!("Mod has updates: {}", id);
+                    info!("Mod has updates: {:?}", id);
                 }
             }
             Some(&_) => error!("Not implemented"),

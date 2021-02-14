@@ -39,7 +39,7 @@ async fn check_dl_integrity(nxm: &NxmUrl, file: &PathBuf) -> Result<Md5Search, M
 }
 
 pub async fn file_list(game: &str, mod_id: &u32) -> Result<FileList, DownloadError> {
-    match cache::read_file_list(&game, &mod_id) {
+    match FileList::try_from_cache(&game, &mod_id) {
         Ok(v) => Ok(v),
         Err(_) => Ok(request::file_list(&game, &mod_id).await?)
     }
@@ -54,15 +54,14 @@ pub async fn mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, DownloadError
 
 pub async fn by_md5(game: &str, path: &PathBuf) -> Result<Md5Search, Md5SearchError> {
     let md5 = utils::md5sum(path)?;
-    let md5search;
-    match cache::read_md5_search(&path) {
-        Ok(v) => md5search = v,
-        Err(_) => md5search = request::find_by_md5(&game, &md5).await?
-    }
-    if md5search.results.r#mod.domain_name != game {
-        Err(Md5SearchError::GameMismatch)
-    } else {
-        Ok(md5search)
+    match request::find_by_md5(&game, &md5).await {
+        Ok(v) =>
+            if v.results.r#mod.domain_name != game {
+                Err(Md5SearchError::GameMismatch)
+            } else {
+                Ok(v)
+            }
+        Err(e) => Err(Md5SearchError::DownloadError { source: e })
     }
 }
 

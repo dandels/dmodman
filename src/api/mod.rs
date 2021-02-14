@@ -1,3 +1,4 @@
+pub mod cacheable;
 pub mod download_link;
 pub mod error;
 pub mod file_details;
@@ -5,6 +6,7 @@ pub mod file_list;
 pub mod md5_search;
 pub mod mod_info;
 pub mod nxm_url;
+pub use self::cacheable::Cacheable;
 pub use self::download_link::DownloadLink;
 pub use self::file_details::FileDetails;
 pub use self::file_list::{FileList, FileUpdate};

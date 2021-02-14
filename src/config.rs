@@ -3,10 +3,30 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-// TODO implement actual settings for all these things
+/* This approach for naming directories violates platform conventions on Windows and MacOS.
+ * The "..\$Organization\$Project\" approach of Windows or the "org.$Organization.$Project/"
+ * doesn't seem appropriate for an open source project.
+ * TODO: figure out a satisfying solution.
+ */
 
-// TODO don't read this for every request?
-pub fn api_key() -> Result<String, DownloadError> {
+pub const DIR_DOWNLOADS: &str = "downloads";
+pub const CACHE_DIR_DL_LINKS: &str = "download_links";
+pub const CACHE_DIR_FILE_DETAILS: &str = "file_lists";
+pub const CACHE_DIR_FILE_LISTS: &str = "file_lists";
+pub const CACHE_DIR_MOD_INFO: &str = "mod_info";
+pub const CACHE_DIR_MD5_SEARCH: &str = "md5_search";
+
+// Not yet stabilized
+/*
+pub const CACHE_DIR: PathBuf = dirs::cache_dir().unwrap();
+pub const CONFIG_DIR: PathBuf = dirs::config_dir().unwrap();
+pub const DATA_DIR: PathBuf = dirs::data_local_dir().unwrap();
+// TODO this needs to be configurable
+pub const DOWNLOAD_DIR: PathBuf = dirs::data_local_dir().unwrap();
+pub const LOG_DIR: PathBuf = DATA_DIR;
+*/
+
+pub fn read_api_key() -> Result<String, DownloadError> {
     let mut path: PathBuf = config_dir();
     path.push("apikey");
     let mut contents = String::new();
@@ -27,54 +47,21 @@ pub fn game() -> Result<String, std::io::Error> {
     Ok(contents.trim().to_string())
 }
 
-fn data_dir() -> PathBuf {
-    let mut data_dir: PathBuf = dirs::data_local_dir().expect("Unable to find cache dir location.");
-    data_dir.push(clap::crate_name!());
-    data_dir
-}
-
-pub fn log_dir() -> PathBuf {
-    return data_dir();
-}
-
 fn config_dir() -> PathBuf {
     let mut path: PathBuf = dirs::config_dir().expect("Unable to find config dir location.");
     path.push(clap::crate_name!());
     path
 }
 
-pub fn downloads() -> PathBuf {
-    let mut path = data_dir();
-    path.push("downloads");
+fn config_file() -> PathBuf {
+    let mut path = config_dir();
+    path.push("config");
     path
 }
 
 pub fn download_location_for(game: &str, mod_id: &u32) -> PathBuf {
-    let mut path = downloads();
+    let mut path = dirs::data_local_dir().unwrap();
     path.push(&game);
     path.push(&mod_id.to_string());
-    path
-}
-
-pub fn dl_links() -> PathBuf {
-    let mut path = data_dir();
-    path.push("download_links");
-    path
-}
-pub fn file_lists() -> PathBuf {
-    let mut path = data_dir();
-    path.push("file_lists");
-    path
-}
-
-pub fn mod_info() -> PathBuf {
-    let mut path = data_dir();
-    path.push("mod_info");
-    path
-}
-
-pub fn md5_search() -> PathBuf {
-    let mut path = data_dir();
-    path.push("md5_search");
     path
 }
