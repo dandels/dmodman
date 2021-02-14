@@ -7,7 +7,8 @@ use termion::screen::AlternateScreen;
 use tui::backend::TermionBackend;
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
-use tui::widgets::{Block, Borders, Row, Table};
+use tui::text::Span;
+use tui::widgets::{Block, Borders, Cell, Row, Table};
 use tui::Terminal;
 
 use super::event::{Event, Events};
@@ -25,7 +26,9 @@ pub fn init(
     headers: Vec<String>,
     items: Vec<Vec<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let selected_style = Style::default().fg(Color::Yellow).modifier(Modifier::BOLD);
+    let selected_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let normal_style = Style::default().fg(Color::White);
 
     let stdout = io::stdout().into_raw_mode()?;
@@ -36,14 +39,16 @@ pub fn init(
     terminal.hide_cursor()?;
 
     let events = Events::new();
-    let mut table = StatefulTable::new(headers, items);
+    let mut table = StatefulTable::new(headers.clone(), items);
 
     loop {
-        terminal.draw(|mut f| {
-            let rows = table
-                .items
-                .iter()
-                .map(|i| Row::StyledData(i.iter(), normal_style));
+        terminal.draw(|f| {
+            let rows = table.items.iter().map(|item| {
+                Row::new(
+                    item.iter()
+                        .map(|c| Cell::from(Span::styled(c, normal_style))),
+                )
+            });
 
             let rect_main = Layout::default()
                 .direction(Direction::Horizontal)
@@ -52,19 +57,20 @@ pub fn init(
                 .margin(0)
                 .split(f.size());
 
-            let rect_left = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .margin(0)
-                .split(rect_main[0]);
-
             let rect_right = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .margin(0)
                 .split(rect_main[1]);
 
-            let table_files = Table::new(table.headers.iter(), rows)
+            let rect_left = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .margin(0)
+                .split(rect_main[0]);
+
+            let table_files = Table::new(rows)
+                .header(Row::new(headers.clone()))
                 .block(Block::default().borders(Borders::ALL).title("Files"))
                 .highlight_style(selected_style)
                 .highlight_symbol(">> ")
@@ -78,12 +84,15 @@ pub fn init(
                     Constraint::Length(10),
                 ]);
 
-            let rows_foo = table
-                .items
-                .iter()
-                .map(|i| Row::StyledData(i.iter(), normal_style));
+            let rows_foo = table.items.iter().map(|item| {
+                Row::new(
+                    item.iter()
+                        .map(|c| Cell::from(Span::styled(c, normal_style))),
+                )
+            });
 
-            let table_foo = Table::new(table.headers.iter(), rows_foo)
+            let table_foo = Table::new(rows_foo)
+                .header(Row::new(headers.clone()))
                 .block(Block::default().borders(Borders::ALL).title("Table Foo"))
                 .widths(&[
                     Constraint::Length(30),
@@ -92,12 +101,15 @@ pub fn init(
                     Constraint::Length(10),
                 ]);
 
-            let rows_2 = table
-                .items
-                .iter()
-                .map(|i| Row::StyledData(i.iter(), normal_style));
+            let rows_2 = table.items.iter().map(|item| {
+                Row::new(
+                    item.iter()
+                        .map(|c| Cell::from(Span::styled(c, normal_style))),
+                )
+            });
 
-            let table_2 = Table::new(table.headers.iter(), rows_2)
+            let table_2 = Table::new(rows_2)
+                .header(Row::new(headers.clone()))
                 .block(Block::default().borders(Borders::ALL).title("Table 2"))
                 .widths(&[
                     Constraint::Length(30),
@@ -106,12 +118,15 @@ pub fn init(
                     Constraint::Length(10),
                 ]);
 
-            let rows_3 = table
-                .items
-                .iter()
-                .map(|i| Row::StyledData(i.iter(), normal_style));
+            let rows_3 = table.items.iter().map(|item| {
+                Row::new(
+                    item.iter()
+                        .map(|c| Cell::from(Span::styled(c, normal_style))),
+                )
+            });
 
-            let table_3 = Table::new(table.headers.iter(), rows_3)
+            let table_3 = Table::new(rows_3)
+                .header(Row::new(headers.clone()))
                 .block(Block::default().borders(Borders::ALL).title("Table 3"))
                 .widths(&[
                     Constraint::Length(30),
