@@ -1,11 +1,12 @@
 /* The NXM link format isn't part of the API, but included here for convenience.
  */
 
-use crate::api::error::NxmDownloadError;
+use crate::api::error::DownloadError;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use url::Url;
 
+#[derive(Debug)]
 pub struct NxmUrl {
     pub url: Url,
     pub query: String,
@@ -13,12 +14,12 @@ pub struct NxmUrl {
     pub mod_id: u32,
     pub file_id: u64,
     pub key: String,
-    pub expires: u128,
+    pub expires: u64,
     pub user_id: u32,
 }
 
 impl FromStr for NxmUrl {
-    type Err = NxmDownloadError;
+    type Err = DownloadError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let url = Url::parse(&s)?;
@@ -33,11 +34,10 @@ impl FromStr for NxmUrl {
         let query: String = q.query().unwrap().to_string();
         let mut query_pairs = url.query_pairs();
         let key: String = query_pairs.next().unwrap().1.to_string();
-        let expires: u128 = query_pairs.next().unwrap().1.parse()?;
-        check_expiration(&expires)?;
+        let expires: u64 = query_pairs.next().unwrap().1.parse()?;
         let user_id: u32 = query_pairs.next().unwrap().1.parse()?;
 
-        Ok(NxmUrl {
+        let ret: NxmUrl = NxmUrl {
             url: url,
             query: query,
             domain_name: check_game_special_case(game),
@@ -46,7 +46,11 @@ impl FromStr for NxmUrl {
             key: key,
             expires: expires,
             user_id: user_id,
-        })
+        };
+
+        check_expiration(&expires)?;
+
+        Ok(ret)
     }
 }
 
@@ -62,13 +66,13 @@ fn check_game_special_case(game: String) -> String {
     }
 }
 
-fn check_expiration(time: &u128) -> Result<(), NxmDownloadError> {
+fn check_expiration(expires: &u64) -> Result<(), DownloadError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_millis();
-    match time > &now {
+        .as_secs();
+    match expires > &now {
         true => Ok(()),
-        false => Err(NxmDownloadError::Expired),
+        false => Err(DownloadError::Expired),
     }
 }

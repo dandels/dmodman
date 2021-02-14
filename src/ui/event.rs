@@ -6,6 +6,8 @@ use termion::input::TermRead;
 
 use std::time::Duration;
 
+// This file is black magic from the tui termion example.
+
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
     pub exit_key: Key,
@@ -30,7 +32,9 @@ pub enum Event<I> {
 /// type is handled in its own thread and returned to a common `Receiver`
 pub struct Events {
     rx: mpsc::Receiver<Event<Key>>,
+    #[allow(dead_code)]
     input_handle: thread::JoinHandle<()>,
+    #[allow(dead_code)]
     tick_handle: thread::JoinHandle<()>,
 }
 

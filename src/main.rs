@@ -1,5 +1,4 @@
 mod api;
-mod cache;
 mod cmd;
 mod config;
 mod logger;
@@ -11,7 +10,6 @@ mod update;
 mod utils;
 
 use log::{error, info, trace, LevelFilter};
-use std::path::PathBuf;
 use tokio::runtime::Runtime;
 
 const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid integer.";
@@ -37,8 +35,19 @@ fn main() {
     if matches.is_present(cmd::ARG_UNNAMED) {
         let url = matches.value_of(cmd::ARG_UNNAMED).unwrap();
         if url.starts_with("nxm://") {
-            let file: PathBuf = rt.block_on(lookup::handle_nxm_url(url)).unwrap();
-            info!("Finished downloading {:?}", file.file_name().unwrap());
+            match rt.block_on(lookup::handle_nxm_url(url)) {
+                Ok(file) => { info!("Finished downloading {:?}", file.file_name().unwrap()); }
+                Err(e) => {
+                    match e {
+                        #[allow(unused_variables)]
+                        api::error::DownloadError::Md5SearchError { source } => {
+                            println!("Download succesful but file validation failed. This sometimes \
+                                means the download is corrupted, but is usually caused by the md5 \
+                                API being wonky.") }
+                        _ => panic!("Download failed, {}", e)
+                    }
+                }
+            }
         } else {
             error!(
                 "Please provide an nxm url or specify an operation. See -h or -)-help for

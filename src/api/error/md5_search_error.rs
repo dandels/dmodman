@@ -1,4 +1,4 @@
-use super::DownloadError;
+use super::RequestError;
 use std::error::Error;
 use std::fmt;
 
@@ -12,13 +12,13 @@ pub enum Md5SearchError {
      * collision on Nexuxmods.
      */
     HashMismatch,
-    DownloadError { source: DownloadError },
+    RequestError { source: RequestError },
 }
 
 impl Error for Md5SearchError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Md5SearchError::DownloadError { source } => Some(source),
+            Md5SearchError::RequestError { source } => Some(source),
             _ => None,
         }
     }
@@ -29,28 +29,28 @@ impl fmt::Display for Md5SearchError {
         match self {
             Md5SearchError::HashMismatch => f.write_str("HashMismatch"),
             Md5SearchError::GameMismatch => f.write_str("GameMismatch"),
-            Md5SearchError::DownloadError { source } => source.fmt(f),
+            Md5SearchError::RequestError { source } => source.fmt(f),
         }
     }
 }
 
-impl From<DownloadError> for Md5SearchError {
-    fn from(error: DownloadError) -> Self {
-        Md5SearchError::DownloadError { source: error }
+impl From<RequestError> for Md5SearchError {
+    fn from(error: RequestError) -> Self {
+        Md5SearchError::RequestError { source: error }
     }
 }
 
 impl From<std::io::Error> for Md5SearchError {
     fn from(error: std::io::Error) -> Self {
-        Md5SearchError::DownloadError {
-            source: DownloadError::from(error),
+        Md5SearchError::RequestError {
+            source: RequestError::from(error),
         }
     }
 }
 impl From<reqwest::Error> for Md5SearchError {
     fn from(error: reqwest::Error) -> Self {
-        Md5SearchError::DownloadError {
-            source: DownloadError::from(error),
+        Md5SearchError::RequestError {
+            source: RequestError::from(error),
         }
     }
 }

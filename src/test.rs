@@ -2,13 +2,21 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use tokio::runtime::Runtime;
 
-#[allow(dead_code)] // Used only by tests, so the compiler warns about dead code
+// Used only by tests, so the compiler warns about dead code
+#[allow(dead_code)]
 pub fn setup() -> Runtime {
-    static CRATE_DIR: &str = env!("CARGO_MANIFEST_DIR");
-    let mut path = PathBuf::from_str(CRATE_DIR).unwrap();
+    let mut path = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
     path.push("test");
-    // TODO set variables for Windows and figure out how MacOS does things
-    std::env::set_var("XDG_DATA_HOME", path.as_os_str());
-    std::env::set_var("XDG_CONFIG_HOME", path.as_os_str());
+
+    let mut data_home = path.clone();
+    let mut cache_home = path.clone();
+    let mut config_home = path.clone();
+    data_home.push("data");
+    cache_home.push("cache");
+    config_home.push("config");
+
+    std::env::set_var("XDG_DATA_HOME", data_home.as_os_str());
+    std::env::set_var("XDG_CACHE_HOME", cache_home.as_os_str());
+    std::env::set_var("XDG_CONFIG_HOME", config_home.as_os_str());
     Runtime::new().unwrap()
 }

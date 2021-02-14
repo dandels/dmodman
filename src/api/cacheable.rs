@@ -9,9 +9,10 @@ pub trait Cacheable: Serialize + DeserializeOwned {
 
     fn cache_dir(game: &str, mod_id: &u32) -> PathBuf {
         let mut path = dirs::cache_dir().unwrap();
-        path.push(Self::CACHE_DIR_NAME);
+        path.push(clap::crate_name!());
         path.push(&game);
-        path.push(&mod_id.to_string());
+        path.push(Self::CACHE_DIR_NAME);
+        path.push(format!("{}.json", &mod_id.to_string()));
         path
     }
 

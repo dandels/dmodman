@@ -1,4 +1,4 @@
-use super::api::error::DownloadError;
+use super::api::error::RequestError;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -9,24 +9,14 @@ use std::path::PathBuf;
  * TODO: figure out a satisfying solution.
  */
 
-pub const DIR_DOWNLOADS: &str = "downloads";
+pub const DOWNLOAD_DIR: &str = "downloads";
 pub const CACHE_DIR_DL_LINKS: &str = "download_links";
 pub const CACHE_DIR_FILE_DETAILS: &str = "file_lists";
 pub const CACHE_DIR_FILE_LISTS: &str = "file_lists";
 pub const CACHE_DIR_MOD_INFO: &str = "mod_info";
 pub const CACHE_DIR_MD5_SEARCH: &str = "md5_search";
 
-// Not yet stabilized
-/*
-pub const CACHE_DIR: PathBuf = dirs::cache_dir().unwrap();
-pub const CONFIG_DIR: PathBuf = dirs::config_dir().unwrap();
-pub const DATA_DIR: PathBuf = dirs::data_local_dir().unwrap();
-// TODO this needs to be configurable
-pub const DOWNLOAD_DIR: PathBuf = dirs::data_local_dir().unwrap();
-pub const LOG_DIR: PathBuf = DATA_DIR;
-*/
-
-pub fn read_api_key() -> Result<String, DownloadError> {
+pub fn read_api_key() -> Result<String, RequestError> {
     let mut path: PathBuf = config_dir();
     path.push("apikey");
     let mut contents = String::new();
@@ -35,7 +25,7 @@ pub fn read_api_key() -> Result<String, DownloadError> {
             f.read_to_string(&mut contents)?;
             Ok(contents.trim().to_string())
         }
-        Err(_e) => Err(DownloadError::ApiKeyMissing),
+        Err(_e) => Err(RequestError::ApiKeyMissing),
     }
 }
 
@@ -53,15 +43,25 @@ fn config_dir() -> PathBuf {
     path
 }
 
-fn config_file() -> PathBuf {
-    let mut path = config_dir();
-    path.push("config");
+pub fn download_location_for(game: &str, mod_id: &u32) -> PathBuf {
+    let mut path = dirs::data_local_dir().unwrap();
+    path.push(clap::crate_name!());
+    path.push(&game);
+    path.push(DOWNLOAD_DIR);
+    path.push(&mod_id.to_string());
     path
 }
 
-pub fn download_location_for(game: &str, mod_id: &u32) -> PathBuf {
-    let mut path = dirs::data_local_dir().unwrap();
-    path.push(&game);
-    path.push(&mod_id.to_string());
-    path
+#[cfg(test)]
+mod tests {
+    use crate::api::error::RequestError;
+    use crate::config;
+    use crate::test;
+
+    #[test]
+    fn apikey_exists() -> Result<(), RequestError> {
+        test::setup();
+        config::read_api_key()?;
+        Ok(())
+    }
 }
