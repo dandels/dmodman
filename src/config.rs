@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /* This approach for naming directories violates platform conventions on Windows and MacOS.
  * The "..\$Organization\$Project\" approach of Windows or the "org.$Organization.$Project/"
  * doesn't seem appropriate for an open source project.
- * TODO: figure out a satisfying solution.
+ * Figure out a satisfying solution if we ever decide to support those platforms.
  */
 
 pub const DOWNLOAD_DIR: &str = "downloads";
@@ -43,12 +43,11 @@ fn config_dir() -> PathBuf {
     path
 }
 
-pub fn download_location_for(game: &str, mod_id: &u32) -> PathBuf {
+pub fn download_dir(game: &str) -> PathBuf {
     let mut path = dirs::data_local_dir().unwrap();
     path.push(clap::crate_name!());
     path.push(&game);
     path.push(DOWNLOAD_DIR);
-    path.push(&mod_id.to_string());
     path
 }
 

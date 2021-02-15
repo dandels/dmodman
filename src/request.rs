@@ -1,7 +1,6 @@
-use crate::api::*;
-use super::api::error::*;
-use crate::config;
-use crate::utils;
+use crate::api::NxmUrl;
+use crate::api::error::RequestError;
+use crate::{config, utils};
 use log::{debug};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
@@ -10,46 +9,13 @@ use std::path::PathBuf;
 use url::Url;
 
 /* API reference:
- * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0#/Mods/get_v1_games_game_domain_name_mods_id.json
+ * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
  */
 pub const API_URL: &str = "https://api.nexusmods.com/v1/";
 
-// The functions here have a lot of repetition. Figure out how to fix that.
-pub async fn find_by_md5(game: &str, md5: &str) -> Result<Md5Search, RequestError> {
-    let endpoint = format!("games/{}/mods/md5_search/{}.json", &game, &md5);
-    let resp = send_api_request(&endpoint).await?.error_for_status()?;
-    let search: Md5Search = resp.json().await?;
-    search.save_to_cache(&game, &search.results.r#mod.mod_id)?;
-    Ok(search)
-}
-
-pub async fn nxm_dl_link(nxm: &NxmUrl) -> Result<DownloadLink, RequestError> {
-    let endpoint = format!("games/{}/mods/{}/files/{}/download_link.json?{}", &nxm.domain_name, &nxm.mod_id, &nxm.file_id, &nxm.query);
-    let resp = send_api_request(&endpoint).await?.error_for_status()?;
-    let dl: DownloadLink = resp.json().await?;
-    dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
-    Ok(dl)
-}
-
-pub async fn mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, RequestError> {
-    let endpoint = format!("games/{}/mods/{}.json", &game, &mod_id);
-    let resp = send_api_request(&endpoint).await?.error_for_status()?;
-    let mi: ModInfo = resp.json().await?;
-    mi.save_to_cache(&game, &mod_id)?;
-    Ok(mi)
-}
-
-pub async fn file_list(game: &str, mod_id: &u32) -> Result<FileList, RequestError> {
-    let endpoint = format!("games/{}/mods/{}/files.json", &game, &mod_id);
-    let resp = send_api_request(&endpoint).await?.error_for_status()?;
-    let fl: FileList = resp.json().await?;
-    fl.save_to_cache(&game, &mod_id)?;
-    Ok(fl)
-}
-
 pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, RequestError> {
     let file_name = utils::file_name_from_url(&url);
-    let mut path = config::download_location_for(&nxm.domain_name, &nxm.mod_id);
+    let mut path = config::download_dir(&nxm.domain_name);
     std::fs::create_dir_all(path.clone().to_str().unwrap())?;
     path.push(&file_name.to_string());
     download_buffered(&url, &path).await?;

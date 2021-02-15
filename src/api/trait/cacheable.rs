@@ -8,7 +8,7 @@ pub trait Cacheable: Serialize + DeserializeOwned {
     const CACHE_DIR_NAME: &'static str;
 
     fn cache_dir(game: &str, mod_id: &u32) -> PathBuf {
-        let mut path = dirs::cache_dir().unwrap();
+        let mut path = dirs::data_local_dir().unwrap();
         path.push(clap::crate_name!());
         path.push(&game);
         path.push(Self::CACHE_DIR_NAME);

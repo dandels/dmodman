@@ -4,6 +4,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use url::Url;
 
+// The last part of the url is the file name
 pub fn file_name_from_url(url: &Url) -> String {
     let path_segments = url.path_segments().unwrap();
     let encoded = path_segments.last().unwrap();
@@ -20,4 +21,14 @@ pub fn md5sum(path: &PathBuf) -> Result<String, std::io::Error> {
     debug!("Bytes read: {}", bytes_read);
     let hash = hasher.finalize();
     Ok(format!("{:x}", hash))
+}
+
+pub fn format_string(format_string: &str, params: Vec<&str>) -> String {
+    let parts: Vec<&str> = format_string.split("{}").collect();
+    let mut ret = String::new();
+    for i in 0..parts.len() - 1 {
+        ret.push_str(parts[i]);
+        ret.push_str(params[i]);
+    }
+    ret
 }

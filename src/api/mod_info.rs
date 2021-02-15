@@ -1,5 +1,7 @@
-use super::Cacheable;
+use super::{Cacheable, Requestable};
 use crate::config;
+
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 // TODO several of these should probably be Options
@@ -44,4 +46,9 @@ pub struct UserInfo {
 
 impl Cacheable for ModInfo {
     const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_MOD_INFO;
+}
+
+#[async_trait]
+impl Requestable for ModInfo {
+    const FORMAT_STRING: &'static str = "games/{}/mods/{}.json";
 }

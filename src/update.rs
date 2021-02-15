@@ -1,5 +1,6 @@
 use super::api::FileList;
-use super::request;
+use super::config;
+use crate::api::{Requestable, Cacheable};
 use log::debug;
 use std::ffi::OsStr;
 use std::fs;
@@ -8,22 +9,25 @@ use std::path::PathBuf;
 use std::io::Error;
 
 pub async fn check_game(game: &str) -> Result<Vec<u32>, Error> {
-    let mut dls = dirs::data_local_dir().unwrap();
-    dls.push(&game);
+    let dls = config::download_dir(&game);
     let mut updatable_mods: Vec<u32> = Vec::new();
     for direntry in fs::read_dir(dls)? {
+        println!("checking {:?} for updates", direntry);
         let path = direntry?.path();
         if path.is_dir() {
             let name = path.file_name().unwrap().to_str().unwrap();
             let parsed: Result<u32, std::num::ParseIntError> = name.parse();
             match parsed {
                 Ok(mod_id) => {
-                    let mut filelist = request::file_list(&game, &mod_id).await
+                    let mut filelist: FileList = FileList::request(vec![&game, &mod_id.to_string()]).await
                         .expect("Unable to fetch file list from API.");
+                    filelist.save_to_cache(&game, &mod_id)?;
                     filelist.file_updates.sort_by_key(|a| a.uploaded_timestamp);
 
                     if check_mod_dir(&path, &filelist)? {
                         updatable_mods.push(mod_id);
+                    } else {
+                        println!("{} is up to date", name);
                     }
                 }
                 Err(_e) => {

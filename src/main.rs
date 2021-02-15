@@ -144,7 +144,6 @@ async fn list_files(is_interactive: bool, game: &str, mod_id: &u32) {
         for file in fl
             .files
             .iter()
-            // TODO this unwrap crashed when the file didn't exist
             .filter(|x| x.category_name.as_ref().unwrap_or(&"".to_string()) != "OLD_VERSION")
         {
             let filename = file.name.to_owned();
@@ -154,7 +153,6 @@ async fn list_files(is_interactive: bool, game: &str, mod_id: &u32) {
             let data: Vec<String> = vec![filename, ver, category, size];
             rows.push(data);
         }
-        // TODO move to the interactivity check
         ui::term::init(headers, rows).unwrap();
     } else {
         for file in fl.files.iter() {

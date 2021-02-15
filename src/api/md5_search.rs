@@ -1,5 +1,4 @@
-use super::Cacheable;
-use super::ModInfo;
+use super::{Cacheable, ModInfo, Requestable};
 use crate::config;
 use serde::{Deserialize, Serialize};
 
@@ -37,4 +36,8 @@ pub struct Md5FileDetails {
 
 impl Cacheable for Md5Search {
     const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_MD5_SEARCH;
+}
+
+impl Requestable for Md5Search {
+    const FORMAT_STRING: &'static str = "games/{}/mods/md5_search/{}.json";
 }

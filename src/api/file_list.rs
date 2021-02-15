@@ -1,6 +1,7 @@
-use super::cacheable::Cacheable;
-use super::FileDetails;
+use super::{Cacheable, FileDetails, Requestable};
 use crate::config;
+
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -21,4 +22,9 @@ pub struct FileUpdate {
 
 impl Cacheable for FileList {
     const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_FILE_LISTS;
+}
+
+#[async_trait]
+impl Requestable for FileList {
+    const FORMAT_STRING: &'static str = "games/{}/mods/{}/files.json";
 }

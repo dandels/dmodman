@@ -1,7 +1,6 @@
 /* API responses are cached in order to reduce the number of API requests. There's a limit to how
  * many requests a user can perform per hour or day.
- * TODO: There's currently no in-built way to clear the cache, bypass the cache, or to detect stale
- * data.
+ * TODO: There's currently no way to clear the cache, bypass the cache, or to detect stale data.
  */
 
 use super::{request, utils};
@@ -14,10 +13,12 @@ use url::Url;
 pub async fn handle_nxm_url(url_str: &str) -> Result<PathBuf, DownloadError> {
     let nxm = NxmUrl::from_str(url_str)?;
     let dl: DownloadLink;
-    // is this replaceable with unwrap_or_else?
     match DownloadLink::try_from_cache(&nxm.domain_name, &nxm.mod_id) {
         Ok(v) => dl = v,
-        Err(_) => dl = request::nxm_dl_link(&nxm).await?
+        Err(_) => {
+            dl = DownloadLink::request(vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
+            dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
+        }
     }
     let url: Url = Url::parse(&dl.location.URI)?;
     let file = request::download_mod_file(&nxm, &url).await?;
@@ -27,7 +28,9 @@ pub async fn handle_nxm_url(url_str: &str) -> Result<PathBuf, DownloadError> {
 
 /* There is an "md5" value in the nxm url, but it's definitely not a valid md5sum. Instead we
  * calculate the md5 of the downloaded file and do a lookup for that hash. If the API lookup
- * returns a file with the same id, the download was succesful.
+ * returns a file with the same id, the download was succesful. The API might still give a 404 for
+ * a file that exists.
+ * The virus scan urls contain the sha256sums of the files, and could maybe be utilized.
  */
 async fn check_dl_integrity(nxm: &NxmUrl, file: &PathBuf) -> Result<Md5Search, Md5SearchError> {
     let md5search = by_md5(&nxm.domain_name, &file).await?;
@@ -41,27 +44,35 @@ async fn check_dl_integrity(nxm: &NxmUrl, file: &PathBuf) -> Result<Md5Search, M
 pub async fn file_list(game: &str, mod_id: &u32) -> Result<FileList, RequestError> {
     match FileList::try_from_cache(&game, &mod_id) {
         Ok(v) => Ok(v),
-        Err(_) => Ok(request::file_list(&game, &mod_id).await?)
+        Err(_) => {
+            let fl = FileList::request(vec![&game, &mod_id.to_string()]).await?;
+            fl.save_to_cache(&game, &mod_id)?;
+            Ok(fl)
+        }
     }
 }
 
 pub async fn mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, RequestError> {
     match ModInfo::try_from_cache(&game, &mod_id) {
         Ok(v) => Ok(v),
-        Err(_) => Ok(request::mod_info(&game, &mod_id).await?)
+        Err(_) => {
+            let mi = ModInfo::request(vec![&game, &mod_id.to_string()]).await?;
+            mi.save_to_cache(&game, &mod_id)?;
+            Ok(mi)
+        }
     }
 }
 
 pub async fn by_md5(game: &str, path: &PathBuf) -> Result<Md5Search, Md5SearchError> {
+
     let md5 = utils::md5sum(path)?;
-    match request::find_by_md5(&game, &md5).await {
-        Ok(v) =>
-            if v.results.r#mod.domain_name != game {
-                Err(Md5SearchError::GameMismatch)
-            } else {
-                Ok(v)
-            }
-        Err(e) => Err(Md5SearchError::RequestError { source: e })
+    let search = Md5Search::request(vec![&game, &md5]).await?;
+    search.save_to_cache(&game, &search.results.r#mod.mod_id)?;
+
+    if search.results.r#mod.domain_name != game {
+        Err(Md5SearchError::GameMismatch)
+    } else {
+        Ok(search)
     }
 }
 
