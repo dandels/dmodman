@@ -3,7 +3,6 @@ mod cmd;
 mod config;
 mod logger;
 mod lookup;
-mod request;
 mod test;
 mod ui;
 mod update;

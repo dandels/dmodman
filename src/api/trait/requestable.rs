@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use super::Cacheable;
 use crate::api::error::RequestError;
 use crate::utils;
-use crate::request;
+use crate::api::request;
 
 #[async_trait]
 pub trait Requestable: Cacheable {

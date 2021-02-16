@@ -3,7 +3,7 @@
  * TODO: There's currently no way to clear the cache, bypass the cache, or to detect stale data.
  */
 
-use super::{request, utils};
+use super::utils;
 use super::api::*;
 use super::api::error::*;
 use std::path::PathBuf;
