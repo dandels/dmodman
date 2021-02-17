@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 use std::str::FromStr;
-use tokio::runtime::Runtime;
 
 // Used only by tests, so the compiler warns about dead code
 #[allow(dead_code)]
-pub fn setup() -> Runtime {
+pub fn setup() {
     let mut path = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
     path.push("test");
 
@@ -18,5 +17,4 @@ pub fn setup() -> Runtime {
     std::env::set_var("XDG_DATA_HOME", data_home.as_os_str());
     std::env::set_var("XDG_CACHE_HOME", cache_home.as_os_str());
     std::env::set_var("XDG_CONFIG_HOME", config_home.as_os_str());
-    Runtime::new().unwrap()
 }

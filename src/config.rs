@@ -37,8 +37,15 @@ pub fn game() -> Result<String, std::io::Error> {
     Ok(contents.trim().to_string())
 }
 
+pub fn cache_dir(game: &str) -> PathBuf {
+    let mut path: PathBuf = dirs::data_local_dir().unwrap();
+    path.push(clap::crate_name!());
+    path.push(&game);
+    path
+}
+
 fn config_dir() -> PathBuf {
-    let mut path: PathBuf = dirs::config_dir().expect("Unable to find config dir location.");
+    let mut path: PathBuf = dirs::config_dir().unwrap();
     path.push(clap::crate_name!());
     path
 }

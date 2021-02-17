@@ -76,3 +76,19 @@ fn check_expiration(expires: &u64) -> Result<(), DownloadError> {
         false => Err(DownloadError::Expired),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::api::error::*;
+    use crate::api::NxmUrl;
+    use std::str::FromStr;
+
+    #[test]
+    fn expired_nxm() -> Result<(), DownloadError> {
+        let nxm_str = "nxm://SkyrimSE/mods/8850/files/27772?key=XnbXtdAspojLzUAn7x-Grw&expires=1583065790&user_id=1234321";
+        if let Err(DownloadError::Expired) = NxmUrl::from_str(&nxm_str) {
+            return Ok(());
+        }
+        panic!("Nxm link should have expired");
+    }
+}

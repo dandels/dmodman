@@ -1,4 +1,5 @@
 use crate::api::NxmUrl;
+use crate::api::search::*;
 use crate::api::error::RequestError;
 use crate::{config, utils};
 use log::{debug};
@@ -12,6 +13,16 @@ use url::Url;
  * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
  */
 pub const API_URL: &str = "https://api.nexusmods.com/v1/";
+pub const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
+
+pub async fn mod_search(query: String) -> Result<Search, RequestError> {
+    let base: Url = Url::parse(SEARCH_URL).unwrap();
+    let url = base.join(&query).unwrap();
+    let builder = build_request(&url);
+    let resp: reqwest::Response = builder.send().await?;
+    let ret = resp.json().await?;
+    Ok(ret)
+}
 
 pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, RequestError> {
     let file_name = utils::file_name_from_url(&url);

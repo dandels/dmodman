@@ -1,3 +1,4 @@
+use crate::config;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs::File;
@@ -8,9 +9,7 @@ pub trait Cacheable: Serialize + DeserializeOwned {
     const CACHE_DIR_NAME: &'static str;
 
     fn cache_dir(game: &str, mod_id: &u32) -> PathBuf {
-        let mut path = dirs::data_local_dir().unwrap();
-        path.push(clap::crate_name!());
-        path.push(&game);
+        let mut path = config::cache_dir(&game);
         path.push(Self::CACHE_DIR_NAME);
         path.push(format!("{}.json", &mod_id.to_string()));
         path
@@ -30,5 +29,38 @@ pub trait Cacheable: Serialize + DeserializeOwned {
         let contents = std::fs::read_to_string(path)?;
         let ret = serde_json::from_str(&contents)?;
         Ok(ret)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::api::error::*;
+    use crate::api::r#trait::Cacheable;
+    use crate::api::FileList;
+    use crate::api::ModInfo;
+    use crate::test;
+
+    #[test]
+    fn read_cached_mod_info() -> Result<(), RequestError> {
+        let _rt = test::setup();
+        let game = "morrowind";
+        let mod_id = 46599;
+        let mi: ModInfo = ModInfo::try_from_cache(&game, &mod_id)?;
+        assert_eq!(mi.name, "Graphic Herbalism - MWSE and OpenMW Edition");
+        Ok(())
+    }
+
+    #[test]
+    fn read_cached_file_list() -> Result<(), RequestError> {
+        let _rt = test::setup();
+        let game = "morrowind";
+        let mod_id = 46599;
+        let fl = FileList::try_from_cache(&game, &mod_id)?;
+        assert_eq!(fl.files.first().unwrap().name, "Graphic Herbalism MWSE");
+        assert_eq!(
+            fl.file_updates.first().unwrap().old_file_name,
+            "Graphic Herbalism MWSE-46599-1-01-1556688167.7z"
+        );
+        Ok(())
     }
 }
