@@ -15,6 +15,7 @@ const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid
 const ERR_MOD: &str = "Unable to query mod info from API.";
 
 fn main() {
+    ui::init().unwrap();
     let matches = cmd::args();
 
     let mut is_interactive = false;
@@ -63,6 +64,11 @@ fn main() {
         ))
         .to_string();
 
+    if matches.is_present(cmd::ARG_INTERACTIVE) {
+        ui::init();
+        return;
+    }
+
     if matches.is_present(cmd::ARG_ARCHIVE) {
         trace!("Looking up mod archive");
         let file_name = matches.value_of(cmd::ARG_ARCHIVE).unwrap();
@@ -77,7 +83,7 @@ fn main() {
             .to_string()
             .parse()
             .expect(ERR_MOD_ID);
-        rt.block_on(list_files(is_interactive, &game, &mod_id));
+        rt.block_on(list_files(&game, &mod_id));
         return;
     }
 
@@ -128,35 +134,10 @@ fn get_loglevel(verbosity: Option<&str>) -> LevelFilter {
     loglevel
 }
 
-async fn list_files(is_interactive: bool, game: &str, mod_id: &u32) {
-    let mut fl = lookup::file_list(&game, &mod_id).await.expect(ERR_MOD);
-    if is_interactive {
-        // Do something with dl results
-        fl.files.sort();
-        let headers = vec![
-            "Filename".to_owned(),
-            "Version".to_owned(),
-            "Category".to_owned(),
-            "Size (MiB)".to_owned(),
-        ];
-        let mut rows: Vec<Vec<String>> = Vec::new();
-        for file in fl
-            .files
-            .iter()
-            .filter(|x| x.category_name.as_ref().unwrap_or(&"".to_string()) != "OLD_VERSION")
-        {
-            let filename = file.name.to_owned();
-            let ver = file.version.to_owned().unwrap_or("".to_string());
-            let category = file.category_name.to_owned().unwrap_or("".to_string());
-            let size = (file.size_kb * 1000 / (1024 * 1024)).to_string();
-            let data: Vec<String> = vec![filename, ver, category, size];
-            rows.push(data);
-        }
-        ui::term::init(headers, rows).unwrap();
-    } else {
-        for file in fl.files.iter() {
-            info!("{}", file.name);
-        }
+async fn list_files(game: &str, mod_id: &u32) {
+    let fl = lookup::file_list(&game, &mod_id).await.expect(ERR_MOD);
+    for file in fl.files.iter() {
+        info!("{}", file.name);
     }
 }
 
