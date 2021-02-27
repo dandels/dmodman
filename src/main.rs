@@ -1,21 +1,21 @@
 mod api;
 mod cmd;
 mod config;
+mod local;
 mod logger;
 mod lookup;
 mod test;
 mod ui;
-mod update;
 mod utils;
 
 use log::{error, info, trace, LevelFilter};
 use tokio::runtime::Runtime;
+use local::update::UpdateChecker;
 
 const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid integer.";
 const ERR_MOD: &str = "Unable to query mod info from API.";
 
 fn main() {
-    ui::init().unwrap();
     let matches = cmd::args();
 
     let mut is_interactive = false;
@@ -101,10 +101,9 @@ fn main() {
     if matches.is_present(cmd::ARG_UPDATE) {
         match matches.value_of(cmd::VAL_UPDATE_TARGET) {
             Some("all") | None => {
-                let mod_ids = rt.block_on(update::check_game(&game));
-                for id in mod_ids {
-                    info!("Mod has updates: {:?}", id);
-                }
+                // TODO use results
+                let updater = UpdateChecker::new(&game);
+                let mod_ids = rt.block_on(updater.check_all());
             }
             Some(&_) => error!("Not implemented"),
         }
