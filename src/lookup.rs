@@ -12,14 +12,7 @@ use url::Url;
 
 pub async fn handle_nxm_url(url_str: &str) -> Result<PathBuf, DownloadError> {
     let nxm = NxmUrl::from_str(url_str)?;
-    let dl: DownloadLink;
-    match DownloadLink::try_from_cache(&nxm.domain_name, &nxm.mod_id) {
-        Ok(v) => dl = v,
-        Err(_) => {
-            dl = DownloadLink::request(vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
-            dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
-        }
-    }
+    let dl = DownloadLink::request(vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
     let url: Url = Url::parse(&dl.location.URI)?;
     let file = request::download_mod_file(&nxm, &url).await?;
     check_dl_integrity(&nxm, &file).await?;
