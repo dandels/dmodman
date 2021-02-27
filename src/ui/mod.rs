@@ -18,6 +18,11 @@ use tui::text::{Span, Spans};
 use tui::widgets::{Block, Borders, List, ListItem};
 use tui::Terminal;
 
+enum SelectedView {
+    None,
+    Files,
+}
+
 pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
@@ -25,6 +30,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
+
+    let mut selected_view: SelectedView = SelectedView::None;
 
     let events = Events::new();
 
@@ -39,24 +46,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
         terminal.draw(|f| {
             let blocks = rect_main.split(f.size());
 
-            let list_items: Vec<ListItem> = errors
-                .items
-                .iter()
-                .map(|i| {
-                    let lines = vec![Spans::from(*i)];
-                    ListItem::new(lines).style(Style::default().fg(Color::Red))
-                })
-                .collect();
-
-            // Create a List from all list items and highlight the currently selected one
-            let error_list = List::new(list_items)
-                .block(Block::default().borders(Borders::ALL).title("Errors"))
-                .highlight_style(
-                    Style::default()
-                        .bg(Color::LightGreen)
-                        .add_modifier(Modifier::BOLD),
-                );
-
+            //let left_table = create_left_table(selected_view);
+            let error_list = create_error_list(errors.clone());
             f.render_stateful_widget(error_list, blocks[1], &mut errors.state);
         })?;
 
@@ -64,7 +55,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
             Event::Input(key) => match key {
                 Key::Char('q') => break,
                 Key::Char('f') => {
-                    errors.items.append(&mut vec!["foo"]);
+                    selected_view = SelectedView::Files;
+                    //errors.items.append(&mut vec!["foo"]);
                 }
                 Key::Down | Key::Char('j') => {
                     &errors.next();
@@ -78,4 +70,27 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+fn create_left_table(view: SelectedView) {}
+
+fn create_error_list(errors: StatefulList<&str>) -> List {
+    let list_items: Vec<ListItem> = errors
+        .items
+        .iter()
+        .map(|i| {
+            let lines = vec![Spans::from(*i)];
+            ListItem::new(lines).style(Style::default().fg(Color::Red))
+        })
+        .collect();
+
+    // Create a List from all list items and highlight the currently selected one
+    let error_list = List::new(list_items)
+        .block(Block::default().borders(Borders::ALL).title("Errors"))
+        .highlight_style(
+            Style::default()
+                .bg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        );
+    error_list
 }
