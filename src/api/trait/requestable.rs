@@ -10,8 +10,43 @@ pub trait Requestable: Cacheable {
 
     async fn request(params: Vec<&str>) -> Result<Self, RequestError> {
         let endpoint = utils::format_string(Self::FORMAT_STRING, params);
+        println!("{}", endpoint);
         let resp = request::send_api_request(&endpoint).await?.error_for_status()?;
-        let ret: Self = resp.json().await?;
+        println!("Got api response");
+        let val: serde_json::Value = resp.json().await?;
+        println!("val: {}", val);
+        let ret: Self = serde_json::from_value(val).unwrap();
         Ok(ret)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::api::error::*;
+    use crate::api::r#trait::Cacheable;
+    use crate::api::FileList;
+    use crate::test;
+    use crate::api::r#trait::requestable::Requestable;
+
+    /* TODO prevent running this as part of normal test suite
+     * Making web requests as part of unit testing is not desirable, and the cached version and
+     * server version can mismatch at any time.
+     */
+    #[test]
+    fn request_file_list() -> Result<(), RequestError> {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        let game = "morrowind";
+        let mod_id = 46599;
+        let cached = FileList::try_from_cache(&game, &mod_id)?;
+
+        let requested: FileList;
+        match rt.block_on(FileList::request(vec![&game, &mod_id.to_string()])) {
+            Ok(v) => requested = v,
+            Err(e) => panic!("{}", e)
+        }
+
+        assert_eq!(cached, requested);
+        Ok(())
     }
 }

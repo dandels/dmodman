@@ -25,10 +25,31 @@ pub fn md5sum(path: &PathBuf) -> Result<String, std::io::Error> {
 
 pub fn format_string(format_string: &str, params: Vec<&str>) -> String {
     let parts: Vec<&str> = format_string.split("{}").collect();
+
     let mut ret = String::new();
+
     for i in 0..parts.len() - 1 {
         ret.push_str(parts[i]);
         ret.push_str(params[i]);
     }
+    if let Some(tail) = parts.last() {
+        ret.push_str(tail);
+    }
     ret
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::utils;
+
+    #[test]
+    fn endpoint_format() {
+        let arg = "games/{}/mods/{}/files.json";
+        let params = vec!["morrowind", "46599"];
+
+        assert_eq!(
+            "games/morrowind/mods/46599/files.json",
+            utils::format_string(&arg, params)
+        );
+    }
 }

@@ -19,7 +19,9 @@ pub trait Cacheable: Serialize + DeserializeOwned {
         let data = serde_json::to_string_pretty(&self)?;
         let path = Self::cache_dir(&game, &mod_id);
         std::fs::create_dir_all(path.parent().unwrap().to_str().unwrap())?;
+        println!("creating metadata file: {:?}", path);
         let mut file = File::create(&path)?;
+        println!("writing metadata file");
         file.write_all(data.as_bytes())?;
         Ok(())
     }
@@ -56,6 +58,7 @@ mod tests {
         let game = "morrowind";
         let mod_id = 46599;
         let fl = FileList::try_from_cache(&game, &mod_id)?;
+        assert_eq!(1000014198, fl.files.first().unwrap().id.0);
         assert_eq!(fl.files.first().unwrap().name, "Graphic Herbalism MWSE");
         assert_eq!(
             fl.file_updates.first().unwrap().old_file_name,

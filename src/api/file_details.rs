@@ -3,8 +3,9 @@ use crate::config;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-#[derive(Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 pub struct FileDetails {
+    pub id: (u64, u32),
     pub file_id: u64,
     pub name: String,
     pub version: Option<String>,

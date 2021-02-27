@@ -1,6 +1,7 @@
-use crate::api::NxmUrl;
-use crate::api::search::*;
-use crate::api::error::RequestError;
+use super::{NxmUrl};
+use crate::local::LocalFile;
+use super::search::*;
+use super::error::RequestError;
 use crate::{config, utils};
 use log::{debug};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
@@ -29,7 +30,13 @@ pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, Reque
     let mut path = config::download_dir(&nxm.domain_name);
     std::fs::create_dir_all(path.clone().to_str().unwrap())?;
     path.push(&file_name.to_string());
+
     download_buffered(&url, &path).await?;
+
+    // create metadata json file
+    let lf = LocalFile::new(&nxm, &path);
+    lf.write()?;
+
     Ok(path)
 }
 
@@ -38,7 +45,9 @@ async fn download_buffered(url: &Url, path: &PathBuf) -> Result<(), RequestError
     println!("downloading to... {:?}", path.as_os_str());
     let builder = build_request(&url);
     let resp: reqwest::Response = builder.send().await?;
-    Ok(buffer.write_all(&resp.bytes().await?)?)
+    buffer.write_all(&resp.bytes().await?)?;
+    println!("download complete");
+    Ok(())
 }
 
 pub async fn send_api_request(endpoint: &str) -> Result<Response, RequestError> {
