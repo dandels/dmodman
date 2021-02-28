@@ -1,0 +1,26 @@
+{
+  "files": [
+    {
+      "id": [
+        82041,
+        100
+      ],
+      "file_id": 82041,
+      "name": "Fair Magicka Regen v2B",
+      "version": "2.0b",
+      "category_id": 1,
+      "category_name": "MAIN",
+      "is_primary": false,
+      "size": 4,
+      "file_name": "Fair Magicka Regen v2B-39350-2-0b.rar",
+      "uploaded_timestamp": 1310405800,
+      "uploaded_time": "2011-07-11T17:36:40.000+00:00",
+      "mod_version": "2.0b",
+      "external_virus_scan_url": "https://www.virustotal.com/file/d6903d4f23901b5d716bbbcc3fa9f1c43c652bece57a96e037a07c9bbd661018/analysis/1406217489/",
+      "description": "Main",
+      "size_kb": 4,
+      "changelog_html": null
+    }
+  ],
+  "file_updates": []
+}

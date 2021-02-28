@@ -49,9 +49,7 @@ impl UpdateChecker {
          * - Otherwise loop through the file update history
          */
 
-         let local_file: LocalFile = serde_json::from_str(&std::fs::read_to_string(&path)?).unwrap_or_else(
-             |_| panic!("Unable to deserialize metadata for {:?}", path)
-             );
+         let local_file: LocalFile = serde_json::from_str(&std::fs::read_to_string(&path)?).unwrap();
 
          if self.updatable_mods.contains(&local_file.mod_id) {
              return Ok(true)
@@ -146,4 +144,32 @@ mod tests {
         assert_eq!(true, rt.block_on(updater.check_file(&path))?);
         Ok(())
     }
+
+    #[test]
+    fn file_has_no_updates() -> Result<(), RequestError> {
+        test::setup();
+        let rt = Runtime::new().unwrap();
+
+        let game: String = "morrowind".to_owned();
+        let mod_id = 39350;
+
+        let mut file_lists: HashMap<u32, FileList> = HashMap::new();
+
+        let mut path = config::download_dir(&game);
+        path.push("Fair Magicka Regen v2B-39350-2-0b.rar.json");
+        println!("{:?}", path);
+
+        let file_list = FileList::try_from_cache(&game, &mod_id)?;
+        file_lists.insert(mod_id, file_list);
+
+        let updater = UpdateChecker {
+            game,
+            updatable_mods: HashSet::new(),
+            file_lists
+        };
+
+        assert_eq!(false, rt.block_on(updater.check_file(&path))?);
+        Ok(())
+    }
+
 }
