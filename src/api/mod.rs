@@ -10,6 +10,7 @@ pub mod request;
 pub mod search;
 pub mod r#trait;
 pub use self::download_link::DownloadLink;
+pub use self::error::*;
 pub use self::file_details::FileDetails;
 pub use self::file_list::*;
 pub use self::game_info::*;

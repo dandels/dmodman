@@ -1,7 +1,7 @@
 mod api;
 mod cmd;
 mod config;
-mod local;
+mod db;
 mod logger;
 mod lookup;
 mod test;
@@ -10,7 +10,7 @@ mod utils;
 
 use log::{error, info, trace, LevelFilter};
 use tokio::runtime::Runtime;
-use local::update::UpdateChecker;
+use db::update::UpdateChecker;
 
 const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid integer.";
 const ERR_MOD: &str = "Unable to query mod info from API.";

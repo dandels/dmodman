@@ -1,5 +1,5 @@
 use super::{NxmUrl};
-use crate::local::LocalFile;
+use crate::db::LocalFile;
 use super::search::*;
 use super::error::RequestError;
 use crate::{config, utils};
@@ -34,7 +34,7 @@ pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, Reque
     download_buffered(&url, &path).await?;
 
     // create metadata json file
-    let lf = LocalFile::new(&nxm, &path);
+    let lf = LocalFile::new(&nxm, file_name);
     lf.write()?;
 
     Ok(path)

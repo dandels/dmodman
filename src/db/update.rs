@@ -1,10 +1,8 @@
 use crate::api::{ {FileList, Requestable, Cacheable}, error::RequestError };
-use crate::config;
-use std::ffi::OsStr;
-use std::fs;
+use super::error::*;
 use std::path::{Path, PathBuf};
 use std::collections::{HashMap, HashSet};
-use super::LocalFile;
+use super::local_file::*;
 
 pub struct UpdateChecker {
     pub game: String,
@@ -13,43 +11,43 @@ pub struct UpdateChecker {
 }
 
 impl UpdateChecker {
-    pub fn new(game: &str) -> Self {
+    #[cfg(test)]
+    pub fn new_with_file_lists(game: String, file_lists: HashMap<u32, FileList>) -> Self {
         Self {
-        game: game.to_string(),
-        updatable_mods: HashSet::new(),
-        file_lists: HashMap::new(),
+            game,
+            updatable_mods: HashSet::new(),
+            file_lists
         }
     }
 
-    pub async fn check_all(&self) -> Result<&HashSet<u32>, RequestError> {
-        // Selects files in download directory that end with .json
-        let jsonfiles = fs::read_dir(config::download_dir(&self.game))?.flatten().map(|x|
-            if x.path().is_file() && x.path().extension().and_then(OsStr::to_str) == Some("json") { 
-                Some(x.path())
-            } else {
-                None 
-            }
-        ).flatten();
+    pub fn new(game: String) -> Self {
+        Self {
+            game,
+            updatable_mods: HashSet::new(),
+            file_lists: HashMap::new(),
+        }
+    }
 
-        for file in jsonfiles {
-            self.check_file(&file).await?;
+    pub async fn check_all(&mut self) -> Result<&HashSet<u32>, UpdateError> {
+        let lfl = LocalFileList::new(&self.game)?;
+        self.check_files(&lfl).await
+    }
+
+    pub async fn check_files(&mut self, lfl: &LocalFileList) -> Result<&HashSet<u32>, UpdateError> {
+        for lf in &lfl.files {
+            if self.check_file(&lf).await? {
+                self.updatable_mods.insert(lf.mod_id);
+            }
         }
 
         Ok(&self.updatable_mods)
     }
 
-    // Is this needed?
-    pub fn check_mod(&self, mod_id: &u32) {
-        unimplemented!();
-    }
-
-    pub async fn check_file(&self, path: &Path) -> Result<bool, RequestError> {
+    pub async fn check_file(&self, local_file: &LocalFile) -> Result<bool, RequestError> {
         /* - Find out the mod for this file
          * - If the mod is already checked, return that result
          * - Otherwise loop through the file update history
          */
-
-         let local_file: LocalFile = serde_json::from_str(&std::fs::read_to_string(&path)?).unwrap();
 
          if self.updatable_mods.contains(&local_file.mod_id) {
              return Ok(true)
@@ -59,6 +57,10 @@ impl UpdateChecker {
          match self.file_lists.get(&local_file.mod_id) {
              Some(v) => file_list = v.to_owned(),
              None => {
+                 println!("{:?}", self.file_lists);
+                 #[cfg(test)]
+                 panic!("Not supposed to get here during a test");
+
                  // TODO handle files from other mods gracefully, eg. Skyrim SSE + Oldrim
                  file_list = FileList::request(vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
                  file_list.save_to_cache(&local_file.game, &local_file.mod_id)?;
@@ -66,13 +68,13 @@ impl UpdateChecker {
             }
          }
 
-         Ok(self.file_has_update(&local_file, &path, &file_list))
+         Ok(self.file_has_update(&local_file, &file_list))
     }
 
-    fn file_has_update(&self, local_file: &LocalFile, path: &Path, file_list: &FileList) -> bool {
+    fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
         let mut has_update = false;
         let mut current_id = local_file.file_id;
-        let mut latest_file: String = path.to_str().unwrap().to_owned();
+        let mut latest_file: &str = &local_file.file_name;
 
          /* This could be an infinite loop if the data is corrupted and the file id's point to
           * eachother recursively. Using a for-loop fixes that, but doesn't do anything to fix the
@@ -91,7 +93,7 @@ impl UpdateChecker {
                      * and the newest version.
                      */
                     current_id = v.new_file_id;
-                    latest_file = v.new_file_name.clone();
+                    latest_file = &v.new_file_name;
                     has_update = true;
                 }
                 /* We've reached the end of the update history for one file. If the latest file doesn't
@@ -99,7 +101,7 @@ impl UpdateChecker {
                  * Note that the API can't be trusted to remember every old file.
                  */
                 None => {
-                    let mut f: PathBuf = path.parent().unwrap().to_path_buf();
+                    let mut f: PathBuf = local_file.path().parent().unwrap().to_path_buf();
                     f.push(latest_file);
                     return !Path::new(&f).exists() && has_update;
                 }
@@ -111,65 +113,36 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{ Cacheable, FileList, error::RequestError };
-    use crate::config;
-    use crate::local::update::UpdateChecker;
+    use crate::api::{ Cacheable, FileList  };
+    use crate::db::update::{ UpdateChecker, UpdateError };
     use crate::test;
     use tokio::runtime::Runtime;
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
 
     #[test]
-    fn file_has_update() -> Result<(), RequestError> {
+    fn update() -> Result<(), UpdateError> {
         test::setup();
         let rt = Runtime::new().unwrap();
 
         let game: String = "morrowind".to_owned();
-        let mod_id = 46599;
+
+        let herba_id = 46599;
+        let magicka_id = 39350;
 
         let mut file_lists: HashMap<u32, FileList> = HashMap::new();
 
-        let mut path = config::download_dir(&game);
-        path.push("Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z.json");
-        println!("{:?}", path);
+        let herba_list = FileList::try_from_cache(&game, &herba_id).unwrap();
+        let magicka_list = FileList::try_from_cache(&game, &magicka_id).unwrap();
+        file_lists.insert(herba_id, herba_list);
+        file_lists.insert(magicka_id, magicka_list);
 
-        let file_list = FileList::try_from_cache(&game, &mod_id)?;
-        file_lists.insert(mod_id, file_list);
+        let mut updater = UpdateChecker::new_with_file_lists(game, file_lists);
+        let upds = rt.block_on(updater.check_all())?;
 
-        let updater = UpdateChecker {
-            game,
-            updatable_mods: HashSet::new(),
-            file_lists
-        };
+        println!("{:?}", upds);
 
-        assert_eq!(true, rt.block_on(updater.check_file(&path))?);
+        assert_eq!(true, upds.contains(&herba_id));
+        assert_eq!(false, upds.contains(&magicka_id));
         Ok(())
     }
-
-    #[test]
-    fn file_has_no_updates() -> Result<(), RequestError> {
-        test::setup();
-        let rt = Runtime::new().unwrap();
-
-        let game: String = "morrowind".to_owned();
-        let mod_id = 39350;
-
-        let mut file_lists: HashMap<u32, FileList> = HashMap::new();
-
-        let mut path = config::download_dir(&game);
-        path.push("Fair Magicka Regen v2B-39350-2-0b.rar.json");
-        println!("{:?}", path);
-
-        let file_list = FileList::try_from_cache(&game, &mod_id)?;
-        file_lists.insert(mod_id, file_list);
-
-        let updater = UpdateChecker {
-            game,
-            updatable_mods: HashSet::new(),
-            file_lists
-        };
-
-        assert_eq!(false, rt.block_on(updater.check_file(&path))?);
-        Ok(())
-    }
-
 }
