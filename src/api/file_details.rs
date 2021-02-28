@@ -56,7 +56,7 @@ impl Ord for FileDetails {
             return Ordering::Greater;
         }
         // This case doesn't exist according to the API documentation
-        return self.category_name.cmp(&other.category_name);
+        self.category_name.cmp(&other.category_name)
     }
 }
 

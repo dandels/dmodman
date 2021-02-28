@@ -14,7 +14,7 @@ use termion::screen::AlternateScreen;
 use tui::backend::TermionBackend;
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
-use tui::text::{Span, Spans};
+use tui::text::Spans;
 use tui::widgets::{Block, Borders, List, ListItem};
 use tui::Terminal;
 
@@ -51,22 +51,21 @@ pub fn init() -> Result<(), Box<dyn std::error::Error>> {
             f.render_stateful_widget(error_list, blocks[1], &mut errors.state);
         })?;
 
-        match events.next()? {
-            Event::Input(key) => match key {
+        if let Event::Input(key) = events.next()? {
+            match key {
                 Key::Char('q') => break,
                 Key::Char('f') => {
                     selected_view = SelectedView::Files;
                     //errors.items.append(&mut vec!["foo"]);
                 }
                 Key::Down | Key::Char('j') => {
-                    &errors.next();
+                    errors.next();
                 }
                 Key::Up | Key::Char('k') => {
-                    &errors.previous();
+                    errors.previous();
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
     }
     Ok(())

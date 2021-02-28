@@ -7,7 +7,7 @@ use log::{debug};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use url::Url;
 
 /* API reference:
@@ -40,7 +40,7 @@ pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, Reque
     Ok(path)
 }
 
-async fn download_buffered(url: &Url, path: &PathBuf) -> Result<(), RequestError> {
+async fn download_buffered(url: &Url, path: &Path) -> Result<(), RequestError> {
     let mut buffer = std::fs::File::create(path)?;
     println!("downloading to... {:?}", path.as_os_str());
     let builder = build_request(&url);
@@ -77,6 +77,6 @@ fn build_request(url: &Url) -> reqwest::RequestBuilder {
     let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
     headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
     let client = reqwest::Client::new();
-    let builder = client.get(url.clone()).headers(headers);
-    builder
+
+    client.get(url.clone()).headers(headers)
 }

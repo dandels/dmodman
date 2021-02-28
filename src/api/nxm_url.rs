@@ -38,14 +38,14 @@ impl FromStr for NxmUrl {
         let user_id: u32 = query_pairs.next().unwrap().1.parse()?;
 
         let ret: NxmUrl = NxmUrl {
-            url: url,
-            query: query,
+            url,
+            query,
             domain_name: check_game_special_case(game),
-            mod_id: mod_id,
-            file_id: file_id,
-            key: key,
-            expires: expires,
-            user_id: user_id,
+            mod_id,
+            file_id,
+            key,
+            expires,
+            user_id,
         };
 
         check_expiration(&expires)?;

@@ -61,7 +61,7 @@ fn time() -> String {
 }
 
 fn log_file() -> PathBuf {
-    let mut data_dir = PathBuf::from(dirs::data_local_dir().unwrap());
+    let mut data_dir = dirs::data_local_dir().unwrap();
     data_dir.push("log");
     data_dir
 }

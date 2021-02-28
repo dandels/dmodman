@@ -26,6 +26,7 @@ pub trait Cacheable: Serialize + DeserializeOwned {
         Ok(())
     }
 
+    // TODO get rid of the mod id here to support more query types
     fn try_from_cache(game: &str, mod_id: &u32) -> Result<Self, Error> {
         let path = Self::cache_dir(&game, &mod_id);
         let contents = std::fs::read_to_string(path)?;

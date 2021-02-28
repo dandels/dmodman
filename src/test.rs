@@ -9,7 +9,7 @@ pub fn setup() {
 
     let mut data_home = path.clone();
     let mut cache_home = path.clone();
-    let mut config_home = path.clone();
+    let mut config_home = path;
     data_home.push("data");
     cache_home.push("cache");
     config_home.push("config");

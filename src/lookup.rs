@@ -7,6 +7,7 @@ use super::utils;
 use super::api::*;
 use super::api::error::*;
 use std::path::PathBuf;
+use std::path::Path;
 use std::str::FromStr;
 use url::Url;
 
@@ -25,8 +26,8 @@ pub async fn handle_nxm_url(url_str: &str) -> Result<PathBuf, DownloadError> {
  * a file that exists.
  * The virus scan urls contain the sha256sums of the files, and could maybe be utilized.
  */
-async fn check_dl_integrity(nxm: &NxmUrl, file: &PathBuf) -> Result<Md5Search, Md5SearchError> {
-    let md5search = by_md5(&nxm.domain_name, &file).await?;
+async fn check_dl_integrity(nxm: &NxmUrl, file: &Path) -> Result<Md5Search, Md5SearchError> {
+    let md5search = by_md5(&nxm.domain_name, file).await?;
     if nxm.file_id == md5search.results.file_details.file_id {
         Ok(md5search)
     } else {
@@ -56,7 +57,7 @@ pub async fn mod_info(game: &str, mod_id: &u32) -> Result<ModInfo, RequestError>
     }
 }
 
-pub async fn by_md5(game: &str, path: &PathBuf) -> Result<Md5Search, Md5SearchError> {
+pub async fn by_md5(game: &str, path: &Path) -> Result<Md5Search, Md5SearchError> {
 
     let md5 = utils::md5sum(path)?;
     let search = Md5Search::request(vec![&game, &md5]).await?;
