@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 pub struct FileDetails {
-    pub id: (u64, u32),
+    pub id: (u64, u32), // file_id and game_id
     pub file_id: u64,
     pub name: String,
     pub version: Option<String>,
