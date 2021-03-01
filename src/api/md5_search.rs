@@ -13,7 +13,7 @@ pub struct Md5Results {
     pub file_details: Md5FileDetails,
 }
 
-/* This is mostly the same as FileDetails, but it doesn't have a description field or size field.
+/* This is mostly the same as FileDetails, but it doesn't have a description field or size_kb field.
  * FileDetails on the other hand lacks the md5 sum.
  */
 #[derive(Serialize, Deserialize)]
