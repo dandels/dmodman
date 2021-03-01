@@ -58,8 +58,6 @@ impl UpdateChecker {
              Some(v) => file_list = v.to_owned(),
              None => {
                  println!("{:?}", self.file_lists);
-                 #[cfg(test)]
-                 panic!("Not supposed to get here during a test");
 
                  // TODO handle files from other mods gracefully, eg. Skyrim SSE + Oldrim
                  file_list = FileList::request(vec![&local_file.game, &local_file.mod_id.to_string()]).await?;

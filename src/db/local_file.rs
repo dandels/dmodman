@@ -1,5 +1,5 @@
 use super::error::DbError;
-use crate::api::NxmUrl;
+use crate::api::{Cacheable, FileDetails, FileList, NxmUrl};
 use crate::config;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
@@ -10,12 +10,18 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub struct LocalFileList {
+    game: String,
     pub files: Vec<LocalFile>,
+    pub file_details: Vec<FileDetails>,
 }
 
 impl LocalFileList {
-    // Creates LocalFileList from files in download directory that end with .json
     pub fn new(game: &str) -> Result<Self, DbError> {
+        Ok(Self::with_file_details(&game, vec![])?)
+    }
+
+    // Creates LocalFileList from files in download directory that end with .json
+    pub fn with_file_details(game: &str, file_details: Vec<FileDetails>) -> Result<Self, DbError> {
         let files = fs::read_dir(config::download_dir(&game))?
             .flatten()
             .filter_map(|x| {
@@ -28,7 +34,27 @@ impl LocalFileList {
                 }
             })
             .collect();
-        Ok(Self { files })
+
+        Ok(Self {
+            game: game.to_owned(),
+            files,
+            file_details,
+        })
+    }
+
+    pub fn populate_file_details(&mut self) -> Vec<FileDetails> {
+        self.files
+            .iter()
+            .filter_map(|x| {
+                if let Ok(fl) = FileList::try_from_cache(&self.game, &x.mod_id) {
+                    Some(fl.files.iter().find(|fd| fd.file_id == x.file_id))
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .cloned()
+            .collect()
     }
 }
 
