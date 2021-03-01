@@ -1,4 +1,3 @@
-use log::debug;
 use md5::{Digest, Md5};
 use std::fs::File;
 use std::path::Path;
@@ -13,12 +12,13 @@ pub fn file_name_from_url(url: &Url) -> String {
     file_name
 }
 
+/* The API doesn't offer another hash format.
+ * TODO this implementation is probably not suitable for big files.
+ */
 pub fn md5sum(path: &Path) -> Result<String, std::io::Error> {
     let mut file = File::open(path)?;
-    //let mut reader = BufReader::new(file);
     let mut hasher = Md5::new();
     let bytes_read = std::io::copy(&mut file, &mut hasher)?;
-    debug!("Bytes read: {}", bytes_read);
     let hash = hasher.finalize();
     Ok(format!("{:x}", hash))
 }

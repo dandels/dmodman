@@ -3,7 +3,6 @@ use crate::db::LocalFile;
 use super::search::*;
 use super::error::RequestError;
 use crate::{config, utils};
-use log::{debug};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
 use std::io::Write;
@@ -53,12 +52,15 @@ async fn download_buffered(url: &Url, path: &Path) -> Result<(), RequestError> {
 pub async fn send_api_request(endpoint: &str) -> Result<Response, RequestError> {
     let builder = build_api_request(&endpoint)?;
     let resp = builder.send().await?;
-    debug!("Response headers: {:#?}\n", resp.headers());
-    debug!(
-        "Got response: {} {:?}",
-        resp.status().as_str(),
-        resp.status().canonical_reason()
-    );
+    /* Enable this to see response headers.
+     * TODO the response contains a count of remaining API request quota and would be useful to track
+    //println!("Response headers: {:#?}\n", resp.headers());
+    //println!(
+    //    "Got response: {} {:?}",
+    //    resp.status().as_str(),
+    //    resp.status().canonical_reason()
+    //);
+    */
     Ok(resp)
 }
 
@@ -72,7 +74,7 @@ fn build_api_request(endpoint: &str) -> Result<reqwest::RequestBuilder, RequestE
 }
 
 fn build_request(url: &Url) -> reqwest::RequestBuilder {
-    debug!("Building request to: {}", &url);
+    //println!("Building request to: {}", &url);
     let mut headers = HeaderMap::new();
     let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
     headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
