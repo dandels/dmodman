@@ -3,21 +3,18 @@ use clap::{App, AppSettings, Arg, ArgGroup, ArgMatches};
 pub const ARG_ARCHIVE: &str = "archive";
 pub const ARG_LISTFILES: &str = "listfiles";
 pub const ARG_GAME: &str = "game";
-pub const ARG_INTERACTIVE: &str = "interactive";
 pub const ARG_MOD: &str = "query";
+pub const ARG_NONINTERACTIVE: &str = "interactive";
 pub const ARG_UNNAMED: &str = "nxm_url";
-pub const ARG_UPDATE: &str = "update";
 pub const ARG_VERBOSITY: &str = "verbosity";
 
 pub const VAL_GAME: &str = "GAME";
 pub const VAL_FILE: &str = "FILE";
 pub const VAL_MOD_ID: &str = "MOD_ID";
-pub const VAL_UPDATE_TARGET: &str = "TARGET";
 pub const VAL_VERBOSITY: &str = "VERBOSITY";
 
 pub fn args() -> ArgMatches<'static> {
-    let exclusive_args: Vec<&str> =
-        vec![ARG_ARCHIVE, ARG_LISTFILES, ARG_MOD, ARG_UNNAMED, ARG_UPDATE];
+    let exclusive_args: Vec<&str> = vec![ARG_ARCHIVE, ARG_LISTFILES, ARG_MOD, ARG_UNNAMED];
 
     // TODO clap has nicer ways to define args
     let matches: ArgMatches = App::new(clap::crate_name!())
@@ -57,13 +54,6 @@ pub fn args() -> ArgMatches<'static> {
                 .value_name("nxm_url")
                 .help("A nxm:// url to download."),
         )
-        .arg(
-            Arg::with_name(ARG_UPDATE)
-                .short("U")
-                .long("update")
-                .value_name(VAL_UPDATE_TARGET)
-                .help("Check \"mod_id\" or \"all\" mods for updates."),
-        )
         .group(
             ArgGroup::with_name("exclusive")
                 .args(&exclusive_args)
@@ -77,9 +67,9 @@ pub fn args() -> ArgMatches<'static> {
                 .help("Sets the verbosity (log level). Possible values: error, warn, info, debug, trace."),
         )
         .arg(
-            Arg::with_name(ARG_INTERACTIVE)
-                .short("i")
-                .long(ARG_INTERACTIVE)
+            Arg::with_name(ARG_NONINTERACTIVE)
+                .short("n")
+                .long(ARG_NONINTERACTIVE)
                 .help("Run interactively in the terminal."),
         )
     .get_matches();

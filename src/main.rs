@@ -10,20 +10,15 @@ mod utils;
 
 use log::{error, info, trace, LevelFilter};
 use tokio::runtime::Runtime;
-use db::update::UpdateChecker;
 
 const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid integer.";
 const ERR_MOD: &str = "Unable to query mod info from API.";
 
 fn main() {
     let matches = cmd::args();
+    let noninteractive = matches.is_present(cmd::ARG_NONINTERACTIVE);
 
-    let mut is_interactive = false;
-
-    if matches.is_present(cmd::ARG_INTERACTIVE) {
-        is_interactive = true;
-    }
-
+    // This isn't actually used very much
     if matches.is_present(cmd::ARG_VERBOSITY) {
         logger::init(get_loglevel(matches.value_of(cmd::ARG_VERBOSITY))).unwrap();
     } else {
@@ -32,6 +27,8 @@ fn main() {
 
     let rt = Runtime::new().unwrap();
 
+    /* TODO bind to a socket and handle all downloads through one instance
+     */
     if matches.is_present(cmd::ARG_UNNAMED) {
         let url = matches.value_of(cmd::ARG_UNNAMED).unwrap();
         if url.starts_with("nxm://") {
@@ -64,8 +61,8 @@ fn main() {
         ))
         .to_string();
 
-    if matches.is_present(cmd::ARG_INTERACTIVE) {
-        ui::init();
+    if !noninteractive {
+        ui::init(&game);
         return;
     }
 
@@ -95,18 +92,6 @@ fn main() {
             .parse()
             .expect(ERR_MOD_ID);
         rt.block_on(query_mod_info(&game, &mod_id));
-        return;
-    }
-
-    if matches.is_present(cmd::ARG_UPDATE) {
-        match matches.value_of(cmd::VAL_UPDATE_TARGET) {
-            Some("all") | None => {
-                // TODO use results
-                let updater = UpdateChecker::new(&game);
-                let mod_ids = rt.block_on(updater.check_all());
-            }
-            Some(&_) => error!("Not implemented"),
-        }
         return;
     }
 
