@@ -1,2 +1,3 @@
-mod stateful_list;
-pub use stateful_list::StatefulList;
+mod stateful_collection;
+pub use stateful_collection::Stateful;
+pub use stateful_collection::StatefulCollection;
