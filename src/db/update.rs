@@ -2,6 +2,7 @@ use crate::api::{ {FileList, Requestable, Cacheable}, error::RequestError };
 use super::error::*;
 use std::path::{Path, PathBuf};
 use std::collections::{HashMap, HashSet};
+use super::cache::Cache;
 use super::local_file::*;
 
 pub struct UpdateChecker {
@@ -28,13 +29,12 @@ impl UpdateChecker {
         }
     }
 
-    pub async fn check_all(&mut self) -> Result<&HashSet<u32>, UpdateError> {
-        let lfl = LocalFileList::new(&self.game)?;
-        self.check_files(&lfl).await
+    pub async fn check_all(&mut self, cache: Cache) -> Result<&HashSet<u32>, UpdateError> {
+        self.check_files(&cache).await
     }
 
-    pub async fn check_files(&mut self, lfl: &LocalFileList) -> Result<&HashSet<u32>, UpdateError> {
-        for lf in &lfl.files {
+    pub async fn check_files(&mut self, cache: &Cache) -> Result<&HashSet<u32>, UpdateError> {
+        for lf in &cache.local_files {
             if self.check_file(&lf).await? {
                 self.updatable_mods.insert(lf.mod_id);
             }

@@ -1,3 +1,4 @@
+mod cache;
 mod error;
 mod local_file;
 pub mod update;
