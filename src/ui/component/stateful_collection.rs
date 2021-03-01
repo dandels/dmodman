@@ -10,7 +10,7 @@ pub enum Stateful {
 }
 
 impl Stateful {
-    pub fn select(&self, index: Option<usize>) {
+    pub fn select(&mut self, index: Option<usize>) {
         match self {
             Stateful::List(s) => s.select(index),
             Stateful::Table(s) => s.select(index),
@@ -24,7 +24,7 @@ impl Stateful {
         }
     }
 
-    pub fn as_table_state(&self) -> &TableState {
+    pub fn as_table_state(&mut self) -> &mut TableState {
         if let Stateful::Table(s) = self {
             s
         } else {
@@ -32,7 +32,7 @@ impl Stateful {
         }
     }
 
-    pub fn as_list_state(&self) -> &ListState {
+    pub fn as_list_state(&mut self) -> &mut ListState {
         if let Stateful::List(s) = self {
             s
         } else {

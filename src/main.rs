@@ -9,9 +9,6 @@ mod utils;
 
 use tokio::runtime::Runtime;
 
-const ERR_MOD_ID: &str = "Invalid argument. The specified mod id must be a valid integer.";
-const ERR_MOD: &str = "Unable to query mod info from API.";
-
 fn main() {
     let matches = cmd::args();
 
@@ -54,5 +51,5 @@ fn main() {
         ))
         .to_string();
 
-    ui::init(&game);
+    ui::init(&game).unwrap();
 }
