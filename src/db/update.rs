@@ -113,6 +113,7 @@ impl UpdateChecker {
 mod tests {
     use crate::api::{ Cacheable, FileList  };
     use crate::db::update::{ UpdateChecker, UpdateError };
+    use crate::db::Cache;
     use crate::test;
     use tokio::runtime::Runtime;
     use std::collections::HashMap;
@@ -134,8 +135,10 @@ mod tests {
         file_lists.insert(herba_id, herba_list);
         file_lists.insert(magicka_id, magicka_list);
 
+        let cache = Cache::new(&game)?;
+
         let mut updater = UpdateChecker::new_with_file_lists(game, file_lists);
-        let upds = rt.block_on(updater.check_all())?;
+        let upds = rt.block_on(updater.check_all(cache))?;
 
         println!("{:?}", upds);
 
