@@ -3,7 +3,7 @@ mod event;
 
 use crate::api::FileDetails;
 
-use self::component::StatefulCollection;
+use self::component::{Stateful, StatefulCollection};
 use self::event::{Event, Events};
 use tui::widgets::{Cell, ListState, TableState};
 
@@ -24,7 +24,8 @@ use tui::text::{Span, Spans};
 use tui::widgets::{Block, Borders, List, ListItem, Row, Table};
 use tui::Terminal;
 
-enum SelectedView {
+enum ActiveBlock {
+    Errors,
     Files,
 }
 
@@ -41,14 +42,16 @@ fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn std::error::Error>> {
 pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = term_setup().unwrap();
 
-    let mut selected_view: SelectedView = SelectedView::Files;
-
     let events = Events::new();
 
     let cache = Cache::new(&game)?;
 
-    let mut errors = StatefulCollection::list_with_items(vec!["Item0", "Item1", "Item2"]);
+    //let mut errors = StatefulCollection::list_with_items(vec!["Item0", "Item1", "Item2"]);
+    let mut errors = StatefulCollection::new_list();
     let mut files = StatefulCollection::table_with_items(cache.file_details_map.values().collect());
+
+    let mut selected_view: ActiveBlock = ActiveBlock::Files;
+
     //let foo = format!("{:?}", files.items);
     //errors.items.append(&mut vec![&foo]);
 
@@ -61,16 +64,9 @@ pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
         terminal.draw(|f| {
             let blocks = layout.split(f.size());
 
-            match selected_view {
-                SelectedView::Files => {
-                    let left_table = create_file_table(files.items.as_slice());
-                    f.render_stateful_widget(
-                        left_table,
-                        blocks[0],
-                        &mut files.state.as_table_state(),
-                    );
-                }
-            }
+            let left_table = create_file_table(files.items.as_slice());
+            f.render_stateful_widget(left_table, blocks[0], &mut files.state.as_table_state());
+
             let error_list = create_error_list(&errors.items);
             f.render_stateful_widget(error_list, blocks[1], &mut errors.state.as_list_state());
         })?;
@@ -79,15 +75,23 @@ pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
             match key {
                 Key::Char('q') => break,
                 Key::Char('f') => {
-                    selected_view = SelectedView::Files;
                     //errors.items.append(&mut vec!["foo"]);
                 }
-                Key::Down | Key::Char('j') => {
-                    errors.next();
+                Key::Char('e') => {
+                    errors.items.append(&mut vec!["terribad error"]);
                 }
-                Key::Up | Key::Char('k') => {
-                    errors.previous();
-                }
+                Key::Down | Key::Char('j') => match selected_view {
+                    ActiveBlock::Errors => errors.next(),
+                    ActiveBlock::Files => files.next(),
+                },
+                Key::Up | Key::Char('k') => match selected_view {
+                    ActiveBlock::Errors => errors.previous(),
+                    ActiveBlock::Files => files.previous(),
+                },
+                Key::Left | Key::Char('h') | Key::Char('l') => match selected_view {
+                    ActiveBlock::Errors => selected_view = ActiveBlock::Files,
+                    ActiveBlock::Files => selected_view = ActiveBlock::Errors,
+                },
                 _ => {}
             }
         }
@@ -95,7 +99,6 @@ pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// TODO fetch the FileDetails when downloading a file. Hope the API has it in every case!
 // TODO handle missing FileDetails and foreign (non-Nexusmods) mods
 fn create_file_table<'a>(fdl: &[&FileDetails]) -> Table<'a> {
     let header = Row::new(
@@ -114,21 +117,20 @@ fn create_file_table<'a>(fdl: &[&FileDetails]) -> Table<'a> {
         })
         .collect();
 
-    /* need: headers and fields. field data is optional except for file name. headers are (at least):
-     * [file_name, mod_name, version]
-     * This data isn't acquired when downloading, but is contained in either FileDetails and Md5FileDetails.
-     * The required metadata doesn't really conveniently exist in any automagically acquired form, so we probably just
-     * need to ask for it when downloading.
-     */
-
     let table = Table::new(rows.clone())
         .header(header)
         .block(Block::default().borders(Borders::ALL).title("Files"))
-        .widths(&[Constraint::Length(50), Constraint::Length(7)]);
+        .widths(&[Constraint::Length(50), Constraint::Length(7)])
+        .highlight_style(
+            Style::default()
+                .bg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        );
+
     table
 }
 
-fn create_error_list<'a>(items: &'a Vec<&str>) -> List<'a> {
+fn create_error_list<'a>(items: &[&'a str]) -> List<'a> {
     let list_items: Vec<ListItem> = items
         .iter()
         .map(|i| {
