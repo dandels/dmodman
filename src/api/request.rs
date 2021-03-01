@@ -1,5 +1,6 @@
-use super::{NxmUrl};
+use super::{Cacheable, FileList, NxmUrl, Requestable};
 use crate::db::LocalFile;
+use crate::lookup;
 use super::search::*;
 use super::error::RequestError;
 use crate::{config, utils};
@@ -35,6 +36,17 @@ pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, Reque
     // create metadata json file
     let lf = LocalFile::new(&nxm, file_name);
     lf.write()?;
+
+    let file_list_needs_refresh: bool;
+    match lookup::file_list(&nxm.domain_name, &nxm.mod_id).await {
+        // need to redownload file list if the cached one doesn't have file with this file_id
+        Ok(fl) => { file_list_needs_refresh = fl.files.iter().find(|fd| fd.file_id == nxm.file_id).is_none(); },
+        Err(_) => { file_list_needs_refresh = true; }
+    }
+    if file_list_needs_refresh {
+        let fl = FileList::request(vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
+        fl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
+    }
 
     Ok(path)
 }
