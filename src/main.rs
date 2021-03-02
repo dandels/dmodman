@@ -3,16 +3,19 @@ mod cmd;
 mod config;
 mod db;
 mod lookup;
+mod nxm_socket;
 mod test;
 mod ui;
 mod utils;
 
+use std::error::Error;
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     let matches = cmd::args();
 
-    /* TODO bind to a socket and handle all downloads through one instance
-     */
+    let join_handle = nxm_socket::listen();
+
     if matches.is_present(cmd::ARG_UNNAMED) {
         let url = matches.value_of(cmd::ARG_UNNAMED).unwrap();
         if url.starts_with("nxm://") {
@@ -38,7 +41,7 @@ async fn main() {
                      details, or consult the readme."
             );
         }
-        return;
+        return Ok(())
     }
 
     let game: String = matches
@@ -49,4 +52,5 @@ async fn main() {
         .to_string();
 
     ui::init(&game).unwrap();
+    Ok(())
 }
