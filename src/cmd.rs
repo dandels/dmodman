@@ -1,4 +1,4 @@
-use clap::{App, AppSettings, Arg, ArgMatches};
+use clap::{App, Arg, ArgMatches};
 
 pub const ARG_GAME: &str = "game";
 pub const ARG_UNNAMED: &str = "nxm_url";
@@ -6,7 +6,6 @@ pub const VAL_GAME: &str = "GAME";
 
 pub fn args() -> ArgMatches<'static> {
     let matches: ArgMatches = App::new(clap::crate_name!())
-        .setting(AppSettings::ArgRequiredElseHelp)
         .version(clap::crate_version!())
         .about("A third-party command line frontend to the Nexusmods API.")
         .arg(
