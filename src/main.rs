@@ -7,19 +7,16 @@ mod test;
 mod ui;
 mod utils;
 
-use tokio::runtime::Runtime;
-
-fn main() {
+#[tokio::main]
+async fn main() {
     let matches = cmd::args();
-
-    let rt = Runtime::new().unwrap();
 
     /* TODO bind to a socket and handle all downloads through one instance
      */
     if matches.is_present(cmd::ARG_UNNAMED) {
         let url = matches.value_of(cmd::ARG_UNNAMED).unwrap();
         if url.starts_with("nxm://") {
-            match rt.block_on(lookup::handle_nxm_url(url)) {
+            match lookup::handle_nxm_url(url).await {
                 Ok(file) => {
                     println!("Finished downloading {:?}", file.file_name().unwrap());
                 }

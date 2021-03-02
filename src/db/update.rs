@@ -115,14 +115,11 @@ mod tests {
     use crate::db::update::{ UpdateChecker, UpdateError };
     use crate::db::Cache;
     use crate::test;
-    use tokio::runtime::Runtime;
     use std::collections::HashMap;
 
-    #[test]
-    fn update() -> Result<(), UpdateError> {
+    #[tokio::test]
+    async fn update() -> Result<(), UpdateError> {
         test::setup();
-        let rt = Runtime::new().unwrap();
-
         let game: String = "morrowind".to_owned();
 
         let herba_id = 46599;
@@ -138,7 +135,7 @@ mod tests {
         let cache = Cache::new(&game)?;
 
         let mut updater = UpdateChecker::new_with_file_lists(game, file_lists);
-        let upds = rt.block_on(updater.check_all(cache))?;
+        let upds = updater.check_all(cache).await?;
 
         println!("{:?}", upds);
 

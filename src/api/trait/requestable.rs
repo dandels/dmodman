@@ -25,23 +25,20 @@ mod tests {
     use crate::api::error::*;
     use crate::api::r#trait::Cacheable;
     use crate::api::FileList;
-    use crate::test;
     use crate::api::r#trait::requestable::Requestable;
 
     /* TODO prevent running this as part of normal test suite
      * Making web requests as part of unit testing is not desirable, and the cached version and
      * server version can mismatch at any time.
      */
-    #[test]
-    fn request_file_list() -> Result<(), RequestError> {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-
+    #[tokio::test]
+    async fn request_file_list() -> Result<(), RequestError> {
         let game = "morrowind";
         let mod_id = 46599;
         let cached = FileList::try_from_cache(&game, &mod_id)?;
 
         let requested: FileList;
-        match rt.block_on(FileList::request(vec![&game, &mod_id.to_string()])) {
+        match FileList::request(vec![&game, &mod_id.to_string()]).await {
             Ok(v) => requested = v,
             Err(e) => panic!("{}", e)
         }

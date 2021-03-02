@@ -37,6 +37,8 @@ pub async fn download_mod_file(nxm: &NxmUrl, url: &Url) -> Result<PathBuf, Reque
     let lf = LocalFile::new(&nxm, file_name);
     lf.write()?;
 
+    // TODO: should just do an Md5Search instead? It would allows us to validate the file while getting its metadata
+
     let file_list_needs_refresh: bool;
     match lookup::file_list(&nxm.domain_name, &nxm.mod_id).await {
         // need to redownload file list if the cached one doesn't have file with this file_id
