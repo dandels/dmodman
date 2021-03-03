@@ -1,23 +1,25 @@
 use tokio::io::Interest;
 use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{ Sender, Receiver };
 use tokio::task;
 use std::str;
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 
 // Listens for downloads to add
-struct NxmSocket {
+struct NxmListener {
     listener: UnixListener
 }
 
-impl NxmSocket {
-    pub fn new() -> Result<Self, Error> {
-        let listener = UnixListener::bind(&format!("/run/user/{}/dmodman.socket", users::get_current_uid()))?;
+impl NxmListener {
+    pub fn new(uid: &u32) -> Result<Self, Error> {
+        let listener = UnixListener::bind(&format!("/run/user/{}/dmodman.socket", uid))?;
         Ok(Self { listener })
     }
 }
 
 // Remove the socket when program quits
-impl Drop for NxmSocket {
+impl Drop for NxmListener {
     fn drop(&mut self) {
         let addr = self.listener.local_addr().unwrap();
         let path = addr.as_pathname().unwrap();
@@ -32,7 +34,6 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
             Ok(_bytes) => {
                 match str::from_utf8(&data) {
                     Ok(s) => {
-                        println!("{}", s);
                         return Ok(Some(s.to_string()))
                     }
                     Err(e) => {
@@ -42,7 +43,7 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
                 };
             }
             // This is a false positive
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
             Err(e) => return Err(e)
         }
     // Is this an error case?
@@ -52,18 +53,63 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
     }
 }
 
-pub fn listen() -> task::JoinHandle<Result<Option<String>, Error>> {
-    let join_handle: task::JoinHandle<Result<Option<String>, Error>>  = task::spawn(async {
-        let socket = NxmSocket::new()?;
+pub fn listen(uid: &u32) -> Result<Receiver<Result<String, Error>>, Error> {
+    // Channel capacity is arbitrarily chosen. It would be strange for a high number of downloads to be queued at once.
+    let (tx, rx) = mpsc::channel(100);
+    let socket = NxmListener::new(uid)?;
+
+    task::spawn(async move {
         loop {
             match socket.listener.accept().await {
                 Ok((stream, _addr)) => {
-                    println!("new client!");
-                    handle_input(stream).await?;
+                    match handle_input(stream).await {
+                        Ok(opt_s) => if let Some(msg) = opt_s {
+                            tx.send(Ok(msg)).await.unwrap();
+                        },
+                        Err(e) => { tx.send(Err(e)).await.unwrap(); }
+                    }
                 }
-                Err(e) => return Err(e)
+                Err(e) => { tx.send(Err(e)).await.unwrap(); }
             }
         }
     });
-    join_handle
+    Ok(rx)
+}
+
+pub async fn test_connection(uid: &u32) -> Result<UnixStream, Error> {
+    let stream = UnixStream::connect(&format!("/run/user/{}/dmodman.socket", uid)).await?;
+    send_msg(&stream, b"testmsg").await?;
+    Ok(stream)
+}
+
+pub async fn queue_nxm_download(stream: UnixStream, nxm_str: &str) -> Result<(), Error> {
+    send_msg(&stream, &nxm_str.as_bytes()).await
+}
+
+async fn send_msg(stream: &UnixStream, msg: &[u8]) -> Result<(), Error> {
+    loop {
+        let ready = stream.ready(Interest::WRITABLE).await?;
+        if ready.is_writable() {
+            match stream.try_write(msg) {
+                Ok(n) => {
+                    println!("wrote {} bytes", n);
+                    return Ok(())
+                },
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+}
+
+pub fn remove_existing(uid: &u32) -> Result<(), Error> {
+    let s = &format!("/run/user/{}/dmodman.socket", uid);
+    let path = std::path::Path::new(s);
+    let _ = std::fs::remove_file(path)?;
+    Ok(())
 }

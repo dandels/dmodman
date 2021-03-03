@@ -1,28 +1,25 @@
 mod component;
 mod event;
 
-use crate::api::FileDetails;
-
-use self::component::{Stateful, StatefulCollection};
+use self::component::StatefulCollection;
 use self::event::{Event, Events};
-use tui::widgets::{Cell, ListState, TableState};
 
+use crate::api::FileDetails;
 use crate::db::*;
 
 use std::io;
-
 use termion::event::Key;
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
-
-use tui::backend::Backend;
-use tui::backend::TermionBackend;
+use tui::backend::{Backend, TermionBackend};
 use tui::layout::{Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
-use tui::text::{Span, Spans};
-use tui::widgets::{Block, Borders, List, ListItem, Row, Table};
+use tui::text::Spans;
+use tui::widgets::{Block, Borders, Cell, List, ListItem, Row, Table};
 use tui::Terminal;
+
+use tokio::sync::mpsc::Receiver;
 
 enum ActiveBlock {
     Errors,
@@ -39,35 +36,51 @@ fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn std::error::Error>> {
     Ok(terminal)
 }
 
-pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn init(
+    game: &str,
+    nxm_rx: Receiver<Result<String, std::io::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = term_setup().unwrap();
 
     let events = Events::new();
 
     let cache = Cache::new(&game)?;
 
-    //let mut errors = StatefulCollection::list_with_items(vec!["Item0", "Item1", "Item2"]);
-    let mut errors = StatefulCollection::new_list();
+    let mut errors = StatefulCollection::<String>::new_list();
     let mut files = StatefulCollection::table_with_items(cache.file_details_map.values().collect());
 
     let mut selected_view: ActiveBlock = ActiveBlock::Files;
-
-    //let foo = format!("{:?}", files.items);
-    //errors.items.append(&mut vec![&foo]);
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(80), Constraint::Percentage(50)])
         .margin(0);
 
+    let files_headers = Row::new(
+        vec!["Name", "Version"]
+            .iter()
+            .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
+    );
+
+    let error_list = errors.items.clone();
+    tokio::task::spawn(async move {
+        let mut nxm_rx = nxm_rx;
+        while let Some(nxm_result) = nxm_rx.recv().await {
+            match nxm_result {
+                Ok(nxm_str) => error_list.write().unwrap().push(nxm_str),
+                Err(e) => error_list.write().unwrap().push(e.to_string())
+            }
+        }
+    });
+
     loop {
         terminal.draw(|f| {
             let blocks = layout.split(f.size());
 
-            let left_table = create_file_table(files.items.as_slice());
+            let left_table = create_file_table(files.items.read().unwrap().as_slice(), &files_headers);
             f.render_stateful_widget(left_table, blocks[0], &mut files.state.as_table_state());
 
-            let error_list = create_error_list(&errors.items);
+            let error_list = create_error_list(errors.items.read().unwrap().as_slice());
             f.render_stateful_widget(error_list, blocks[1], &mut errors.state.as_list_state());
         })?;
 
@@ -78,7 +91,7 @@ pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
                     //errors.items.append(&mut vec!["foo"]);
                 }
                 Key::Char('e') => {
-                    errors.items.append(&mut vec!["terribad error"]);
+                    errors.items.write().unwrap().push("terribad error".to_string());
                 }
                 Key::Down | Key::Char('j') => match selected_view {
                     ActiveBlock::Errors => errors.next(),
@@ -92,6 +105,12 @@ pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
                     ActiveBlock::Errors => selected_view = ActiveBlock::Files,
                     ActiveBlock::Files => selected_view = ActiveBlock::Errors,
                 },
+                Key::Char('u') => {
+                    if let ActiveBlock::Files = selected_view {
+                        errors.items.write().unwrap().push("terribad error".to_string());
+                        println!("{:?}", files.state.selected());
+                    }
+                }
                 _ => {}
             }
         }
@@ -100,13 +119,8 @@ pub fn init(game: &str) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // TODO handle missing FileDetails and foreign (non-Nexusmods) mods
-fn create_file_table<'a>(fdl: &[&FileDetails]) -> Table<'a> {
-    let header = Row::new(
-        vec!["Name", "Version"]
-            .iter()
-            .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
-    );
-
+// TODO don't recreate these UI elements all the time
+fn create_file_table<'a>(fdl: &[&FileDetails], headers: &'a Row) -> Table<'a> {
     let rows: &Vec<Row> = &fdl
         .iter()
         .map(|x| {
@@ -118,23 +132,24 @@ fn create_file_table<'a>(fdl: &[&FileDetails]) -> Table<'a> {
         .collect();
 
     let table = Table::new(rows.clone())
-        .header(header)
+        .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Files"))
         .widths(&[Constraint::Length(50), Constraint::Length(7)])
         .highlight_style(
             Style::default()
-                .bg(Color::LightGreen)
+                .fg(Color::Black)
+                .bg(Color::White)
                 .add_modifier(Modifier::BOLD),
         );
 
     table
 }
 
-fn create_error_list<'a>(items: &[&'a str]) -> List<'a> {
+fn create_error_list<'a>(items: &[String]) -> List<'a> {
     let list_items: Vec<ListItem> = items
         .iter()
         .map(|i| {
-            let lines = vec![Spans::from(*i)];
+            let lines = vec![Spans::from(i.clone())];
             ListItem::new(lines).style(Style::default().fg(Color::Red))
         })
         .collect();
