@@ -1,5 +1,6 @@
-use super::{Cacheable, FileDetails, Requestable};
+use super::{FileDetails, Queriable};
 use crate::config;
+use crate::db::Cacheable;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,6 @@ impl Cacheable for FileList {
 }
 
 #[async_trait]
-impl Requestable for FileList {
+impl Queriable for FileList {
     const FORMAT_STRING: &'static str = "games/{}/mods/{}/files.json";
 }

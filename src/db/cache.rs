@@ -1,15 +1,15 @@
 use super::error::DbError;
-use super::LocalFile;
-use crate::api::{Cacheable, FileDetails, FileList};
+use super::{Cacheable, LocalFile};
+use crate::api::{FileDetails, FileList};
 use crate::config;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs;
 
 pub struct Cache {
     pub game: String,
     pub local_files: Vec<LocalFile>,
-    pub file_list_map: HashMap<u32, Option<FileList>>,
+    pub file_list_map: HashMap<u32, FileList>,
     pub file_details_map: HashMap<u64, FileDetails>,
 }
 
@@ -35,7 +35,8 @@ impl Cache {
             })
             .collect();
 
-        let mut file_list_map: HashMap<u32, Option<FileList>> = HashMap::new();
+        let mut file_list_map: HashMap<u32, FileList> = HashMap::new();
+        let mut no_file_list_found: HashSet<u32> = HashSet::new();
         let mut file_details_map: HashMap<u64, FileDetails> = HashMap::new();
 
         /* For each LocalFile, if that file's mod already has a FileList mapped, we use it. Otherwise we fetch it.
@@ -44,22 +45,23 @@ impl Cache {
          */
         let mut errors: Vec<String> = Vec::new();
         local_files.iter().for_each(|f| {
+            if no_file_list_found.contains(&f.mod_id) {
+                return;
+            }
+
             let file_list: FileList;
             match file_list_map.get(&f.mod_id) {
                 // found during previous iteration
-                Some(fl_opt) => match fl_opt {
-                    Some(fl) => file_list = fl.clone(),
-                    None => return, // Already checked this and didn't find anything
-                },
+                Some(fl) => file_list = fl.clone(),
                 // not found during previous iteration, checking cache
                 None => match FileList::try_from_cache(&game, &f.mod_id) {
                     Ok(fl) => {
                         file_list = fl.clone();
-                        file_list_map.insert(f.mod_id, Some(fl));
+                        file_list_map.insert(f.mod_id, fl);
                     }
                     Err(e) => {
                         errors.append(&mut vec![e.to_string()]);
-                        file_list_map.insert(f.mod_id, None);
+                        no_file_list_found.insert(f.mod_id);
                         return;
                     }
                 },
@@ -76,6 +78,12 @@ impl Cache {
             file_details_map,
         })
     }
+
+    pub fn save_file_list(&mut self, fl: FileList, mod_id: &u32) -> Result<(), std::io::Error> {
+        fl.save_to_cache(&self.game, mod_id)?;
+        self.file_list_map.insert(*mod_id, fl);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -83,6 +91,7 @@ mod test {
     use super::Cache;
     use super::DbError;
 
+    // TODO verify results
     #[test]
     fn load_cache() -> Result<(), DbError> {
         let game = "morrowind";

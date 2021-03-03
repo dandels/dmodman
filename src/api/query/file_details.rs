@@ -1,5 +1,5 @@
-use super::Cacheable;
 use crate::config;
+use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 

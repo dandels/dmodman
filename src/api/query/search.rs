@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use super::error::RequestError;
-use super::request;
+use crate::api::error::RequestError;
+use crate::api::Client;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 #[derive(Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub struct SearchResult {
     pub username: String,
     pub user_id: u64,
     pub game_id: u64,
-    pub mod_id: u64,
+    pub mod_id: u32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -37,8 +37,8 @@ pub struct SearchQuery {
 }
 
 impl SearchQuery {
-    pub async fn send(&self) -> Result<Search, RequestError> {
-        request::mod_search(self.format()).await
+    pub async fn send(&self, client: Client) -> Result<Search, RequestError> {
+        client.mod_search(self.format()).await
     }
 
     fn format(&self) -> String {

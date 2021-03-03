@@ -1,5 +1,6 @@
-use super::{Cacheable, Requestable};
+use super::Queriable;
 use crate::config;
+use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,6 +20,6 @@ impl Cacheable for DownloadLink {
     const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_DL_LINKS;
 }
 
-impl Requestable for DownloadLink {
+impl Queriable for DownloadLink {
     const FORMAT_STRING: &'static str = "games/{}/mods/{}/files/{}/download_link.json?{}";
 }

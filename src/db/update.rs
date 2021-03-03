@@ -1,4 +1,5 @@
-use crate::api::{ {FileList, Requestable, Cacheable}, error::RequestError };
+use super::Cacheable;
+use crate::api::{ { Client, FileList, Queriable} , error::RequestError };
 use super::error::*;
 use std::path::{Path, PathBuf};
 use std::collections::{HashMap, HashSet};
@@ -6,24 +7,24 @@ use super::cache::Cache;
 use super::local_file::*;
 
 pub struct UpdateChecker {
-    pub game: String,
+    client: &'static Client,
     pub updatable_mods: HashSet<u32>,
     pub file_lists: HashMap<u32, FileList>,
 }
 
 impl UpdateChecker {
     #[cfg(test)]
-    pub fn new_with_file_lists(game: String, file_lists: HashMap<u32, FileList>) -> Self {
+    pub fn new_with_file_lists(client: &'static Client, file_lists: HashMap<u32, FileList>) -> Self {
         Self {
-            game,
+            client,
             updatable_mods: HashSet::new(),
             file_lists
         }
     }
 
-    pub fn new(game: String) -> Self {
+    pub fn new(client: &'static Client) -> Self {
         Self {
-            game,
+            client,
             updatable_mods: HashSet::new(),
             file_lists: HashMap::new(),
         }
@@ -60,7 +61,7 @@ impl UpdateChecker {
                  println!("{:?}", self.file_lists);
 
                  // TODO handle files from other mods gracefully, eg. Skyrim SSE + Oldrim
-                 file_list = FileList::request(vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
+                 file_list = FileList::request(self.client, vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
                  file_list.save_to_cache(&local_file.game, &local_file.mod_id)?;
                  file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
             }
@@ -125,7 +126,7 @@ mod tests {
         let herba_id = 46599;
         let magicka_id = 39350;
 
-        let mut file_lists: HashMap<u32, FileList> = HashMap::new();
+        let mut file_lists: HashMap<u64, FileList> = HashMap::new();
 
         let herba_list = FileList::try_from_cache(&game, &herba_id).unwrap();
         let magicka_list = FileList::try_from_cache(&game, &magicka_id).unwrap();
