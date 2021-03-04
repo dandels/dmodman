@@ -70,3 +70,11 @@ impl From<ParseIntError> for DownloadError {
         DownloadError::ParseIntError { source: error }
     }
 }
+
+impl From<reqwest::Error> for DownloadError {
+    fn from(error: reqwest::Error) -> Self {
+        DownloadError::RequestError {
+            source: RequestError::ConnectionError { source: error },
+        }
+    }
+}
