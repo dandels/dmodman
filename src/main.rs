@@ -3,7 +3,7 @@ mod cmd;
 mod config;
 mod db;
 mod lookup;
-mod nxm_socket;
+mod nxm_listener;
 mod test;
 mod ui;
 mod utils;
@@ -33,7 +33,7 @@ async fn main() -> Result<(), Error> {
     let nxm_receiver;
 
     // Try bind to /run/user/$uid/dmodman.socket in order to queue downloads for nxm:// urls
-    match nxm_socket::listen(&uid) {
+    match nxm_listener::listen(&uid) {
         Ok(v) => {
             nxm_receiver = v;
         }
@@ -41,12 +41,12 @@ async fn main() -> Result<(), Error> {
          * closing it.
          */
         Err(ref e) if e.kind() == ErrorKind::AddrInUse => {
-            match nxm_socket::test_connection(&uid).await {
+            match nxm_listener::test_connection(&uid).await {
                 // Another running instance is listening to the socket
                 Ok(stream) => {
                     // If there's an nxm:// argument, queue it and exit
                     if let Some(nxm_str) = nxm_str_opt {
-                        nxm_socket::queue_nxm_download(stream, nxm_str).await?;
+                        nxm_listener::queue_nxm_download(stream, nxm_str).await?;
                         println!("Added download to already running instance: {}", nxm_str);
                         return Ok(())
                     // otherwise just exit.
@@ -58,8 +58,8 @@ async fn main() -> Result<(), Error> {
                 /* Socket probably hasn't been cleanly removed. Remove it and bind to it.
                  */
                 Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
-                    nxm_socket::remove_existing(&uid).unwrap();
-                    nxm_receiver = nxm_socket::listen(&uid).unwrap();
+                    nxm_listener::remove_existing(&uid).unwrap();
+                    nxm_receiver = nxm_listener::listen(&uid).unwrap();
                 },
                 Err(e) => {
                     //TODO can we hit this case?
