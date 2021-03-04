@@ -1,9 +1,11 @@
 mod cache;
 mod cacheable;
 mod error;
+mod file_details_cache;
 mod local_file;
 pub mod update;
 pub use cache::*;
 pub use cacheable::*;
 pub use error::*;
+pub use file_details_cache::*;
 pub use local_file::*;

@@ -1,16 +1,18 @@
 use super::error::DbError;
-use super::{Cacheable, LocalFile};
+use super::{Cacheable, FileDetailsCache, LocalFile};
 use crate::api::{FileDetails, FileList};
 use crate::config;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs;
+use std::sync::{Arc, RwLock};
 
+#[derive(Clone)]
 pub struct Cache {
     pub game: String,
-    pub local_files: Vec<LocalFile>,
-    pub file_list_map: HashMap<u32, FileList>,
-    pub file_details_map: HashMap<u64, FileDetails>,
+    pub local_files: Arc<RwLock<Vec<LocalFile>>>,
+    pub file_list_map: Arc<RwLock<HashMap<u32, FileList>>>,
+    pub file_details: FileDetailsCache,
 }
 
 impl Cache {
@@ -73,15 +75,15 @@ impl Cache {
 
         Ok(Self {
             game: game.to_owned(),
-            local_files,
-            file_list_map,
-            file_details_map,
+            local_files: Arc::new(RwLock::new(local_files)),
+            file_list_map: Arc::new(RwLock::new(file_list_map)),
+            file_details: FileDetailsCache::new(file_details_map),
         })
     }
 
     pub fn save_file_list(&mut self, fl: FileList, mod_id: &u32) -> Result<(), std::io::Error> {
         fl.save_to_cache(&self.game, mod_id)?;
-        self.file_list_map.insert(*mod_id, fl);
+        self.file_list_map.write().unwrap().insert(*mod_id, fl);
         Ok(())
     }
 }
@@ -91,14 +93,12 @@ mod test {
     use super::Cache;
     use super::DbError;
 
-    // TODO verify results
     #[test]
     fn load_cache() -> Result<(), DbError> {
         let game = "morrowind";
         let cache = Cache::new(&game)?;
-        println!("local files {:?}", cache.local_files);
-        println!("file list map {:?}", cache.file_list_map);
-        println!("file details map {:?}", cache.file_details_map);
+
+        let _fd = cache.file_details.map.read().unwrap().get(&82041).unwrap();
         Ok(())
     }
 }
