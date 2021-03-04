@@ -1,10 +1,11 @@
 mod component;
 mod event;
 
-use self::component::StatefulCollection;
+use self::component::State;
 use self::event::{Event, Events};
 
 use crate::api::FileDetails;
+use crate::api::Client;
 use crate::db::*;
 
 use std::io;
@@ -18,15 +19,16 @@ use tui::style::{Color, Modifier, Style};
 use tui::text::Spans;
 use tui::widgets::{Block, Borders, Cell, List, ListItem, Row, Table};
 use tui::Terminal;
-
-use tokio::sync::mpsc::Receiver;
+use std::error::Error;
+use std::sync::{Arc, RwLock};
 
 enum ActiveBlock {
     Errors,
+//    Downloads,
     Files,
 }
 
-fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn std::error::Error>> {
+fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
     let stdout = io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
@@ -36,25 +38,12 @@ fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn std::error::Error>> {
     Ok(terminal)
 }
 
-pub async fn init(
-    game: &str,
-    nxm_rx: Receiver<Result<String, std::io::Error>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Error>> {
     let mut terminal = term_setup().unwrap();
 
     let events = Events::new();
 
-    let cache = Cache::new(&game)?;
-
-    let mut errors = StatefulCollection::<String>::new_list();
-    let mut files = StatefulCollection::table_with_items(cache.file_details_map.values().collect());
-
     let mut selected_view: ActiveBlock = ActiveBlock::Files;
-
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(80), Constraint::Percentage(50)])
-        .margin(0);
 
     let files_headers = Row::new(
         vec!["Name", "Version"]
@@ -62,26 +51,53 @@ pub async fn init(
             .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
     );
 
-    let error_list = errors.items.clone();
-    tokio::task::spawn(async move {
-        let mut nxm_rx = nxm_rx;
-        while let Some(nxm_result) = nxm_rx.recv().await {
-            match nxm_result {
-                Ok(nxm_str) => error_list.write().unwrap().push(nxm_str),
-                Err(e) => error_list.write().unwrap().push(e.to_string())
-            }
-        }
-    });
+    let downloads_headers = Row::new(
+        vec!["Filename", " ", "%"]
+            .iter()
+            .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
+    );
+
+    let root_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(80), Constraint::Percentage(50)])
+        .margin(0);
+
+    let tables_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .margin(0);
+
+    let errors = Arc::new(RwLock::new(Vec::new()));
+    let mut errors_state = State::new_list();
+
+    let mut files_state = State::new_table();
+    let mut files_table = create_file_table(cache, &files_headers);
+
+    let mut downloads_state = State::new_table();
+    let mut downloads_table = create_downloads_table(client, &downloads_headers);
+    let downloads_is_changed = false;
 
     loop {
         terminal.draw(|f| {
-            let blocks = layout.split(f.size());
+            let rect_root = root_layout.split(f.size());
+            let rect_main = tables_layout.split(rect_root[0]);
 
-            let left_table = create_file_table(files.items.read().unwrap().as_slice(), &files_headers);
-            f.render_stateful_widget(left_table, blocks[0], &mut files.state.as_table_state());
+            if cache.file_details.is_changed() {
+                files_table = create_file_table(cache, &files_headers);
+            }
+            f.render_stateful_widget(files_table.clone(), rect_main[0], &mut files_state.state.as_table_state());
 
-            let error_list = create_error_list(errors.items.read().unwrap().as_slice());
-            f.render_stateful_widget(error_list, blocks[1], &mut errors.state.as_list_state());
+            if downloads_is_changed {
+                downloads_table= create_downloads_table(client, &files_headers);
+            }
+            f.render_stateful_widget(downloads_table.clone(), rect_main[1], &mut downloads_state.state.as_table_state());
+
+
+            //let downloads_table = create_downloads_table(downloads.items.read().unwrap().as_slice(), &downloads_headers);
+            //f.render_stateful_widget(downloads_table, rect_main[1], &mut downloads.state.as_table_state());
+
+            let error_list = create_error_list(errors.read().unwrap().as_slice());
+            f.render_stateful_widget(error_list, rect_root[1], &mut errors_state.state.as_list_state());
         })?;
 
         if let Event::Input(key) = events.next()? {
@@ -91,15 +107,15 @@ pub async fn init(
                     //errors.items.append(&mut vec!["foo"]);
                 }
                 Key::Char('e') => {
-                    errors.items.write().unwrap().push("terribad error".to_string());
+                    errors.write().unwrap().push("terribad error".to_string());
                 }
                 Key::Down | Key::Char('j') => match selected_view {
-                    ActiveBlock::Errors => errors.next(),
-                    ActiveBlock::Files => files.next(),
+                    ActiveBlock::Errors => errors_state.next(errors.read().unwrap().len()),
+                    ActiveBlock::Files => files_state.next(cache.file_details.len()),
                 },
                 Key::Up | Key::Char('k') => match selected_view {
-                    ActiveBlock::Errors => errors.previous(),
-                    ActiveBlock::Files => files.previous(),
+                    ActiveBlock::Errors => errors_state.previous(errors.read().unwrap().len()),
+                    ActiveBlock::Files => files_state.previous(cache.file_details.len()),
                 },
                 Key::Left | Key::Char('h') | Key::Char('l') => match selected_view {
                     ActiveBlock::Errors => selected_view = ActiveBlock::Files,
@@ -107,8 +123,7 @@ pub async fn init(
                 },
                 Key::Char('u') => {
                     if let ActiveBlock::Files = selected_view {
-                        errors.items.write().unwrap().push("terribad error".to_string());
-                        println!("{:?}", files.state.selected());
+                        errors.write().unwrap().push("terribad error".to_string());
                     }
                 }
                 _ => {}
@@ -119,9 +134,10 @@ pub async fn init(
 }
 
 // TODO handle missing FileDetails and foreign (non-Nexusmods) mods
-// TODO don't recreate these UI elements all the time
-fn create_file_table<'a>(fdl: &[&FileDetails], headers: &'a Row) -> Table<'a> {
-    let rows: &Vec<Row> = &fdl
+fn create_file_table<'a>(cache: &Cache, headers: &'a Row) -> Table<'a> {
+    let map = cache.file_details.map.read().unwrap();
+    let vals: Vec<&FileDetails> = map.values().collect();
+    let rows: Vec<Row> = vals
         .iter()
         .map(|x| {
             Row::new(vec![
@@ -144,6 +160,35 @@ fn create_file_table<'a>(fdl: &[&FileDetails], headers: &'a Row) -> Table<'a> {
 
     table
 }
+
+fn create_downloads_table<'a>(_client: &Client, headers: &'a Row) -> Table<'a> {
+    // TODO iterate over downloads in client
+    let vals: Vec<(String, String)> = vec![("foobarfile_v1_0_0.7z".to_string(), "42".to_string())];
+    let rows: Vec<Row> = vals
+        .iter()
+        .map(|x| {
+            Row::new(vec![
+                x.0.clone(),
+                "".to_string(),
+                x.1.clone(),
+            ])
+        })
+        .collect();
+
+    let table = Table::new(rows.clone())
+        .header(headers.clone())
+        .block(Block::default().borders(Borders::ALL).title("Downloads"))
+        .widths(&[Constraint::Length(50), Constraint::Length(1), Constraint::Length(4)])
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    table
+}
+
 
 fn create_error_list<'a>(items: &[String]) -> List<'a> {
     let list_items: Vec<ListItem> = items
