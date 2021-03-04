@@ -7,36 +7,33 @@ use super::cache::Cache;
 use super::local_file::*;
 
 pub struct UpdateChecker {
-    client: &'static Client,
     pub updatable_mods: HashSet<u32>,
     pub file_lists: HashMap<u32, FileList>,
 }
 
 impl UpdateChecker {
     #[cfg(test)]
-    pub fn new_with_file_lists(client: &'static Client, file_lists: HashMap<u32, FileList>) -> Self {
+    pub fn new_with_file_lists(file_lists: HashMap<u32, FileList>) -> Self {
         Self {
-            client,
             updatable_mods: HashSet::new(),
             file_lists
         }
     }
 
-    pub fn new(client: &'static Client) -> Self {
+    pub fn new() -> Self {
         Self {
-            client,
             updatable_mods: HashSet::new(),
             file_lists: HashMap::new(),
         }
     }
 
-    pub async fn check_all(&mut self, cache: Cache) -> Result<&HashSet<u32>, UpdateError> {
-        self.check_files(&cache).await
+    pub async fn check_all(&mut self, client: &Client, cache: Cache) -> Result<&HashSet<u32>, UpdateError> {
+        self.check_files(client, &cache).await
     }
 
-    pub async fn check_files(&mut self, cache: &Cache) -> Result<&HashSet<u32>, UpdateError> {
-        for lf in &cache.local_files {
-            if self.check_file(&lf).await? {
+    pub async fn check_files(&mut self, client: &Client, cache: &Cache) -> Result<&HashSet<u32>, UpdateError> {
+        for lf in cache.local_files.read().unwrap().clone().into_iter() {
+            if self.check_file(client, &lf).await? {
                 self.updatable_mods.insert(lf.mod_id);
             }
         }
@@ -44,7 +41,7 @@ impl UpdateChecker {
         Ok(&self.updatable_mods)
     }
 
-    pub async fn check_file(&self, local_file: &LocalFile) -> Result<bool, RequestError> {
+    pub async fn check_file(&self, client: &Client, local_file: &LocalFile) -> Result<bool, RequestError> {
         /* - Find out the mod for this file
          * - If the mod is already checked, return that result
          * - Otherwise loop through the file update history
@@ -61,7 +58,7 @@ impl UpdateChecker {
                  println!("{:?}", self.file_lists);
 
                  // TODO handle files from other mods gracefully, eg. Skyrim SSE + Oldrim
-                 file_list = FileList::request(self.client, vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
+                 file_list = FileList::request(client, vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
                  file_list.save_to_cache(&local_file.game, &local_file.mod_id)?;
                  file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
             }
@@ -112,9 +109,9 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{ Cacheable, FileList  };
+    use crate::api::{ Client, FileList  };
     use crate::db::update::{ UpdateChecker, UpdateError };
-    use crate::db::Cache;
+    use crate::db::{ Cache, Cacheable };
     use crate::test;
     use std::collections::HashMap;
 
@@ -126,7 +123,7 @@ mod tests {
         let herba_id = 46599;
         let magicka_id = 39350;
 
-        let mut file_lists: HashMap<u64, FileList> = HashMap::new();
+        let mut file_lists: HashMap<u32, FileList> = HashMap::new();
 
         let herba_list = FileList::try_from_cache(&game, &herba_id).unwrap();
         let magicka_list = FileList::try_from_cache(&game, &magicka_id).unwrap();
@@ -134,9 +131,10 @@ mod tests {
         file_lists.insert(magicka_id, magicka_list);
 
         let cache = Cache::new(&game)?;
+        let client: Client = Client::new()?;
 
-        let mut updater = UpdateChecker::new_with_file_lists(game, file_lists);
-        let upds = updater.check_all(cache).await?;
+        let mut updater = UpdateChecker::new_with_file_lists(file_lists);
+        let upds = updater.check_all(&client, cache).await?;
 
         println!("{:?}", upds);
 
