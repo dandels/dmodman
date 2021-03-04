@@ -41,8 +41,8 @@ impl Cache {
         let mut no_file_list_found: HashSet<u32> = HashSet::new();
         let mut file_details_map: HashMap<u64, FileDetails> = HashMap::new();
 
-        /* For each LocalFile, if that file's mod already has a FileList mapped, we use it. Otherwise we fetch it.
-         * It could be possible that a LocalFile has no corresponding FileList (the API forgot about an old file or it's
+        /* For each LocalFile, if that file's mod already has a FileList mapped, we use it. Otherwise we load it from
+         * disk. It's possible that a LocalFile has no corresponding FileList (the API forgot about an old file or it's
          * a foreign file), so we wrap it in an option to remember if we already tried once to find it or not.
          */
         let mut errors: Vec<String> = Vec::new();
