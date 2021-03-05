@@ -1,10 +1,8 @@
 pub mod client;
-pub mod download_status;
+pub mod download;
 pub mod error;
-pub mod nxm_url;
 pub mod query;
 pub use self::client::*;
-pub use self::download_status::*;
+pub use self::download::*;
 pub use self::error::*;
-pub use self::nxm_url::*;
 pub use self::query::*;
