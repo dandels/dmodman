@@ -60,7 +60,7 @@ pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Resu
 
     let root_layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(80), Constraint::Percentage(50)])
+        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
         .margin(0);
 
     let tables_layout = Layout::default()
@@ -76,7 +76,9 @@ pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Resu
 
     let mut downloads_state = State::new_table();
     let mut downloads_table = create_downloads_table(client, &downloads_headers);
-    // TODO implement check for this to save CPU?
+    /* Implementing this check would require changing an atomic boolean every time we write buffered bytes to disk (eg.
+     * our download progresses. No idea whether that's worth the payoff or not.
+     */
     let downloads_is_changed = true;
 
     loop {
@@ -156,7 +158,7 @@ fn create_file_table<'a>(cache: &Cache, headers: &'a Row) -> Table<'a> {
     let table = Table::new(rows.clone())
         .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Files"))
-        .widths(&[Constraint::Percentage(100), Constraint::Length(8)])
+        .widths(&[Constraint::Percentage(85), Constraint::Percentage(15)])
         .highlight_style(
             Style::default()
                 .fg(Color::Black)
@@ -183,7 +185,7 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
     let table = Table::new(rows.clone())
         .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Downloads"))
-        .widths(&[Constraint::Percentage(100), Constraint::Length(1), Constraint::Length(4)])
+        .widths(&[Constraint::Percentage(89), Constraint::Percentage(1), Constraint::Percentage(10)])
         .highlight_style(
             Style::default()
                 .fg(Color::Black)
