@@ -45,7 +45,6 @@ impl LocalFile {
         let mut name: String = path.to_str().unwrap().to_owned();
         name.push_str(".json");
 
-        println!("Creating metadata file for {:?}", name);
         let mut file: File = File::create(name)?;
 
         let data = serde_json::to_string_pretty(&self)?;
