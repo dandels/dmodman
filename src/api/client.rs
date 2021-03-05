@@ -1,30 +1,40 @@
-use crate::db::{Cache, LocalFile};
-use super::query::{FileList, Search, Queriable};
-use super::NxmUrl;
-use super::error::RequestError;
 use crate::{config, utils};
+use crate::db::{Cache, Cacheable, LocalFile};
+
+use super::query::{DownloadLink, FileList, Search, Queriable};
+use super::{DownloadStatus, DownloadState, NxmUrl};
+use super::error::RequestError;
+use super::error::DownloadError;
+
+use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
-use std::io::Write;
-use std::path::{Path, PathBuf};
 use url::Url;
+
+use std::io::{Write, BufWriter};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock };
+use std::convert::TryInto;
+use std::str::FromStr;
 
 /* API reference:
  * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
  */
 
 const API_URL: &str = "https://api.nexusmods.com/v1/";
+#[allow(dead_code)]
 const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 
+#[derive(Clone)]
 pub struct Client {
-    cache: &'static mut Cache,
     client: reqwest::Client,
-    headers: reqwest::header::HeaderMap,
-    api_headers: reqwest::header::HeaderMap,
+    headers: Arc<reqwest::header::HeaderMap>,
+    api_headers: Arc<reqwest::header::HeaderMap>,
+    pub downloads: Arc<RwLock<Vec<Arc<RwLock<DownloadStatus>>>>>, // TODO is this nesting avoidable?
 }
 
 impl Client {
-    pub fn new(cache: &'static mut Cache) -> Result<Self, RequestError> {
+    pub fn new() -> Result<Self, RequestError> {
         let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
 
         let mut headers = HeaderMap::new();
@@ -35,21 +45,26 @@ impl Client {
         api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
 
         let client = reqwest::Client::new();
-        Ok(Self { cache , client, headers, api_headers})
+        Ok(Self {
+            client,
+            headers: Arc::new(headers),
+            api_headers: Arc::new(api_headers),
+            downloads: Arc::new(RwLock::new(Vec::new())),
+        })
     }
 
 
     fn build_request(&self, url: Url) -> reqwest::RequestBuilder {
-        self.client.get(url).headers(self.headers.clone())
+        self.client.get(url).headers((*self.headers).clone())
     }
 
-    fn build_api_request(&self, endpoint: &str) -> Result<reqwest::RequestBuilder, RequestError> {
+    fn build_api_request(&self, endpoint: &str) -> reqwest::RequestBuilder {
         let url: Url = Url::parse(&(String::from(API_URL) + endpoint)).unwrap();
-        Ok(self.client.get(url).headers(self.api_headers.clone()))
+        self.client.get(url).headers((*self.api_headers).clone())
     }
 
     pub async fn send_api_request(&self, endpoint: &str) -> Result<Response, RequestError> {
-        let builder = self.build_api_request(&endpoint)?;
+        let builder = self.build_api_request(&endpoint);
         let resp = builder.send().await?;
         /* TODO the response headers contain a count of remaining API request quota and would be useful to track
          * println!("Response headers: {:#?}\n", resp.headers());
@@ -62,42 +77,79 @@ impl Client {
         Ok(resp)
     }
 
-    async fn download_buffered(&self, url: Url, path: &Path) -> Result<(), RequestError> {
-        let mut buffer = std::fs::File::create(path)?;
-        let builder = self.build_request(url);
-        let resp: reqwest::Response = builder.send().await?;
-        buffer.write_all(&resp.bytes().await?)?;
+    pub async fn queue_download(&self, cache: &mut Cache, nxm_str: &str) -> Result<(), DownloadError> {
+        let nxm = NxmUrl::from_str(&nxm_str).unwrap();
+        let dl = DownloadLink::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
+        // TODO only for debugging. Besides, it's not using the file id as it should.
+        dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
+        let url: Url = Url::parse(&dl.location.URI)?;
+        let _file = self.download_mod_file(cache, &nxm, url).await?;
         Ok(())
     }
 
-    // TODO test this
-    pub async fn mod_search(&self, query: String) -> Result<Search, RequestError> {
-        let base: Url = Url::parse(SEARCH_URL).unwrap();
-        let url = base.join(&query).unwrap();
+    async fn download_buffered(&self, url: Url, path: &Path, file_name: String, file_id: u64) -> Result<(), DownloadError> {
+        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name, file_id)));
+
+        self.downloads.write().unwrap().push(status.clone());
+
+        let file = std::fs::File::create(path)?;
+        let mut bufwriter = BufWriter::new(&file);
         let builder = self.build_request(url);
-        Ok(builder.send().await?.json().await?)
+        let resp = builder.send().await?;
+
+        status.write().unwrap().bytes_total = resp.content_length();
+        let mut stream = resp.bytes_stream();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(bytes) => {
+                    bufwriter.write_all(&bytes)?;
+                    // hope there isn't too much overhead acquiring the lock so often
+                    status.write().unwrap().update_progres(bytes.len().try_into().unwrap());
+                },
+                Err(e) => {
+                    status.write().unwrap().state = DownloadState::Failed(DownloadError::from(e));
+                }
+            }
+        }
+        bufwriter.flush()?;
+
+        status.write().unwrap().state = DownloadState::Complete;
+
+        Ok(())
     }
 
-    pub async fn download_mod_file(&mut self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, RequestError> {
+    pub async fn download_mod_file(&self, cache: &mut Cache, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
         let file_name = utils::file_name_from_url(&url);
         let mut path = config::download_dir(&nxm.domain_name);
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
         path.push(&file_name.to_string());
 
-        self.download_buffered(url, &path).await?;
+        let lf = LocalFile::new(&nxm, file_name.clone());
+        self.download_buffered(url, &path, file_name, nxm.file_id).await?;
 
         // create metadata json file
-        let lf = LocalFile::new(&nxm, file_name);
-        lf.write()?;
 
-        /* TODO: should just do an Md5Search instead? It would allows us to validate the file while getting its metadata
+        /* TODO: should we just do an Md5Search instead? It would allows us to validate the file while getting its
+         * metadata.
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
-
-        if self.cache.file_details_map.get(&nxm.file_id).is_none() {
+        // TODO the cache api needs work
+        let file_details_is_cached = cache.save_local_file(lf)?;
+        if !file_details_is_cached {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
-            self.cache.save_file_list(fl, &nxm.mod_id)?;
+            cache.save_file_list(fl, &nxm.mod_id)?;
         }
+
         Ok(path)
+    }
+
+    // TODO test this
+    #[allow(dead_code)]
+    pub async fn mod_search(&self, query: String) -> Result<Search, RequestError> {
+        let base: Url = Url::parse(SEARCH_URL).unwrap();
+        let url = base.join(&query).unwrap();
+        let builder = self.build_request(url);
+        Ok(builder.send().await?.json().await?)
     }
 }

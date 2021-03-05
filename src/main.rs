@@ -2,7 +2,6 @@ mod api;
 mod cmd;
 mod config;
 mod db;
-mod lookup;
 mod nxm_listener;
 mod test;
 mod ui;
@@ -30,12 +29,12 @@ async fn main() -> Result<(), Error> {
     }
 
     let uid = users::get_current_uid();
-    let nxm_receiver;
+    let mut nxm_rx;
 
     // Try bind to /run/user/$uid/dmodman.socket in order to queue downloads for nxm:// urls
     match nxm_listener::listen(&uid) {
         Ok(v) => {
-            nxm_receiver = v;
+            nxm_rx = v;
         }
         /* If the address is in use, either another instance is using it or a previous instance was killed without
          * closing it.
@@ -59,7 +58,7 @@ async fn main() -> Result<(), Error> {
                  */
                 Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
                     nxm_listener::remove_existing(&uid).unwrap();
-                    nxm_receiver = nxm_listener::listen(&uid).unwrap();
+                    nxm_rx = nxm_listener::listen(&uid).unwrap();
                 },
                 Err(e) => {
                     //TODO can we hit this case?
@@ -70,43 +69,55 @@ async fn main() -> Result<(), Error> {
         Err(e) => return Err(e)
     }
 
-    if matches.is_present(cmd::ARG_UNNAMED) {
-        let unnamed_arg = matches.value_of(cmd::ARG_UNNAMED).unwrap();
-        if unnamed_arg.starts_with("nxm://") {
-            match lookup::handle_nxm_url(unnamed_arg).await {
-                Ok(file) => {
-                    println!("Finished downloading {:?}", file.file_name().unwrap());
+    let game = determine_active_game(&matches, nxm_game_opt);
+    /* TODO handle missing apikey
+     * Ideally we would ask for the username/password and not require the user to create one.
+     */
+    let client = api::Client::new().unwrap();
+    let mut cache = db::Cache::new(&game).unwrap();
+
+    if let Some(nxm_str) = nxm_str_opt {
+        client.queue_download(&mut cache, &nxm_str).await.unwrap();
+    }
+
+    // listen for nxm downloads
+    {
+        let mut cache = cache.clone();
+        let client = client.clone();
+        let _handle = tokio::task::spawn(async move {
+            while let Some(nxm_result) = nxm_rx.recv().await {
+                match nxm_result {
+                    Ok(nxm_str) => {
+                        client.queue_download(&mut cache, &nxm_str).await.unwrap();
+                    },
+                    Err(e) => { println!("{}", e.to_string()); }
                 }
-                Err(e) => match e {
-                    #[allow(unused_variables)]
-                    api::error::DownloadError::Md5SearchError { source } => {
-                        println!(
-                            "Download succesful but file validation failed. This sometimes \
-                                means the download is corrupted, but is usually caused by the md5 \
-                                API being wonky."
-                        )
-                    }
-                    _ => panic!("Download failed, {}", e),
-                },
             }
-        } else {
-            println!(
-                "Please provide an nxm url or specify an operation. See -h or -)-help for
-                     details, or consult the readme."
-            );
-        }
-        return Ok(())
+        });
     }
 
-    let game: String;
-    if let Some(g) = matches.value_of(cmd::ARG_GAME) {
-        game = g.to_string();
-    } else {
-        game = nxm_game_opt.unwrap_or(
-            config::game().expect("The game to manage was neither specified nor found in the configuration file.")
-            );
-    }
 
-    ui::init(&game, nxm_receiver).await.unwrap();
+    ui::init(&mut cache, &client).await.unwrap();
     Ok(())
+}
+
+/* Downloading mods from another game is a valid use case for Skyrim / Skyrim Special Edition users.
+ * Order of precedence:
+ * 1) Command line option
+ * 2) Configuration file
+ * 3) The game in the nxm url
+ * ... otherwise bail out.
+ * TODO: ask for game at runtime?
+ */
+fn determine_active_game(matches: &clap::ArgMatches, nxm_game_opt: Option<String>) -> String {
+    if let Some(g) = matches.value_of(cmd::ARG_GAME) {
+        g.to_string()
+    } else if let Ok(configured_game) = config::game() {
+        configured_game
+    } else if let Some(nxm_game) = nxm_game_opt {
+        nxm_game
+    } else {
+        // TODO handle this gracefully
+        panic!("The game to manage was neither specified nor found in the configuration file.");
+    }
 }

@@ -24,7 +24,7 @@ use std::sync::{Arc, RwLock};
 
 enum ActiveBlock {
     Errors,
-//    Downloads,
+    Downloads,
     Files,
 }
 
@@ -43,7 +43,8 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
 
     let events = Events::new();
 
-    let mut selected_view: ActiveBlock = ActiveBlock::Files;
+    let mut selected_view = ActiveBlock::Files;
+
 
     let files_headers = Row::new(
         vec!["Name", "Version"]
@@ -75,7 +76,8 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
 
     let mut downloads_state = State::new_table();
     let mut downloads_table = create_downloads_table(client, &downloads_headers);
-    let downloads_is_changed = false;
+    // TODO implement check for this to save CPU
+    let downloads_is_changed = true;
 
     loop {
         terminal.draw(|f| {
@@ -110,16 +112,22 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
                     errors.write().unwrap().push("terribad error".to_string());
                 }
                 Key::Down | Key::Char('j') => match selected_view {
+                    ActiveBlock::Downloads => downloads_state.next(client.downloads.read().unwrap().len()),
                     ActiveBlock::Errors => errors_state.next(errors.read().unwrap().len()),
                     ActiveBlock::Files => files_state.next(cache.file_details.len()),
                 },
                 Key::Up | Key::Char('k') => match selected_view {
+                    ActiveBlock::Downloads => downloads_state.previous(errors.read().unwrap().len()),
                     ActiveBlock::Errors => errors_state.previous(errors.read().unwrap().len()),
                     ActiveBlock::Files => files_state.previous(cache.file_details.len()),
                 },
-                Key::Left | Key::Char('h') | Key::Char('l') => match selected_view {
-                    ActiveBlock::Errors => selected_view = ActiveBlock::Files,
+                Key::Left | Key::Char('h') => match selected_view {
+                    ActiveBlock::Errors | ActiveBlock::Downloads => selected_view = ActiveBlock::Files,
                     ActiveBlock::Files => selected_view = ActiveBlock::Errors,
+                },
+                Key::Right | Key::Char('l') => match selected_view {
+                    ActiveBlock::Errors | ActiveBlock::Files => selected_view = ActiveBlock::Downloads,
+                    ActiveBlock::Downloads => selected_view = ActiveBlock::Errors,
                 },
                 Key::Char('u') => {
                     if let ActiveBlock::Files = selected_view {
@@ -161,16 +169,15 @@ fn create_file_table<'a>(cache: &Cache, headers: &'a Row) -> Table<'a> {
     table
 }
 
-fn create_downloads_table<'a>(_client: &Client, headers: &'a Row) -> Table<'a> {
-    // TODO iterate over downloads in client
-    let vals: Vec<(String, String)> = vec![("foobarfile_v1_0_0.7z".to_string(), "42".to_string())];
-    let rows: Vec<Row> = vals
+fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
+    let rows: Vec<Row> = client.downloads.read().unwrap()
         .iter()
         .map(|x| {
+            let x = x.read().unwrap();
             Row::new(vec![
-                x.0.clone(),
+                x.file_name.clone(),
                 "".to_string(),
-                x.1.clone(),
+                x.progress()
             ])
         })
         .collect();
