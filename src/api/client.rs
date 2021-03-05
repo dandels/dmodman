@@ -59,7 +59,7 @@ impl Client {
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
             errors,
-            downloads: Downloads::new()
+            downloads: Downloads::default()
         })
     }
 
