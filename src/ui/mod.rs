@@ -53,7 +53,7 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
     );
 
     let downloads_headers = Row::new(
-        vec!["Filename", " ", "%"]
+        vec!["Filename", " ", "%  "]
             .iter()
             .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
     );
@@ -76,7 +76,7 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
 
     let mut downloads_state = State::new_table();
     let mut downloads_table = create_downloads_table(client, &downloads_headers);
-    // TODO implement check for this to save CPU
+    // TODO implement check for this to save CPU?
     let downloads_is_changed = true;
 
     loop {
@@ -90,13 +90,9 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
             f.render_stateful_widget(files_table.clone(), rect_main[0], &mut files_state.state.as_table_state());
 
             if downloads_is_changed {
-                downloads_table= create_downloads_table(client, &files_headers);
+                downloads_table= create_downloads_table(client, &downloads_headers);
             }
             f.render_stateful_widget(downloads_table.clone(), rect_main[1], &mut downloads_state.state.as_table_state());
-
-
-            //let downloads_table = create_downloads_table(downloads.items.read().unwrap().as_slice(), &downloads_headers);
-            //f.render_stateful_widget(downloads_table, rect_main[1], &mut downloads.state.as_table_state());
 
             let error_list = create_error_list(errors.read().unwrap().as_slice());
             f.render_stateful_widget(error_list, rect_root[1], &mut errors_state.state.as_list_state());
@@ -158,7 +154,7 @@ fn create_file_table<'a>(cache: &Cache, headers: &'a Row) -> Table<'a> {
     let table = Table::new(rows.clone())
         .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Files"))
-        .widths(&[Constraint::Length(50), Constraint::Length(7)])
+        .widths(&[Constraint::Percentage(100), Constraint::Length(8)])
         .highlight_style(
             Style::default()
                 .fg(Color::Black)
@@ -176,7 +172,7 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
             let x = x.read().unwrap();
             Row::new(vec![
                 x.file_name.clone(),
-                "".to_string(),
+                " ".to_string(),
                 x.progress()
             ])
         })
@@ -185,7 +181,7 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
     let table = Table::new(rows.clone())
         .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Downloads"))
-        .widths(&[Constraint::Length(50), Constraint::Length(1), Constraint::Length(4)])
+        .widths(&[Constraint::Percentage(100), Constraint::Length(1), Constraint::Length(4)])
         .highlight_style(
             Style::default()
                 .fg(Color::Black)
