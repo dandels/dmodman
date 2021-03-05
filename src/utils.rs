@@ -37,7 +37,21 @@ pub fn format_string(format_string: &str, params: Vec<&str>) -> String {
     ret
 }
 
-//
+pub fn human_readable_without_unit(bytes: u64) -> String {
+    if bytes < 1024 {
+        return bytes.to_string();
+    }
+    let mut bytes: f64 = bytes as f64;
+    let mut i = 0;
+    // even if we don't use these we want to be in sync with the below function
+    let units = vec!["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
+    while (bytes * 10.0).round() / 10.0 >= 1024.0 && i < units.len() - 1 {
+        bytes /= 1024.0;
+        i += 1;
+    }
+    format!("{:.*}", 1, bytes)
+}
+
 pub fn human_readable(bytes: u64) -> String {
     let mut bytes: f64 = bytes as f64;
     let units = vec!["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];

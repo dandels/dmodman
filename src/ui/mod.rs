@@ -7,6 +7,7 @@ use self::event::{Event, Events};
 use crate::ErrorList;
 use crate::api::{FileDetails, Client};
 use crate::db::*;
+use crate::utils;
 
 use std::io;
 use termion::event::Key;
@@ -53,7 +54,7 @@ pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Resu
     );
 
     let downloads_headers = Row::new(
-        vec!["Filename", " ", "%  "]
+        vec!["Filename", "Progress"]
             .iter()
             .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
     );
@@ -176,7 +177,6 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
             let x = x.read().unwrap();
             Row::new(vec![
                 x.file_name.clone(),
-                " ".to_string(),
                 x.progress()
             ])
         })
@@ -185,7 +185,7 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
     let table = Table::new(rows.clone())
         .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Downloads"))
-        .widths(&[Constraint::Percentage(89), Constraint::Percentage(1), Constraint::Percentage(10)])
+        .widths(&[Constraint::Percentage(70), Constraint::Percentage(30)])
         .highlight_style(
             Style::default()
                 .fg(Color::Black)

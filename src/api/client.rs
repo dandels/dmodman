@@ -2,7 +2,7 @@ use crate::{config, error_list::ErrorList, utils};
 use crate::db::{Cache, Cacheable, LocalFile};
 
 use super::query::{DownloadLink, FileList, Search, Queriable};
-use super::{Downloads, DownloadStatus, DownloadState, NxmUrl};
+use super::download::{Downloads, DownloadStatus, NxmUrl};
 use super::error::RequestError;
 use super::error::DownloadError;
 
@@ -103,16 +103,14 @@ impl Client {
     }
 
     async fn download_buffered(&mut self, url: Url, path: &Path, file_name: String, file_id: u64) -> Result<(), DownloadError> {
-        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name, file_id)));
-
-        self.downloads.add(status.clone());
-
         let file = std::fs::File::create(path)?;
         let mut bufwriter = BufWriter::new(&file);
         let builder = self.build_request(url);
         let resp = builder.send().await?;
 
-        status.write().unwrap().bytes_total = resp.content_length();
+        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name.clone(), file_id, resp.content_length())));
+        self.downloads.add(status.clone());
+
         let mut stream = resp.bytes_stream();
 
         while let Some(item) = stream.next().await {
@@ -120,16 +118,14 @@ impl Client {
                 Ok(bytes) => {
                     bufwriter.write_all(&bytes)?;
                     // hope there isn't too much overhead acquiring the lock so often
-                    status.write().unwrap().update_progres(bytes.len().try_into().unwrap());
+                    status.write().unwrap().update_progress(bytes.len().try_into().unwrap());
                 },
                 Err(e) => {
-                    status.write().unwrap().state = DownloadState::Failed(DownloadError::from(e));
+                    self.errors.push(format!("Download error for {}: {}", file_name, e.to_string()));
                 }
             }
         }
         bufwriter.flush()?;
-
-        status.write().unwrap().state = DownloadState::Complete;
 
         Ok(())
     }
