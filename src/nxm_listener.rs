@@ -1,7 +1,6 @@
 use tokio::io::Interest;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::{ Sender, Receiver };
+use tokio::sync::{ mpsc, mpsc::{ Receiver } };
 use tokio::task;
 use std::str;
 use std::io::{Error, ErrorKind};
