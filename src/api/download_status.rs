@@ -1,4 +1,29 @@
 use super::DownloadError;
+use std::sync::{Arc, RwLock};
+
+#[derive(Clone)]
+pub struct Downloads {
+    pub statuses: Arc<RwLock<Vec<Arc<RwLock<DownloadStatus>>>>>,
+    len: usize,
+}
+
+impl Downloads {
+    pub fn new() -> Self {
+        Self {
+            statuses: Arc::new(RwLock::new(Vec::new())),
+            len: 0,
+        }
+    }
+
+    pub fn add(&mut self, status: Arc<RwLock<DownloadStatus>>) {
+        self.statuses.write().unwrap().push(status);
+        self.len += 1;
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+}
 
 pub enum DownloadState {
     Downloading,

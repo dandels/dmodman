@@ -73,7 +73,7 @@ async fn main() -> Result<(), Error> {
     /* TODO handle missing apikey
      * Ideally we would ask for the username/password and not require the user to create one.
      */
-    let client = api::Client::new().unwrap();
+    let mut client = api::Client::new().unwrap();
     let mut cache = db::Cache::new(&game).unwrap();
 
     if let Some(nxm_str) = nxm_str_opt {
@@ -83,7 +83,7 @@ async fn main() -> Result<(), Error> {
     // listen for nxm downloads
     {
         let mut cache = cache.clone();
-        let client = client.clone();
+        let mut client = client.clone();
         let _handle = tokio::task::spawn(async move {
             while let Some(nxm_result) = nxm_rx.recv().await {
                 match nxm_result {

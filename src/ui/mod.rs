@@ -112,12 +112,12 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
                     errors.write().unwrap().push("terribad error".to_string());
                 }
                 Key::Down | Key::Char('j') => match selected_view {
-                    ActiveBlock::Downloads => downloads_state.next(client.downloads.read().unwrap().len()),
+                    ActiveBlock::Downloads => downloads_state.next(client.downloads.len()),
                     ActiveBlock::Errors => errors_state.next(errors.read().unwrap().len()),
                     ActiveBlock::Files => files_state.next(cache.file_details.len()),
                 },
                 Key::Up | Key::Char('k') => match selected_view {
-                    ActiveBlock::Downloads => downloads_state.previous(errors.read().unwrap().len()),
+                    ActiveBlock::Downloads => downloads_state.previous(client.downloads.len()),
                     ActiveBlock::Errors => errors_state.previous(errors.read().unwrap().len()),
                     ActiveBlock::Files => files_state.previous(cache.file_details.len()),
                 },
@@ -170,7 +170,7 @@ fn create_file_table<'a>(cache: &Cache, headers: &'a Row) -> Table<'a> {
 }
 
 fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
-    let rows: Vec<Row> = client.downloads.read().unwrap()
+    let rows: Vec<Row> = client.downloads.statuses.read().unwrap()
         .iter()
         .map(|x| {
             let x = x.read().unwrap();

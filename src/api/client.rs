@@ -2,7 +2,7 @@ use crate::{config, utils};
 use crate::db::{Cache, Cacheable, LocalFile};
 
 use super::query::{DownloadLink, FileList, Search, Queriable};
-use super::{DownloadStatus, DownloadState, NxmUrl};
+use super::{Downloads, DownloadStatus, DownloadState, NxmUrl};
 use super::error::RequestError;
 use super::error::DownloadError;
 
@@ -30,7 +30,7 @@ pub struct Client {
     client: reqwest::Client,
     headers: Arc<reqwest::header::HeaderMap>,
     api_headers: Arc<reqwest::header::HeaderMap>,
-    pub downloads: Arc<RwLock<Vec<Arc<RwLock<DownloadStatus>>>>>, // TODO is this nesting avoidable?
+    pub downloads: Downloads
 }
 
 impl Client {
@@ -49,7 +49,7 @@ impl Client {
             client,
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
-            downloads: Arc::new(RwLock::new(Vec::new())),
+            downloads: Downloads::new()
         })
     }
 
@@ -77,7 +77,7 @@ impl Client {
         Ok(resp)
     }
 
-    pub async fn queue_download(&self, cache: &mut Cache, nxm_str: &str) -> Result<(), DownloadError> {
+    pub async fn queue_download(&mut self, cache: &mut Cache, nxm_str: &str) -> Result<(), DownloadError> {
         let nxm = NxmUrl::from_str(&nxm_str).unwrap();
         let dl = DownloadLink::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
         // TODO only for debugging. Besides, it's not using the file id as it should.
@@ -87,10 +87,10 @@ impl Client {
         Ok(())
     }
 
-    async fn download_buffered(&self, url: Url, path: &Path, file_name: String, file_id: u64) -> Result<(), DownloadError> {
+    async fn download_buffered(&mut self, url: Url, path: &Path, file_name: String, file_id: u64) -> Result<(), DownloadError> {
         let status = Arc::new(RwLock::new(DownloadStatus::new(file_name, file_id)));
 
-        self.downloads.write().unwrap().push(status.clone());
+        self.downloads.add(status.clone());
 
         let file = std::fs::File::create(path)?;
         let mut bufwriter = BufWriter::new(&file);
@@ -119,7 +119,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn download_mod_file(&self, cache: &mut Cache, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
+    pub async fn download_mod_file(&mut self, cache: &mut Cache, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
         let file_name = utils::file_name_from_url(&url);
         let mut path = config::download_dir(&nxm.domain_name);
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
