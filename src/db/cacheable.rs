@@ -19,9 +19,7 @@ pub trait Cacheable: Serialize + DeserializeOwned {
         let data = serde_json::to_string_pretty(&self)?;
         let path = Self::cache_dir(game, mod_id);
         std::fs::create_dir_all(path.parent().unwrap().to_str().unwrap())?;
-        println!("creating metadata file: {:?}", path);
         let mut file = File::create(&path)?;
-        println!("writing metadata file");
         file.write_all(data.as_bytes())?;
         Ok(())
     }
