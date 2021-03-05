@@ -86,6 +86,27 @@ impl Cache {
         self.file_list_map.write().unwrap().insert(*mod_id, fl);
         Ok(())
     }
+
+    /* returns whether FileDetails is up to date
+     * TODO figure out how to keep the cache file types in sync with eachother
+     */
+    pub fn save_local_file(&mut self, lf: LocalFile) -> Result<bool, DbError> {
+        let mut files = self.local_files.write().unwrap();
+        let is_present: bool = files.iter().any(|f| f.file_id == lf.file_id);
+
+        if is_present {
+            return Ok(true);
+        }
+
+        lf.write()?;
+        let file_id = lf.file_id;
+        files.push(lf);
+
+        match self.file_details.map.read().unwrap().get(&file_id) {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
+    }
 }
 
 #[cfg(test)]
