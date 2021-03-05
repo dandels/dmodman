@@ -21,7 +21,9 @@ impl Error for RequestError {
 impl fmt::Display for RequestError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RequestError::ApiKeyMissing => f.write_str("ApiKeyMissing"),
+            RequestError::ApiKeyMissing => {
+                f.write_str("No apikey configured. API connections are disabled.")
+            }
             RequestError::IOError { source } => source.fmt(f),
             RequestError::ConnectionError { source } => source.fmt(f),
         }

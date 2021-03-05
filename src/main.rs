@@ -1,6 +1,7 @@
 mod api;
 mod cmd;
 mod config;
+mod error_list;
 mod db;
 mod nxm_listener;
 mod test;
@@ -9,6 +10,7 @@ mod utils;
 
 use std::io::{ Error, ErrorKind };
 use std::str::FromStr;
+pub use self::error_list::ErrorList;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -73,7 +75,8 @@ async fn main() -> Result<(), Error> {
     /* TODO handle missing apikey
      * Ideally we would ask for the username/password and not require the user to create one.
      */
-    let mut client = api::Client::new().unwrap();
+    let errors = ErrorList::default();
+    let mut client = api::Client::new(errors.clone()).unwrap();
     let mut cache = db::Cache::new(&game).unwrap();
 
     if let Some(nxm_str) = nxm_str_opt {
@@ -97,7 +100,7 @@ async fn main() -> Result<(), Error> {
     }
 
 
-    ui::init(&mut cache, &client).await.unwrap();
+    ui::init(&mut cache, &client, errors).await.unwrap();
     Ok(())
 }
 

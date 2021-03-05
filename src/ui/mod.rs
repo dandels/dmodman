@@ -4,8 +4,8 @@ mod event;
 use self::component::State;
 use self::event::{Event, Events};
 
-use crate::api::FileDetails;
-use crate::api::Client;
+use crate::ErrorList;
+use crate::api::{FileDetails, Client};
 use crate::db::*;
 
 use std::io;
@@ -38,7 +38,7 @@ fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
     Ok(terminal)
 }
 
-pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Error>> {
+pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Result<(), Box<dyn Error>> {
     let mut terminal = term_setup().unwrap();
 
     let events = Events::new();
@@ -68,8 +68,8 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .margin(0);
 
-    let errors = Arc::new(RwLock::new(Vec::new()));
     let mut errors_state = State::new_list();
+    let mut errors_list = create_error_list(errors.clone());
 
     let mut files_state = State::new_table();
     let mut files_table = create_file_table(cache, &files_headers);
@@ -94,8 +94,10 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
             }
             f.render_stateful_widget(downloads_table.clone(), rect_main[1], &mut downloads_state.state.as_table_state());
 
-            let error_list = create_error_list(errors.read().unwrap().as_slice());
-            f.render_stateful_widget(error_list, rect_root[1], &mut errors_state.state.as_list_state());
+            if errors.is_changed() {
+                errors_list = create_error_list(errors.clone());
+            }
+            f.render_stateful_widget(errors_list.clone(), rect_root[1], &mut errors_state.state.as_list_state());
         })?;
 
         if let Event::Input(key) = events.next()? {
@@ -105,16 +107,16 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
                     //errors.items.append(&mut vec!["foo"]);
                 }
                 Key::Char('e') => {
-                    errors.write().unwrap().push("terribad error".to_string());
+                    errors.push("terribad error".to_string());
                 }
                 Key::Down | Key::Char('j') => match selected_view {
                     ActiveBlock::Downloads => downloads_state.next(client.downloads.len()),
-                    ActiveBlock::Errors => errors_state.next(errors.read().unwrap().len()),
+                    ActiveBlock::Errors => errors_state.next(errors.len()),
                     ActiveBlock::Files => files_state.next(cache.file_details.len()),
                 },
                 Key::Up | Key::Char('k') => match selected_view {
                     ActiveBlock::Downloads => downloads_state.previous(client.downloads.len()),
-                    ActiveBlock::Errors => errors_state.previous(errors.read().unwrap().len()),
+                    ActiveBlock::Errors => errors_state.previous(errors.len()),
                     ActiveBlock::Files => files_state.previous(cache.file_details.len()),
                 },
                 Key::Left | Key::Char('h') => match selected_view {
@@ -127,7 +129,7 @@ pub async fn init(cache: &mut Cache, client: &Client) -> Result<(), Box<dyn Erro
                 },
                 Key::Char('u') => {
                     if let ActiveBlock::Files = selected_view {
-                        errors.write().unwrap().push("terribad error".to_string());
+                        errors.push("terribad error".to_string());
                     }
                 }
                 _ => {}
@@ -193,8 +195,8 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
 }
 
 
-fn create_error_list<'a>(items: &[String]) -> List<'a> {
-    let list_items: Vec<ListItem> = items
+fn create_error_list<'a>(errors: ErrorList) -> List<'a> {
+    let list_items: Vec<ListItem> = errors.errors.read().unwrap()
         .iter()
         .map(|i| {
             let lines = vec![Spans::from(i.clone())];

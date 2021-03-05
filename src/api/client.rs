@@ -1,4 +1,4 @@
-use crate::{config, utils};
+use crate::{config, error_list::ErrorList, utils};
 use crate::db::{Cache, Cacheable, LocalFile};
 
 use super::query::{DownloadLink, FileList, Search, Queriable};
@@ -28,13 +28,14 @@ const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 #[derive(Clone)]
 pub struct Client {
     client: reqwest::Client,
-    headers: Arc<reqwest::header::HeaderMap>,
-    api_headers: Arc<Result<reqwest::header::HeaderMap, RequestError>>,
+    headers: Arc<HeaderMap>,
+    api_headers: Arc<Option<HeaderMap>>,
+    errors: ErrorList,
     pub downloads: Downloads
 }
 
 impl Client {
-    pub fn new() -> Result<Self, RequestError> {
+    pub fn new(errors: ErrorList) -> Result<Self, RequestError> {
         let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
 
         let mut headers = HeaderMap::new();
@@ -44,9 +45,12 @@ impl Client {
             Ok(apikey) => {
                 let mut api_headers = headers.clone();
                 api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
-                Ok(api_headers)
+                Some(api_headers)
             },
-            Err(e) => Err(RequestError::ApiKeyMissing)
+            Err(e) => {
+                errors.push(e.to_string());
+                None
+            }
         };
 
         let client = reqwest::Client::new();
@@ -54,6 +58,7 @@ impl Client {
             client,
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
+            errors,
             downloads: Downloads::new()
         })
     }
@@ -65,7 +70,12 @@ impl Client {
 
     fn build_api_request(&self, endpoint: &str) -> Result<reqwest::RequestBuilder, RequestError> {
         let url: Url = Url::parse(&(String::from(API_URL) + endpoint)).unwrap();
-        Ok(self.client.get(url).headers((*self.api_headers)?.clone()))
+        let api_headers = match &*self.api_headers {
+            Some(v) => Ok(v.clone()),
+            None => Err(RequestError::ApiKeyMissing),
+        }?;
+
+        Ok(self.client.get(url).headers(api_headers))
     }
 
     pub async fn send_api_request(&self, endpoint: &str) -> Result<Response, RequestError> {
