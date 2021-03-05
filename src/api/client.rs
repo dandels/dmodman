@@ -29,7 +29,7 @@ const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 pub struct Client {
     client: reqwest::Client,
     headers: Arc<reqwest::header::HeaderMap>,
-    api_headers: Arc<reqwest::header::HeaderMap>,
+    api_headers: Arc<Result<reqwest::header::HeaderMap, RequestError>>,
     pub downloads: Downloads
 }
 
@@ -40,9 +40,14 @@ impl Client {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
 
-        let apikey = config::read_api_key()?;
-        let mut api_headers = headers.clone();
-        api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
+        let api_headers = match config::read_api_key() {
+            Ok(apikey) => {
+                let mut api_headers = headers.clone();
+                api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
+                Ok(api_headers)
+            },
+            Err(e) => Err(RequestError::ApiKeyMissing)
+        };
 
         let client = reqwest::Client::new();
         Ok(Self {
@@ -58,13 +63,13 @@ impl Client {
         self.client.get(url).headers((*self.headers).clone())
     }
 
-    fn build_api_request(&self, endpoint: &str) -> reqwest::RequestBuilder {
+    fn build_api_request(&self, endpoint: &str) -> Result<reqwest::RequestBuilder, RequestError> {
         let url: Url = Url::parse(&(String::from(API_URL) + endpoint)).unwrap();
-        self.client.get(url).headers((*self.api_headers).clone())
+        Ok(self.client.get(url).headers((*self.api_headers)?.clone()))
     }
 
     pub async fn send_api_request(&self, endpoint: &str) -> Result<Response, RequestError> {
-        let builder = self.build_api_request(&endpoint);
+        let builder = self.build_api_request(&endpoint)?;
         let resp = builder.send().await?;
         /* TODO the response headers contain a count of remaining API request quota and would be useful to track
          * println!("Response headers: {:#?}\n", resp.headers());
