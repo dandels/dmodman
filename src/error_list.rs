@@ -27,4 +27,8 @@ impl ErrorList {
     pub fn len(&self) -> usize {
         self.len.load(Ordering::Relaxed)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len.load(Ordering::Relaxed) == 0
+    }
 }
