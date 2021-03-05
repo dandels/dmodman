@@ -39,6 +39,6 @@ impl FileDetailsCache {
     pub fn is_changed(&mut self) -> bool {
         let ret = self.is_changed;
         self.is_changed = !self.is_changed;
-        return ret;
+        ret
     }
 }
