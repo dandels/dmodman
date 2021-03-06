@@ -13,7 +13,7 @@ pub struct Downloads {
 }
 
 impl Downloads {
-    pub fn add(&mut self, status: Arc<RwLock<DownloadStatus>>) {
+    pub fn add(&self, status: Arc<RwLock<DownloadStatus>>) {
         self.statuses.write().unwrap().push(status);
         self.is_changed.store(true, Ordering::Relaxed);
         self.len.fetch_add(1, Ordering::Relaxed);
