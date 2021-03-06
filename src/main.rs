@@ -87,11 +87,15 @@ async fn main() -> Result<(), Error> {
     {
         let mut cache = cache.clone();
         let mut client = client.clone();
+        let errors = errors.clone();
         let _handle = tokio::task::spawn(async move {
             while let Some(nxm_result) = nxm_rx.recv().await {
                 match nxm_result {
                     Ok(nxm_str) => {
-                        client.queue_download(&mut cache, &nxm_str).await.unwrap();
+                        match client.queue_download(&mut cache, &nxm_str).await {
+                            Ok(_) => {},
+                            Err(e) => { errors.push(format!("Downloading {} failed: {}", nxm_str, e.to_string())); }
+                        }
                     },
                     Err(e) => { println!("{}", e.to_string()); }
                 }
