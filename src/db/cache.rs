@@ -81,7 +81,7 @@ impl Cache {
         })
     }
 
-    pub fn save_file_list(&mut self, fl: FileList, mod_id: &u32) -> Result<(), std::io::Error> {
+    pub fn save_file_list(&self, fl: FileList, mod_id: &u32) -> Result<(), std::io::Error> {
         fl.save_to_cache(&self.game, mod_id)?;
         self.file_list_map.write().unwrap().insert(*mod_id, fl);
         Ok(())
@@ -90,7 +90,7 @@ impl Cache {
     /* returns whether FileDetails is up to date
      * TODO figure out how to keep the cache file types in sync with eachother
      */
-    pub fn save_local_file(&mut self, lf: LocalFile) -> Result<bool, DbError> {
+    pub fn save_local_file(&self, lf: LocalFile) -> Result<bool, DbError> {
         let mut files = self.local_files.write().unwrap();
         let is_present: bool = files.iter().any(|f| f.file_id == lf.file_id);
 
