@@ -81,11 +81,7 @@ pub async fn test_connection(uid: &u32) -> Result<UnixStream, Error> {
     Ok(stream)
 }
 
-pub async fn queue_nxm_download(stream: UnixStream, nxm_str: &str) -> Result<(), Error> {
-    send_msg(&stream, &nxm_str.as_bytes()).await
-}
-
-async fn send_msg(stream: &UnixStream, msg: &[u8]) -> Result<(), Error> {
+pub async fn send_msg(stream: &UnixStream, msg: &[u8]) -> Result<(), Error> {
     loop {
         let ready = stream.ready(Interest::WRITABLE).await?;
         if ready.is_writable() {
