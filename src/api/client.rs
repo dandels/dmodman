@@ -7,12 +7,13 @@ use super::error::RequestError;
 use super::error::DownloadError;
 
 use futures_util::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-use reqwest::Response;
+use reqwest::header::{RANGE, HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::{Response, StatusCode};
 use url::Url;
 
+use std::fs::OpenOptions;
 use std::io::{Write, BufWriter};
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::sync::{Arc, RwLock };
 use std::convert::TryInto;
 use std::str::FromStr;
@@ -93,7 +94,7 @@ impl Client {
     }
 
     pub async fn queue_download(&mut self, cache: &mut Cache, nxm_str: &str) -> Result<(), DownloadError> {
-        let nxm = NxmUrl::from_str(&nxm_str).unwrap();
+        let nxm = NxmUrl::from_str(&nxm_str)?;
         let dl = DownloadLink::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
         // TODO only for debugging. Besides, it's not using the file id as it should.
         dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
@@ -102,13 +103,42 @@ impl Client {
         Ok(())
     }
 
-    async fn download_buffered(&mut self, url: Url, path: &Path, file_name: String, file_id: u64) -> Result<(), DownloadError> {
-        let file = std::fs::File::create(path)?;
-        let mut bufwriter = BufWriter::new(&file);
-        let builder = self.build_request(url);
+    async fn download_buffered(&mut self, url: Url, path: &PathBuf, file_name: String, file_id: u64) -> Result<(), DownloadError> {
+        let mut part_path = path.clone();
+        part_path.pop();
+        part_path.push(format!("{}.part", file_name));
+
+        let mut builder = self.build_request(url);
+
+        let mut bytes_read = 0;
+        /* The HTTP Range header is used to resume downloads.
+         * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
+         */
+        if part_path.exists() {
+            self.errors.push(format!("Trying to resume download of {}.", file_name));
+            bytes_read = std::fs::metadata(&part_path)?.len();
+            builder = builder.header(RANGE, format!("bytes={}-", bytes_read));
+        }
+
         let resp = builder.send().await?;
 
-        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name.clone(), file_id, resp.content_length())));
+        self.errors.push(format!("{:?}", resp.headers()));
+
+        let mut open_opts = OpenOptions::new();
+        self.errors.push(format!("Status: {}", resp.status()));
+        self.errors.push(format!("Response {}:", resp.status()));
+        let file = match resp.status() {
+            StatusCode::OK => {
+                bytes_read = 0;
+                open_opts.write(true).create(true).open(&part_path)?
+            }
+            StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path)?,
+            code => panic!("Downloads got unexpected HTTP response: {}", code)
+        };
+        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name.clone(), file_id, bytes_read, resp.content_length())));
+
+        let mut bufwriter = BufWriter::new(&file);
+
         self.downloads.add(status.clone());
 
         let mut stream = resp.bytes_stream();
@@ -119,13 +149,15 @@ impl Client {
                     bufwriter.write_all(&bytes)?;
                     // hope there isn't too much overhead acquiring the lock so often
                     status.write().unwrap().update_progress(bytes.len().try_into().unwrap());
-                },
+                }
                 Err(e) => {
                     self.errors.push(format!("Download error for {}: {}", file_name, e.to_string()));
                 }
             }
         }
         bufwriter.flush()?;
+
+        std::fs::rename(part_path, path)?;
 
         Ok(())
     }
@@ -135,6 +167,11 @@ impl Client {
         let mut path = config::download_dir(&nxm.domain_name);
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
         path.push(&file_name.to_string());
+
+        if path.exists() {
+            self.errors.push(format!("{} already exists and won't be downloaded again.", file_name));
+            return Ok(path)
+        }
 
         let lf = LocalFile::new(&nxm, file_name.clone());
         self.download_buffered(url, &path, file_name, nxm.file_id).await?;

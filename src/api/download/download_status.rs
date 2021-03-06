@@ -8,7 +8,12 @@ pub struct DownloadStatus {
 }
 
 impl DownloadStatus {
-    pub fn new(file_name: String, file_id: u64, content_length: Option<u64>) -> Self {
+    pub fn new(
+        file_name: String,
+        file_id: u64,
+        bytes_read: u64,
+        content_length: Option<u64>,
+    ) -> Self {
         let size = match content_length {
             Some(total) => utils::human_readable(total),
             None => "NIL".to_string(),
@@ -16,7 +21,7 @@ impl DownloadStatus {
         Self {
             file_name,
             file_id,
-            bytes_read: 0,
+            bytes_read,
             size,
         }
     }
