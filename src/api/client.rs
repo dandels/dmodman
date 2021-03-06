@@ -9,6 +9,7 @@ use super::error::DownloadError;
 use futures_util::StreamExt;
 use reqwest::header::{RANGE, HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::{Response, StatusCode};
+use tokio::{task, task::JoinHandle};
 use url::Url;
 
 use std::fs::OpenOptions;
@@ -28,15 +29,16 @@ const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 
 #[derive(Clone)]
 pub struct Client {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
+    cache: Cache,
     errors: ErrorList,
     pub downloads: Downloads
 }
 
 impl Client {
-    pub fn new(errors: ErrorList) -> Result<Self, RequestError> {
+    pub fn new(cache: &Cache, errors: &ErrorList) -> Result<Self, RequestError> {
         let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
 
         let mut headers = HeaderMap::new();
@@ -54,12 +56,12 @@ impl Client {
             }
         };
 
-        let client = reqwest::Client::new();
         Ok(Self {
-            client,
+            client: Arc::new(reqwest::Client::new()),
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
-            errors,
+            errors: errors.clone(),
+            cache: cache.clone(),
             downloads: Downloads::default()
         })
     }
@@ -93,17 +95,19 @@ impl Client {
         Ok(resp)
     }
 
-    pub async fn queue_download(&mut self, cache: &mut Cache, nxm_str: &str) -> Result<(), DownloadError> {
-        let nxm = NxmUrl::from_str(&nxm_str)?;
-        let dl = DownloadLink::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
-        // TODO only for debugging. Besides, it's not using the file id as it should.
-        dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
-        let url: Url = Url::parse(&dl.location.URI)?;
-        let _file = self.download_mod_file(cache, &nxm, url).await?;
-        Ok(())
+    pub async fn queue_download(client: Client, nxm_str: String) {
+        let _handle: JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
+            let nxm = NxmUrl::from_str(&nxm_str)?;
+            let dl = DownloadLink::request(&client, vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
+            // TODO only for debugging. Besides, it's not using the file id as it should.
+            dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
+            let url: Url = Url::parse(&dl.location.URI)?;
+            let _file = client.download_mod_file(&nxm, url).await?;
+            Ok(())
+        });
     }
 
-    async fn download_buffered(&mut self, url: Url, path: &PathBuf, file_name: String, file_id: u64) -> Result<(), DownloadError> {
+    async fn download_buffered(&self, url: Url, path: &PathBuf, file_name: String, file_id: u64) -> Result<(), DownloadError> {
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
@@ -162,7 +166,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn download_mod_file(&mut self, cache: &mut Cache, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
+    pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
         let file_name = utils::file_name_from_url(&url);
         let mut path = config::download_dir(&nxm.domain_name);
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
@@ -183,10 +187,10 @@ impl Client {
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
         // TODO the cache api needs work
-        let file_details_is_cached = cache.save_local_file(lf)?;
+        let file_details_is_cached = self.cache.save_local_file(lf)?;
         if !file_details_is_cached {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
-            cache.save_file_list(fl, &nxm.mod_id)?;
+            self.cache.save_file_list(fl, &nxm.mod_id)?;
         }
 
         Ok(path)
