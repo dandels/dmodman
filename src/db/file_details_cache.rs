@@ -22,14 +22,14 @@ impl FileDetailsCache {
         }
     }
 
-    pub fn insert(&mut self, key: u64, value: FileDetails) {
+    pub fn insert(&self, key: u64, value: FileDetails) {
         self.map.write().unwrap().insert(key, value);
         self.is_changed.store(true, Ordering::Relaxed);
         self.len
             .store(self.map.read().unwrap().keys().len(), Ordering::Relaxed)
     }
 
-    pub fn remove(&mut self, key: &u64) {
+    pub fn remove(&self, key: &u64) {
         self.map.write().unwrap().remove(key);
         self.is_changed.store(true, Ordering::Relaxed);
         self.len
@@ -40,7 +40,7 @@ impl FileDetailsCache {
         self.len.load(Ordering::Relaxed)
     }
 
-    pub fn is_changed(&mut self) -> bool {
+    pub fn is_changed(&self) -> bool {
         let ret = self.is_changed.load(Ordering::Relaxed);
         self.is_changed
             .store(!self.is_changed.load(Ordering::Relaxed), Ordering::Relaxed);
