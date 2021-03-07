@@ -7,9 +7,10 @@ use self::event::{Event, Events};
 use crate::ErrorList;
 use crate::api::{FileDetails, Client};
 use crate::db::*;
-use crate::utils;
 
 use std::io;
+use std::error::Error;
+
 use termion::event::Key;
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
@@ -20,8 +21,6 @@ use tui::style::{Color, Modifier, Style};
 use tui::text::Spans;
 use tui::widgets::{Block, Borders, Cell, List, ListItem, Row, Table};
 use tui::Terminal;
-use std::error::Error;
-use std::sync::{Arc, RwLock};
 
 enum ActiveBlock {
     Errors,
@@ -39,7 +38,7 @@ fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
     Ok(terminal)
 }
 
-pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Result<(), Box<dyn Error>> {
+pub async fn init(cache: &Cache, client: &Client, errors: &ErrorList) -> Result<(), Box<dyn Error>> {
     let mut terminal = term_setup().unwrap();
 
     let events = Events::new();
@@ -70,7 +69,7 @@ pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Resu
         .margin(0);
 
     let mut errors_state = State::new_list();
-    let mut errors_list = create_error_list(errors.clone());
+    let mut errors_list = create_error_list(errors);
 
     let mut files_state = State::new_table();
     let mut files_table = create_file_table(cache, &files_headers);
@@ -98,7 +97,7 @@ pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Resu
             f.render_stateful_widget(downloads_table.clone(), rect_main[1], &mut downloads_state.state.as_table_state());
 
             if errors.is_changed() {
-                errors_list = create_error_list(errors.clone());
+                errors_list = create_error_list(errors);
             }
             f.render_stateful_widget(errors_list.clone(), rect_root[1], &mut errors_state.state.as_list_state());
         })?;
@@ -106,9 +105,6 @@ pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Resu
         if let Event::Input(key) = events.next()? {
             match key {
                 Key::Char('q') => break,
-                Key::Char('f') => {
-                    //errors.items.append(&mut vec!["foo"]);
-                }
                 Key::Char('e') => {
                     errors.push("terribad error".to_string());
                 }
@@ -131,9 +127,7 @@ pub async fn init(cache: &mut Cache, client: &Client, errors: ErrorList) -> Resu
                     ActiveBlock::Downloads => selected_view = ActiveBlock::Errors,
                 },
                 Key::Char('u') => {
-                    if let ActiveBlock::Files = selected_view {
-                        errors.push("terribad error".to_string());
-                    }
+                    errors.push("terribad error".to_string());
                 }
                 _ => {}
             }
@@ -156,7 +150,7 @@ fn create_file_table<'a>(cache: &Cache, headers: &'a Row) -> Table<'a> {
         })
         .collect();
 
-    let table = Table::new(rows.clone())
+    let table = Table::new(rows)
         .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Files"))
         .widths(&[Constraint::Percentage(85), Constraint::Percentage(15)])
@@ -182,7 +176,7 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
         })
         .collect();
 
-    let table = Table::new(rows.clone())
+    let table = Table::new(rows)
         .header(headers.clone())
         .block(Block::default().borders(Borders::ALL).title("Downloads"))
         .widths(&[Constraint::Percentage(70), Constraint::Percentage(30)])
@@ -197,11 +191,11 @@ fn create_downloads_table<'a>(client: &Client, headers: &'a Row) -> Table<'a> {
 }
 
 
-fn create_error_list<'a>(errors: ErrorList) -> List<'a> {
+fn create_error_list<'a>(errors: &ErrorList) -> List<'a> {
     let list_items: Vec<ListItem> = errors.errors.read().unwrap()
         .iter()
         .map(|i| {
-            let lines = vec![Spans::from(i.clone())];
+            let lines = vec![Spans::from(i.to_string())];
             ListItem::new(lines).style(Style::default().fg(Color::Red))
         })
         .collect();
