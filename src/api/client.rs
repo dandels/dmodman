@@ -1,4 +1,4 @@
-use crate::{config, error_list::ErrorList, utils};
+use crate::{config, error_list::ErrorList, util};
 use crate::db::{Cache, Cacheable, LocalFile};
 
 use super::query::{DownloadLink, FileList, Search, Queriable};
@@ -24,7 +24,6 @@ use std::str::FromStr;
  */
 
 const API_URL: &str = "https://api.nexusmods.com/v1/";
-#[allow(dead_code)]
 const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 
 #[derive(Clone)]
@@ -32,8 +31,8 @@ pub struct Client {
     client: Arc<reqwest::Client>,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
-    cache: Cache,
     errors: ErrorList,
+    pub cache: Cache,
     pub downloads: Downloads
 }
 
@@ -107,51 +106,43 @@ impl Client {
         });
     }
 
-    async fn download_buffered(&self, url: Url, path: &PathBuf, file_name: String, file_id: u64) -> Result<(), DownloadError> {
+    async fn download_buffered(&self, url: Url, path: &PathBuf, file_name: &str, file_id: u64) -> Result<(), DownloadError> {
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
 
         let mut builder = self.build_request(url);
 
-        let mut bytes_read = 0;
         /* The HTTP Range header is used to resume downloads.
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
          */
+        let mut bytes_read = 0;
         if part_path.exists() {
-            self.errors.push(format!("Trying to resume download of {}.", file_name));
             bytes_read = std::fs::metadata(&part_path)?.len();
             builder = builder.header(RANGE, format!("bytes={}-", bytes_read));
         }
 
         let resp = builder.send().await?;
 
-        self.errors.push(format!("{:?}", resp.headers()));
-
         let mut open_opts = OpenOptions::new();
-        self.errors.push(format!("Status: {}", resp.status()));
-        self.errors.push(format!("Response {}:", resp.status()));
         let file = match resp.status() {
             StatusCode::OK => {
                 bytes_read = 0;
                 open_opts.write(true).create(true).open(&part_path)?
             }
             StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path)?,
-            code => panic!("Downloads got unexpected HTTP response: {}", code)
+            code => panic!("Download {} got unexpected HTTP response: {}", file_name, code)
         };
-        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name.clone(), file_id, bytes_read, resp.content_length())));
-
-        let mut bufwriter = BufWriter::new(&file);
-
+        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name.to_string(), file_id, bytes_read, resp.content_length())));
         self.downloads.add(status.clone());
 
+        let mut bufwriter = BufWriter::new(&file);
         let mut stream = resp.bytes_stream();
 
         while let Some(item) = stream.next().await {
             match item {
                 Ok(bytes) => {
                     bufwriter.write_all(&bytes)?;
-                    // hope there isn't too much overhead acquiring the lock so often
                     status.write().unwrap().update_progress(bytes.len().try_into().unwrap());
                 }
                 Err(e) => {
@@ -167,7 +158,7 @@ impl Client {
     }
 
     pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
-        let file_name = utils::file_name_from_url(&url);
+        let file_name = util::file_name_from_url(&url);
         let mut path = config::download_dir(&nxm.domain_name);
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
         path.push(&file_name.to_string());
@@ -177,19 +168,19 @@ impl Client {
             return Ok(path)
         }
 
-        let lf = LocalFile::new(&nxm, file_name.clone());
-        self.download_buffered(url, &path, file_name, nxm.file_id).await?;
-
-        // create metadata json file
+        self.download_buffered(url, &path, &file_name, nxm.file_id).await?;
 
         /* TODO: should we just do an Md5Search instead? It would allows us to validate the file while getting its
          * metadata.
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
-        // TODO the cache api needs work
+        let lf = LocalFile::new(&nxm, file_name);
         let file_details_is_cached = self.cache.save_local_file(lf)?;
         if !file_details_is_cached {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
+            if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
+                self.cache.file_details.insert(nxm.file_id, fd.clone());
+            }
             self.cache.save_file_list(fl, &nxm.mod_id)?;
         }
 

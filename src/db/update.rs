@@ -27,12 +27,12 @@ impl UpdateChecker {
         }
     }
 
-    pub async fn check_all(&mut self, client: &Client, cache: Cache) -> Result<&HashSet<u32>, UpdateError> {
-        self.check_files(client, &cache).await
+    pub async fn check_all(&mut self, client: &Client) -> Result<&HashSet<u32>, UpdateError> {
+        self.check_files(client).await
     }
 
-    pub async fn check_files(&mut self, client: &Client, cache: &Cache) -> Result<&HashSet<u32>, UpdateError> {
-        for lf in cache.local_files.read().unwrap().clone().into_iter() {
+    pub async fn check_files(&mut self, client: &Client) -> Result<&HashSet<u32>, UpdateError> {
+        for lf in client.cache.local_files.read().unwrap().clone().into_iter() {
             if self.check_file(client, &lf).await? {
                 self.updatable_mods.insert(lf.mod_id);
             }
@@ -133,10 +133,10 @@ mod tests {
 
         let cache = Cache::new(&game)?;
         let errors = ErrorList::default();
-        let client: Client = Client::new(errors)?;
+        let client: Client = Client::new(&cache, &errors)?;
 
         let mut updater = UpdateChecker::new_with_file_lists(file_lists);
-        let upds = updater.check_all(&client, cache).await?;
+        let upds = updater.check_all(&client).await?;
 
         println!("{:?}", upds);
 
