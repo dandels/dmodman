@@ -6,7 +6,7 @@ mod db;
 mod nxm_listener;
 mod test;
 mod ui;
-mod utils;
+mod util;
 
 use api::Client;
 use db::Cache;
