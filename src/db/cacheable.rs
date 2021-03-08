@@ -1,10 +1,14 @@
 use crate::config;
+
+use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::fs::File;
-use std::io::{Error, Write};
+use tokio::{fs, fs::File};
+use tokio::io::{Error, AsyncWriteExt};
+
 use std::path::PathBuf;
 
+#[async_trait]
 pub trait Cacheable: Serialize + DeserializeOwned {
     const CACHE_DIR_NAME: &'static str;
 
@@ -15,19 +19,19 @@ pub trait Cacheable: Serialize + DeserializeOwned {
         path
     }
 
-    fn save_to_cache(&self, game: &str, mod_id: &u32) -> Result<(), Error> {
+    async fn save_to_cache(&self, game: &str, mod_id: &u32) -> Result<(), Error> {
         let data = serde_json::to_string_pretty(&self)?;
         let path = Self::cache_file(game, mod_id);
         std::fs::create_dir_all(path.parent().unwrap().to_str().unwrap())?;
-        let mut file = File::create(&path)?;
-        file.write_all(data.as_bytes())?;
+        let mut file = File::create(&path).await?;
+        file.write_all(data.as_bytes()).await?;
         Ok(())
     }
 
     // TODO get rid of the mod id here to support more query types
-    fn try_from_cache(game: &str, mod_id: &u32) -> Result<Self, Error> {
+    async fn try_from_cache(game: &str, mod_id: &u32) -> Result<Self, Error> {
         let path = Self::cache_file(game, mod_id);
-        let contents = std::fs::read_to_string(path)?;
+        let contents = fs::read_to_string(path).await?;
         let ret = serde_json::from_str(&contents)?;
         Ok(ret)
     }
@@ -40,22 +44,22 @@ mod tests {
     use crate::db::Cacheable;
     use crate::test;
 
-    #[test]
-    fn read_cached_mod_info() -> Result<(), RequestError> {
+    #[tokio::test]
+    async fn read_cached_mod_info() -> Result<(), RequestError> {
         let _rt = test::setup();
         let game = "morrowind";
         let mod_id = 46599;
-        let mi: ModInfo = ModInfo::try_from_cache(&game, &mod_id)?;
+        let mi: ModInfo = ModInfo::try_from_cache(&game, &mod_id).await?;
         assert_eq!(mi.name, "Graphic Herbalism - MWSE and OpenMW Edition");
         Ok(())
     }
 
-    #[test]
-    fn read_cached_file_list() -> Result<(), RequestError> {
+    #[tokio::test]
+    async fn read_cached_file_list() -> Result<(), RequestError> {
         let _rt = test::setup();
         let game = "morrowind";
         let mod_id = 46599;
-        let fl = FileList::try_from_cache(&game, &mod_id)?;
+        let fl = FileList::try_from_cache(&game, &mod_id).await?;
         assert_eq!(1000014198, fl.files.first().unwrap().id.0);
         assert_eq!(fl.files.first().unwrap().name, "Graphic Herbalism MWSE");
         assert_eq!(

@@ -6,14 +6,14 @@ use super::download::{Downloads, DownloadStatus, NxmUrl};
 use super::error::RequestError;
 use super::error::DownloadError;
 
-use futures_util::StreamExt;
 use reqwest::header::{RANGE, HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::{Response, StatusCode};
+use tokio_stream::StreamExt;
 use tokio::{task, task::JoinHandle};
 use url::Url;
 
-use std::fs::OpenOptions;
-use std::io::{Write, BufWriter};
+use tokio::fs::OpenOptions;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use std::path::{PathBuf};
 use std::sync::{Arc, RwLock };
 use std::convert::TryInto;
@@ -99,7 +99,7 @@ impl Client {
             let nxm = NxmUrl::from_str(&nxm_str)?;
             let dl = DownloadLink::request(&client, vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
             // TODO only for debugging. Besides, it's not using the file id as it should.
-            dl.save_to_cache(&nxm.domain_name, &nxm.mod_id)?;
+            dl.save_to_cache(&nxm.domain_name, &nxm.mod_id).await?;
             let url: Url = Url::parse(&dl.location.URI)?;
             let _file = client.download_mod_file(&nxm, url).await?;
             Ok(())
@@ -125,24 +125,24 @@ impl Client {
         let resp = builder.send().await?;
 
         let mut open_opts = OpenOptions::new();
-        let file = match resp.status() {
+        let mut file = match resp.status() {
             StatusCode::OK => {
                 bytes_read = 0;
-                open_opts.write(true).create(true).open(&part_path)?
+                open_opts.write(true).create(true).open(&part_path).await?
             }
-            StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path)?,
+            StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await?,
             code => panic!("Download {} got unexpected HTTP response: {}", file_name, code)
         };
         let status = Arc::new(RwLock::new(DownloadStatus::new(file_name.to_string(), file_id, bytes_read, resp.content_length())));
         self.downloads.add(status.clone());
 
-        let mut bufwriter = BufWriter::new(&file);
+        let mut bufwriter = BufWriter::new(&mut file);
         let mut stream = resp.bytes_stream();
 
         while let Some(item) = stream.next().await {
             match item {
                 Ok(bytes) => {
-                    bufwriter.write_all(&bytes)?;
+                    bufwriter.write_all(&bytes).await?;
                     status.write().unwrap().update_progress(bytes.len().try_into().unwrap());
                 }
                 Err(e) => {
@@ -150,7 +150,7 @@ impl Client {
                 }
             }
         }
-        bufwriter.flush()?;
+        bufwriter.flush().await?;
 
         std::fs::rename(part_path, path)?;
 
@@ -175,13 +175,13 @@ impl Client {
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
         let lf = LocalFile::new(&nxm, file_name);
-        let file_details_is_cached = self.cache.save_local_file(lf)?;
+        let file_details_is_cached = self.cache.save_local_file(lf).await?;
         if !file_details_is_cached {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
                 self.cache.file_details.insert(nxm.file_id, fd.clone());
             }
-            self.cache.save_file_list(&nxm.domain_name, fl, &nxm.mod_id)?;
+            self.cache.save_file_list(&nxm.domain_name, fl, &nxm.mod_id).await?;
         }
 
         Ok(path)

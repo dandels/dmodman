@@ -23,17 +23,28 @@ impl FileDetailsCache {
     }
 
     pub fn insert(&self, key: u64, value: FileDetails) {
-        self.map.write().unwrap().insert(key, value);
+        self.map.try_write().unwrap().insert(key, value);
         self.is_changed.store(true, Ordering::Relaxed);
         self.len
-            .store(self.map.read().unwrap().keys().len(), Ordering::Relaxed)
+            .store(self.map.try_read().unwrap().keys().len(), Ordering::Relaxed)
+    }
+
+    pub fn get(&self, key: &u64) -> Option<FileDetails> {
+        match self.map.try_read().unwrap().get(key) {
+            Some(v) => Some(v.clone()),
+            None => None,
+        }
     }
 
     pub fn remove(&self, key: &u64) {
-        self.map.write().unwrap().remove(key);
+        self.map.try_write().unwrap().remove(key);
         self.is_changed.store(true, Ordering::Relaxed);
         self.len
-            .store(self.map.read().unwrap().keys().len(), Ordering::Relaxed)
+            .store(self.map.try_read().unwrap().keys().len(), Ordering::Relaxed)
+    }
+
+    pub fn items(&self) -> Vec<FileDetails> {
+        self.map.try_read().unwrap().values().cloned().collect()
     }
 
     pub fn len(&self) -> usize {

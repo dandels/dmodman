@@ -2,8 +2,8 @@ use super::error::DbError;
 use crate::api::NxmUrl;
 use crate::config;
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::{Error, Write};
+use tokio::{fs, fs::File};
+use tokio::io::{Error, AsyncWriteExt};
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -31,24 +31,24 @@ impl LocalFile {
         path
     }
 
-    pub fn from_str(arg: &str) -> Result<Self, DbError> {
-        Ok(serde_json::from_str(&std::fs::read_to_string(&arg)?)?)
+    pub async fn from_str(arg: &str) -> Result<Self, DbError> {
+        Ok(serde_json::from_str(&fs::read_to_string(&arg).await?)?)
     }
 
-    pub fn from_path(path: &Path) -> Result<Self, DbError> {
-        Ok(serde_json::from_str(&std::fs::read_to_string(&path)?)?)
+    pub async fn from_path(path: &Path) -> Result<Self, DbError> {
+        Ok(serde_json::from_str(&fs::read_to_string(&path).await?)?)
     }
 
-    pub fn write(&self) -> Result<(), Error> {
+    pub async fn write(&self) -> Result<(), Error> {
         let mut path = config::download_dir(&self.game);
         path.push(&self.file_name);
         let mut name: String = path.to_str().unwrap().to_owned();
         name.push_str(".json");
 
-        let mut file: File = File::create(name)?;
+        let mut file: File = File::create(name).await?;
 
         let data = serde_json::to_string_pretty(&self)?;
-        file.write_all(data.as_bytes())?;
+        file.write_all(data.as_bytes()).await?;
         Ok(())
     }
 }

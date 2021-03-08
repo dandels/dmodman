@@ -1,9 +1,10 @@
 use std::error::Error;
 use std::fmt;
+use tokio::io;
 
 #[derive(Debug)]
 pub enum DbError {
-    IOError { source: std::io::Error },
+    IOError { source: io::Error },
     SerializationError { source: serde_json::Error },
 }
 
@@ -25,8 +26,8 @@ impl fmt::Display for DbError {
     }
 }
 
-impl From<std::io::Error> for DbError {
-    fn from(error: std::io::Error) -> Self {
+impl From<io::Error> for DbError {
+    fn from(error: io::Error) -> Self {
         DbError::IOError { source: error }
     }
 }

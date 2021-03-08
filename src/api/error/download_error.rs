@@ -3,13 +3,14 @@ use crate::db::DbError;
 use std::error::Error;
 use std::fmt;
 use std::num::ParseIntError;
+use tokio::io;
 use url::ParseError;
 
 #[derive(Debug)]
 pub enum DownloadError {
     DbError { source: DbError },
     Expired,
-    IOError { source: std::io::Error },
+    IOError { source: io::Error },
     RequestError { source: RequestError },
     Md5SearchError { source: Md5SearchError },
     ParseError { source: ParseError },
@@ -45,8 +46,8 @@ impl fmt::Display for DownloadError {
     }
 }
 
-impl From<std::io::Error> for DownloadError {
-    fn from(error: std::io::Error) -> Self {
+impl From<io::Error> for DownloadError {
+    fn from(error: io::Error) -> Self {
         DownloadError::IOError { source: error }
     }
 }

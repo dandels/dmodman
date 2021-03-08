@@ -1,16 +1,17 @@
 use super::RequestError;
 use std::error::Error;
 use std::fmt;
+use tokio::io;
 
 // TODO is there a way to share some of this copypasta between other errors?
 
 #[derive(Debug)]
 pub enum Md5SearchError {
-    GameMismatch,
     /* Finding a mod from a different game when performing an md5 lookup could maybe happen
      * due to something the user has done. It could theoretically also mean an md5
      * collision on Nexuxmods.
      */
+    GameMismatch,
     HashMismatch,
     RequestError { source: RequestError },
 }
@@ -40,8 +41,8 @@ impl From<RequestError> for Md5SearchError {
     }
 }
 
-impl From<std::io::Error> for Md5SearchError {
-    fn from(error: std::io::Error) -> Self {
+impl From<io::Error> for Md5SearchError {
+    fn from(error: io::Error) -> Self {
         Md5SearchError::RequestError {
             source: RequestError::from(error),
         }

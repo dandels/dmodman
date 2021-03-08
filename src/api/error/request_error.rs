@@ -1,10 +1,11 @@
 use std::error::Error;
 use std::fmt;
+use tokio::io;
 
 #[derive(Debug)]
 pub enum RequestError {
     ApiKeyMissing,
-    IOError { source: std::io::Error },
+    IOError { source: io::Error },
     ConnectionError { source: reqwest::Error },
 }
 
@@ -30,8 +31,8 @@ impl fmt::Display for RequestError {
     }
 }
 
-impl From<std::io::Error> for RequestError {
-    fn from(error: std::io::Error) -> Self {
+impl From<io::Error> for RequestError {
+    fn from(error: io::Error) -> Self {
         RequestError::IOError { source: error }
     }
 }

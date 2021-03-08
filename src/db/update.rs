@@ -32,7 +32,7 @@ impl UpdateChecker {
     }
 
     pub async fn check_files(&mut self, client: &Client) -> Result<&HashSet<u32>, UpdateError> {
-        for lf in client.cache.local_files.read().unwrap().clone().into_iter() {
+        for lf in client.cache.local_files.try_read().unwrap().clone().into_iter() {
             if self.check_file(client, &lf).await? {
                 self.updatable_mods.insert(lf.mod_id);
             }
@@ -59,7 +59,7 @@ impl UpdateChecker {
 
                  // TODO handle files from other mods gracefully, eg. Skyrim SSE + Oldrim
                  file_list = FileList::request(client, vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
-                 file_list.save_to_cache(&local_file.game, &local_file.mod_id)?;
+                 file_list.save_to_cache(&local_file.game, &local_file.mod_id).await?;
                  file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
             }
          }
@@ -126,12 +126,12 @@ mod tests {
 
         let mut file_lists: HashMap<u32, FileList> = HashMap::new();
 
-        let herba_list = FileList::try_from_cache(&game, &herba_id).unwrap();
-        let magicka_list = FileList::try_from_cache(&game, &magicka_id).unwrap();
+        let herba_list = FileList::try_from_cache(&game, &herba_id).await.unwrap();
+        let magicka_list = FileList::try_from_cache(&game, &magicka_id).await.unwrap();
         file_lists.insert(herba_id, herba_list);
         file_lists.insert(magicka_id, magicka_list);
 
-        let cache = Cache::new(&game)?;
+        let cache = Cache::new(&game).await?;
         let errors = ErrorList::default();
         let client: Client = Client::new(&cache, &errors)?;
 

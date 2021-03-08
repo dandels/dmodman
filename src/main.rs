@@ -78,7 +78,7 @@ async fn main() -> Result<(), Error> {
     let game = determine_active_game(&matches, nxm_game_opt);
      /* TODO ideally we would ask for the username/password and not require the user to create an apikey
      */
-    let cache = Cache::new(&game).unwrap();
+    let cache = Cache::new(&game).await.unwrap();
     let client = Client::new(&cache, &errors).unwrap();
 
     if let Some(nxm_str) = nxm_str_opt {
