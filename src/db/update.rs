@@ -109,7 +109,7 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
-    use crate::ErrorList;
+    use crate::Errors;
     use crate::api::{ Client, FileList  };
     use crate::db::update::{ UpdateChecker, UpdateError };
     use crate::db::{ Cache, Cacheable };
@@ -132,7 +132,7 @@ mod tests {
         file_lists.insert(magicka_id, magicka_list);
 
         let cache = Cache::new(&game).await?;
-        let errors = ErrorList::default();
+        let errors = Errors::default();
         let client: Client = Client::new(&cache, &errors)?;
 
         let mut updater = UpdateChecker::new_with_file_lists(file_lists);

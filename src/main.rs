@@ -1,7 +1,7 @@
 mod api;
 mod cmd;
 mod config;
-mod error_list;
+mod errors;
 mod db;
 mod nxm_listener;
 mod test;
@@ -12,13 +12,13 @@ use api::Client;
 use db::Cache;
 use std::io::{ Error, ErrorKind };
 use std::str::FromStr;
-pub use self::error_list::ErrorList;
+pub use self::errors::Errors;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let matches = cmd::args();
 
-    let errors = ErrorList::default();
+    let errors = Errors::default();
 
     let mut nxm_str_opt: Option<&str> = None;
     let mut nxm_game_opt: Option<String> = None;

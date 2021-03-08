@@ -1,4 +1,4 @@
-use crate::{config, error_list::ErrorList, util};
+use crate::{config, errors::Errors, util};
 use crate::db::{Cache, Cacheable, LocalFile};
 
 use super::query::{DownloadLink, FileList, Search, Queriable};
@@ -31,13 +31,13 @@ pub struct Client {
     client: Arc<reqwest::Client>,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
-    errors: ErrorList,
+    errors: Errors,
     pub cache: Cache,
     pub downloads: Downloads
 }
 
 impl Client {
-    pub fn new(cache: &Cache, errors: &ErrorList) -> Result<Self, RequestError> {
+    pub fn new(cache: &Cache, errors: &Errors) -> Result<Self, RequestError> {
         let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
 
         let mut headers = HeaderMap::new();
