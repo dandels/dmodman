@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 pub struct Cache {
     pub game: String,
     pub local_files: Arc<RwLock<Vec<LocalFile>>>,
-    pub file_list_map: Arc<RwLock<HashMap<u32, FileList>>>,
+    pub file_list_map: Arc<RwLock<HashMap<(String, u32), FileList>>>,
     pub file_details: FileDetailsCache,
 }
 
@@ -37,7 +37,7 @@ impl Cache {
             })
             .collect();
 
-        let mut file_list_map: HashMap<u32, FileList> = HashMap::new();
+        let mut file_list_map: HashMap<(String, u32), FileList> = HashMap::new();
         let mut no_file_list_found: HashSet<u32> = HashSet::new();
         let mut file_details_map: HashMap<u64, FileDetails> = HashMap::new();
 
@@ -52,14 +52,14 @@ impl Cache {
             }
 
             let file_list: FileList;
-            match file_list_map.get(&f.mod_id) {
+            match file_list_map.get(&(f.game.clone(), f.mod_id)) {
                 // found during previous iteration
                 Some(fl) => file_list = fl.clone(),
                 // not found during previous iteration, checking cache
                 None => match FileList::try_from_cache(&game, &f.mod_id) {
                     Ok(fl) => {
                         file_list = fl.clone();
-                        file_list_map.insert(f.mod_id, fl);
+                        file_list_map.insert((f.game.clone(), f.mod_id), fl);
                     }
                     Err(e) => {
                         errors.append(&mut vec![e.to_string()]);
@@ -81,9 +81,12 @@ impl Cache {
         })
     }
 
-    pub fn save_file_list(&self, fl: FileList, mod_id: &u32) -> Result<(), std::io::Error> {
-        fl.save_to_cache(&self.game, mod_id)?;
-        self.file_list_map.write().unwrap().insert(*mod_id, fl);
+    pub fn save_file_list(&self, game: &str, fl: FileList, mod_id: &u32) -> Result<(), DbError> {
+        fl.save_to_cache(&game, mod_id)?;
+        self.file_list_map
+            .write()
+            .unwrap()
+            .insert((game.to_string(), *mod_id), fl);
         Ok(())
     }
 

@@ -159,7 +159,7 @@ impl Client {
 
     pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
         let file_name = util::file_name_from_url(&url);
-        let mut path = config::download_dir(&nxm.domain_name);
+        let mut path = config::download_dir(&self.cache.game);
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
         path.push(&file_name.to_string());
 
@@ -181,7 +181,7 @@ impl Client {
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
                 self.cache.file_details.insert(nxm.file_id, fd.clone());
             }
-            self.cache.save_file_list(fl, &nxm.mod_id)?;
+            self.cache.save_file_list(&nxm.domain_name, fl, &nxm.mod_id)?;
         }
 
         Ok(path)
