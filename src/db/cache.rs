@@ -3,11 +3,13 @@ use crate::config;
 use super::error::DbError;
 use super::{Cacheable, FileDetailsCache, LocalFile};
 
-use tokio_stream::StreamExt;
+use std::sync::{Arc, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
+
+use indexmap::IndexMap;
+use tokio_stream::StreamExt;
 use tokio::fs;
-use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
 pub struct Cache {
@@ -36,7 +38,7 @@ impl Cache {
 
         let mut file_list_map: HashMap<(String, u32), FileList> = HashMap::new();
         let mut no_file_list_found: HashSet<u32> = HashSet::new();
-        let mut file_details_map: HashMap<u64, FileDetails> = HashMap::new();
+        let mut file_details_map: IndexMap<u64, FileDetails> = IndexMap::new();
 
         /* For each LocalFile, if that file's mod already has a FileList mapped, we use it. Otherwise we load it from
          * disk. It's possible that a LocalFile has no corresponding FileList (the API forgot about an old file or it's

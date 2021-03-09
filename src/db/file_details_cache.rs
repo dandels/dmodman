@@ -1,5 +1,5 @@
 use crate::api::FileDetails;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, RwLock,
@@ -7,13 +7,13 @@ use std::sync::{
 
 #[derive(Clone)]
 pub struct FileDetailsCache {
-    pub map: Arc<RwLock<HashMap<u64, FileDetails>>>,
+    pub map: Arc<RwLock<IndexMap<u64, FileDetails>>>,
     is_changed: Arc<AtomicBool>, // used by UI to ask if file table needs to be redrawn
     len: Arc<AtomicUsize>, // used by UI controls, so we only update when asking for is_changed
 }
 
 impl FileDetailsCache {
-    pub fn new(map: HashMap<u64, FileDetails>) -> Self {
+    pub fn new(map: IndexMap<u64, FileDetails>) -> Self {
         let len = &map.keys().len();
         Self {
             map: Arc::new(RwLock::new(map)),
