@@ -1,18 +1,18 @@
 mod api;
 mod cmd;
 mod config;
-mod errors;
 mod db;
+mod errors;
 mod nxm_listener;
 mod test;
 mod ui;
 mod util;
 
+pub use self::errors::Errors;
 use api::Client;
 use db::Cache;
-use std::io::{ Error, ErrorKind };
+use std::io::{Error, ErrorKind};
 use std::str::FromStr;
-pub use self::errors::Errors;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Error> {
             nxm_game_opt = Some(nxm.domain_name);
         } else {
             println!("Bogus unnamed argument. Bailing out.");
-            return Ok(())
+            return Ok(());
         }
     }
 
@@ -53,30 +53,30 @@ async fn main() -> Result<(), Error> {
                     if let Some(nxm_str) = nxm_str_opt {
                         nxm_listener::send_msg(&stream, &nxm_str.as_bytes()).await?;
                         println!("Added download to already running instance: {}", nxm_str);
-                        return Ok(())
+                        return Ok(());
                     // otherwise just exit.
                     } else {
                         println!("Another instance of dmodman is already running.");
-                        return Ok(())
+                        return Ok(());
                     }
-                },
+                }
                 /* Socket probably hasn't been cleanly removed. Remove it and bind to it.
                  */
                 Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
                     nxm_listener::remove_existing(&uid).unwrap();
                     nxm_rx = nxm_listener::listen(&uid).unwrap();
-                },
+                }
                 Err(e) => {
                     //TODO can we hit this case?
                     panic!("{}", e.to_string());
                 }
             }
-        },
-        Err(e) => return Err(e)
+        }
+        Err(e) => return Err(e),
     }
 
     let game = determine_active_game(&matches, nxm_game_opt);
-     /* TODO ideally we would ask for the username/password and not require the user to create an apikey
+    /* TODO ideally we would ask for the username/password and not require the user to create an apikey
      */
     let cache = Cache::new(&game).await.unwrap();
     let client = Client::new(&cache, &errors).unwrap();
@@ -93,15 +93,16 @@ async fn main() -> Result<(), Error> {
                 match nxm_result {
                     Ok(nxm_str) => {
                         Client::queue_download(client.clone(), nxm_str.to_string()).await;
-                    },
-                    Err(e) => { println!("{}", e.to_string()); }
+                    }
+                    Err(e) => {
+                        println!("{}", e.to_string());
+                    }
                 }
             }
         });
     }
 
-
-    ui::init(&cache, &client, &errors).await.unwrap();
+    ui::init(&cache.file_details, &client.downloads, &errors);
     Ok(())
 }
 
