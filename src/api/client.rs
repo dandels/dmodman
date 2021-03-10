@@ -143,7 +143,8 @@ impl Client {
             match item {
                 Ok(bytes) => {
                     bufwriter.write_all(&bytes).await?;
-                    status.write().unwrap().update_progress(bytes.len().try_into().unwrap());
+                    status.write().unwrap().update_progress(bytes.len() as u64);
+                    self.downloads.set_changed();
                 }
                 Err(e) => {
                     self.errors.push(format!("Download error for {}: {}", file_name, e.to_string()));

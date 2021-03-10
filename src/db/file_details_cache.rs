@@ -52,9 +52,6 @@ impl FileDetailsCache {
     }
 
     pub fn is_changed(&self) -> bool {
-        let ret = self.is_changed.load(Ordering::Relaxed);
-        self.is_changed
-            .store(!self.is_changed.load(Ordering::Relaxed), Ordering::Relaxed);
-        ret
+        self.is_changed.load(Ordering::Relaxed)
     }
 }
