@@ -62,7 +62,7 @@ impl Cache {
                 None => match FileList::try_from_cache(PathType::FileList(&game, &f.mod_id).path()).await {
                     Ok(fl) => {
                         file_list = fl.clone();
-                        file_lists.insert((f.game.clone(), f.mod_id), fl);
+                        file_lists.insert((f.game.to_string(), f.mod_id), fl);
                     }
                     Err(e) => {
                         errors.append(&mut vec![e.to_string()]);
@@ -103,12 +103,13 @@ impl Cache {
     }
 
     pub async fn save_file_list(&self, fl: &FileList, game: &str, mod_id: &u32) -> Result<(), DbError> {
-        let path = PathType::FileList(game, mod_id).path();
+        let path = PathType::FileList(&game, &mod_id).path();
         fl.save_to_cache(path).await?;
         self.file_lists.insert((game.to_string(), *mod_id), fl.clone());
         Ok(())
     }
 
+    // TODO LocalFile's should use PathType. It's currently special cased since it's not an API response type.
     pub async fn save_local_file(&self, lf: LocalFile) -> Result<bool, io::Error> {
         // returns early if LocalFile already exists
         if self.local_files.read().unwrap().iter().any(|f| f.file_id == lf.file_id) {

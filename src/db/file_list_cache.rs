@@ -18,8 +18,8 @@ impl FileListCache {
         self.map.try_write().unwrap().insert(key, value);
     }
 
-    pub fn get(&self, game: String, key: u32) -> Option<FileList> {
-        match self.map.try_read().unwrap().get(&(game, key)) {
+    pub fn get(&self, game: &str, key: u32) -> Option<FileList> {
+        match self.map.try_read().unwrap().get(&(game.to_string(), key)) {
             Some(v) => Some(v.clone()),
             None => None,
         }
