@@ -1,73 +1,99 @@
 use super::local_file::*;
-use super::Cacheable;
 use crate::api::{
     error::DownloadError,
     {Client, FileList, Queriable},
 };
+use crate::Errors;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+use tokio::task;
 
+#[derive(Clone)]
 pub struct UpdateChecker {
-    pub updatable_mods: HashSet<u32>,
-    pub file_lists: HashMap<u32, FileList>,
+    pub updatable: Arc<RwLock<HashMap<(String, u32), Vec<LocalFile>>>>,
+    pub client: Client,
+    errors: Errors,
 }
 
 impl UpdateChecker {
-    #[cfg(test)]
-    pub fn new_with_file_lists(file_lists: HashMap<u32, FileList>) -> Self {
+    pub fn new(client: Client) -> Self {
         Self {
-            updatable_mods: HashSet::new(),
-            file_lists,
+            updatable: Arc::new(RwLock::new(HashMap::new())),
+            errors: client.errors.clone(),
+            client,
         }
     }
 
-    pub fn new() -> Self {
-        Self {
-            updatable_mods: HashSet::new(),
-            file_lists: HashMap::new(),
-        }
-    }
-
-    pub async fn check_all(&mut self, client: &Client) -> Result<&HashSet<u32>, DownloadError> {
-        self.check_files(client).await
-    }
-
-    pub async fn check_files(&mut self, client: &Client) -> Result<&HashSet<u32>, DownloadError> {
-        for lf in client.cache.local_files.try_read().unwrap().clone().into_iter() {
-            if self.check_file(client, &lf).await? {
-                self.updatable_mods.insert(lf.mod_id);
+    pub async fn check_all(&self) -> Result<(), DownloadError> {
+        let mut mods_to_check: HashMap<(String, u32), Vec<LocalFile>> = HashMap::new();
+        for lf in self.client.cache.local_files.try_read().unwrap().clone().into_iter() {
+            match mods_to_check.get_mut(&(lf.game.clone(), lf.mod_id)) {
+                Some(vec) => vec.push(lf.clone()),
+                None => {
+                    let mut vec = Vec::new();
+                    vec.push(lf.clone());
+                    mods_to_check.insert((lf.game, lf.mod_id), vec);
+                }
             }
         }
 
-        Ok(&self.updatable_mods)
+        let mut handles: Vec<task::JoinHandle<Result<(), DownloadError>>> = Vec::new();
+        for ((game, mod_id), files) in mods_to_check {
+            let me = self.clone();
+            let handle: task::JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
+                let upds = me.check_mod(&game, mod_id, files).await?;
+                me.updatable.write().unwrap().insert((game, mod_id), upds);
+                Ok(())
+            });
+            handles.push(handle);
+        }
+        for h in handles {
+            match h.await {
+                Ok(_) => {}
+                Err(e) => self.errors.push(e.to_string()),
+            }
+        }
+
+        Ok(())
     }
 
-    pub async fn check_file(&self, client: &Client, local_file: &LocalFile) -> Result<bool, DownloadError> {
-        /* - Find out the mod for this file
-         * - If the mod is already checked, return that result
-         * - Otherwise loop through the file update history
+    pub async fn check_mod(
+        &self,
+        game: &str,
+        mod_id: u32,
+        files: Vec<LocalFile>,
+    ) -> Result<Vec<LocalFile>, DownloadError> {
+        /* We might be able to tell that a file needs updates using the cached filelist, but it's not certain. First we
+         * check the local version - if it doesn't have updates, we query the API.
          */
-
-        if self.updatable_mods.contains(&local_file.mod_id) {
-            return Ok(true);
+        let mut have_updates = Vec::new();
+        let mut needs_refresh = false;
+        match self.client.cache.file_lists.get(&game, mod_id) {
+            Some(mut fl) => {
+                fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
+                for lf in files.clone() {
+                    if self.file_has_update(&lf, &fl) {
+                        have_updates.push(lf);
+                        needs_refresh = false;
+                    }
+                }
+            }
+            None => needs_refresh = true,
         }
 
-        let mut file_list;
-        match self.file_lists.get(&local_file.mod_id) {
-            Some(v) => file_list = v.to_owned(),
-            None => {
-                println!("{:?}", self.file_lists);
+        if needs_refresh {
+            let mut file_list = FileList::request(&self.client, vec![&game, &mod_id.to_string()]).await?;
+            self.client.cache.save_file_list(&file_list, &game, &mod_id).await?;
+            file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
 
-                file_list = FileList::request(client, vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
-                client
-                    .cache
-                    .save_file_list(&file_list, &local_file.game, &local_file.mod_id)
-                    .await?;
-                file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp)
+            for lf in files {
+                if self.file_has_update(&lf, &file_list) {
+                    have_updates.push(lf);
+                }
             }
         }
-
-        Ok(self.file_has_update(&local_file, &file_list))
+        Ok(have_updates)
     }
 
     fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
@@ -75,45 +101,27 @@ impl UpdateChecker {
         let mut current_id = local_file.file_id;
         let mut latest_file: &str = &local_file.file_name;
 
-        /* This could be an infinite loop if the data is corrupted and the file id's point to
-         * eachother recursively. Using a for-loop fixes that, but doesn't do anything to fix the
-         * error.
-         */
-        for _ in 0..file_list.file_updates.len() {
-            match file_list.file_updates.iter().find(|x| x.old_file_id == current_id) {
-                Some(v) => {
-                    /* If new_file_name matches a file on disk, then there are multiple downloads of
-                     * the same mod, and we're currently looking at the old version.
-                     * This doesn't yet mean that there are updates - the user can have an old version
-                     * and the newest version.
-                     */
-                    current_id = v.new_file_id;
-                    latest_file = &v.new_file_name;
-                    has_update = true;
-                }
-                /* We've reached the end of the update history for one file. If the latest file doesn't
-                 * exist, this file is assumed to have updates.
-                 * Note that the API can't be trusted to remember every old file.
-                 */
-                None => {
-                    let mut f: PathBuf = local_file.path().parent().unwrap().to_path_buf();
-                    f.push(latest_file);
-                    return !Path::new(&f).exists() && has_update;
-                }
+        // For this to work the file updates need to be sorted by key. It's up to the caller to do so to preserve
+        file_list.file_updates.iter().for_each(|x| {
+            if x.old_file_id == current_id {
+                current_id = x.new_file_id;
+                latest_file = &x.new_file_name;
+                has_update = true;
             }
-        }
-        false
+        });
+        let mut f: PathBuf = local_file.path().parent().unwrap().to_path_buf();
+        f.push(latest_file);
+        return !Path::new(&f).exists() && has_update;
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{Client, FileList};
+    use crate::api::Client;
     use crate::cache::update::{DownloadError, UpdateChecker};
-    use crate::cache::{Cache, Cacheable, PathType};
+    use crate::cache::Cache;
     use crate::test;
     use crate::Errors;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn update() -> Result<(), DownloadError> {
@@ -123,26 +131,26 @@ mod tests {
         let herba_id = 46599;
         let magicka_id = 39350;
 
-        let mut file_lists: HashMap<u32, FileList> = HashMap::new();
-
-        let path = PathType::FileList(&game, &herba_id).path();
-        let herba_list = FileList::try_from_cache(path).await.unwrap();
-        let path = PathType::FileList(&game, &magicka_id).path();
-        let magicka_list = FileList::try_from_cache(path).await.unwrap();
-        file_lists.insert(herba_id, herba_list);
-        file_lists.insert(magicka_id, magicka_list);
-
         let cache = Cache::new(&game).await?;
         let errors = Errors::default();
         let client: Client = Client::new(&cache, &errors)?;
 
-        let mut updater = UpdateChecker::new_with_file_lists(file_lists);
-        let upds = updater.check_all(&client).await?;
+        let updater = UpdateChecker::new(client);
+        updater.check_all().await?;
 
-        println!("{:?}", upds);
+        let upds = updater.updatable.read().unwrap();
+        assert_eq!(false, upds.get(&(game.clone(), magicka_id)).unwrap().first().is_some());
 
-        assert_eq!(true, upds.contains(&herba_id));
-        assert_eq!(false, upds.contains(&magicka_id));
+        assert_eq!(
+            upds.get(&(game.clone(), herba_id)).unwrap().get(0).unwrap().file_name,
+            "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z"
+        );
+
+        assert_eq!(
+            upds.get(&(game, herba_id)).unwrap().get(1).unwrap().file_name,
+            "GH TR - PT Meshes-46599-1-01-1556986716.7z"
+        );
+
         Ok(())
     }
 }
