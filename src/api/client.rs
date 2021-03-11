@@ -1,23 +1,22 @@
+use crate::db::{Cache, LocalFile};
 use crate::{config, errors::Errors, util};
-use crate::db::{Cache, Cacheable, LocalFile};
 
-use super::query::{DownloadLink, FileList, Search, Queriable};
-use super::download::{Downloads, DownloadStatus, NxmUrl};
-use super::error::RequestError;
+use super::download::{DownloadStatus, Downloads, NxmUrl};
 use super::error::DownloadError;
+use super::error::RequestError;
+use super::query::{DownloadLink, FileList, Queriable, Search};
 
-use reqwest::header::{RANGE, HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
 use reqwest::{Response, StatusCode};
-use tokio_stream::StreamExt;
 use tokio::{task, task::JoinHandle};
+use tokio_stream::StreamExt;
 use url::Url;
 
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::{Arc, RwLock};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use std::path::{PathBuf};
-use std::sync::{Arc, RwLock };
-use std::convert::TryInto;
-use std::str::FromStr;
 
 /* API reference:
  * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
@@ -33,7 +32,7 @@ pub struct Client {
     api_headers: Arc<Option<HeaderMap>>,
     errors: Errors,
     pub cache: Cache,
-    pub downloads: Downloads
+    pub downloads: Downloads,
 }
 
 impl Client {
@@ -48,7 +47,7 @@ impl Client {
                 let mut api_headers = headers.clone();
                 api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
                 Some(api_headers)
-            },
+            }
             Err(e) => {
                 errors.push(e.to_string());
                 None
@@ -61,10 +60,9 @@ impl Client {
             api_headers: Arc::new(api_headers),
             errors: errors.clone(),
             cache: cache.clone(),
-            downloads: Downloads::default()
+            downloads: Downloads::default(),
         })
     }
-
 
     fn build_request(&self, url: Url) -> reqwest::RequestBuilder {
         self.client.get(url).headers((*self.headers).clone())
@@ -90,14 +88,23 @@ impl Client {
          *     resp.status().as_str(),
          *     resp.status().canonical_reason()
          * );
-        */
+         */
         Ok(resp)
     }
 
     pub async fn queue_download(client: Client, nxm_str: String) {
         let _handle: JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
             let nxm = NxmUrl::from_str(&nxm_str)?;
-            let dl = DownloadLink::request(&client, vec![&nxm.domain_name, &nxm.mod_id.to_string(), &nxm.file_id.to_string(), &nxm.query]).await?;
+            let dl = DownloadLink::request(
+                &client,
+                vec![
+                    &nxm.domain_name,
+                    &nxm.mod_id.to_string(),
+                    &nxm.file_id.to_string(),
+                    &nxm.query,
+                ],
+            )
+            .await?;
             // TODO only for debugging. Besides, it's not using the file id as it should.
             dl.save_to_cache(&nxm.domain_name, &nxm.mod_id).await?;
             let url: Url = Url::parse(&dl.location.URI)?;
@@ -106,7 +113,13 @@ impl Client {
         });
     }
 
-    async fn download_buffered(&self, url: Url, path: &PathBuf, file_name: &str, file_id: u64) -> Result<(), DownloadError> {
+    async fn download_buffered(
+        &self,
+        url: Url,
+        path: &PathBuf,
+        file_name: &str,
+        file_id: u64,
+    ) -> Result<(), DownloadError> {
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
@@ -131,9 +144,14 @@ impl Client {
                 open_opts.write(true).create(true).open(&part_path).await?
             }
             StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await?,
-            code => panic!("Download {} got unexpected HTTP response: {}", file_name, code)
+            code => panic!("Download {} got unexpected HTTP response: {}", file_name, code),
         };
-        let status = Arc::new(RwLock::new(DownloadStatus::new(file_name.to_string(), file_id, bytes_read, resp.content_length())));
+        let status = Arc::new(RwLock::new(DownloadStatus::new(
+            file_name.to_string(),
+            file_id,
+            bytes_read,
+            resp.content_length(),
+        )));
         self.downloads.add(status.clone());
 
         let mut bufwriter = BufWriter::new(&mut file);
@@ -147,7 +165,8 @@ impl Client {
                     self.downloads.set_changed();
                 }
                 Err(e) => {
-                    self.errors.push(format!("Download error for {}: {}", file_name, e.to_string()));
+                    self.errors
+                        .push(format!("Download error for {}: {}", file_name, e.to_string()));
                 }
             }
         }
@@ -165,8 +184,9 @@ impl Client {
         path.push(&file_name.to_string());
 
         if path.exists() {
-            self.errors.push(format!("{} already exists and won't be downloaded again.", file_name));
-            return Ok(path)
+            self.errors
+                .push(format!("{} already exists and won't be downloaded again.", file_name));
+            return Ok(path);
         }
 
         self.download_buffered(url, &path, &file_name, nxm.file_id).await?;
