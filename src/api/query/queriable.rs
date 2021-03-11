@@ -1,11 +1,11 @@
-use async_trait::async_trait;
-use crate::db::Cacheable;
 use crate::api::error::RequestError;
-use crate::util::format;
 use crate::api::Client;
+use crate::util::format;
+use async_trait::async_trait;
+use serde::de::DeserializeOwned;
 
 #[async_trait]
-pub trait Queriable: Cacheable {
+pub trait Queriable: DeserializeOwned {
     const FORMAT_STRING: &'static str;
 
     async fn request(client: &Client, params: Vec<&str>) -> Result<Self, RequestError> {

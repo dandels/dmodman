@@ -1,21 +1,23 @@
-use crate::api::{FileDetails, FileList};
-use crate::config;
 use super::error::DbError;
-use super::{Cacheable, FileDetailsCache, LocalFile};
+use super::PathType;
+use super::{Cacheable, FileDetailsCache, FileListCache, LocalFile};
+use crate::api::{DownloadLink, FileDetails, FileList, Md5Search, ModInfo};
+use crate::config;
 
-use std::sync::{Arc, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
+use std::sync::{Arc, RwLock};
 
 use indexmap::IndexMap;
-use tokio_stream::StreamExt;
 use tokio::fs;
+use tokio::io;
+use tokio_stream::StreamExt;
 
 #[derive(Clone)]
 pub struct Cache {
     pub game: Arc<String>,
     pub local_files: Arc<RwLock<Vec<LocalFile>>>,
-    pub file_list_map: Arc<RwLock<HashMap<(String, u32), FileList>>>,
+    pub file_lists: FileListCache,
     pub file_details: FileDetailsCache,
 }
 
@@ -34,9 +36,9 @@ impl Cache {
             if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("json") {
                 local_files.push(LocalFile::from_path(&f.path()).await?);
             }
-        };
+        }
 
-        let mut file_list_map: HashMap<(String, u32), FileList> = HashMap::new();
+        let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
         let mut no_file_list_found: HashSet<u32> = HashSet::new();
         let mut file_details_map: IndexMap<u64, FileDetails> = IndexMap::new();
 
@@ -53,14 +55,14 @@ impl Cache {
             }
 
             let file_list: FileList;
-            match file_list_map.get(&(f.game.clone(), f.mod_id)) {
+            match file_lists.get(&(f.game.clone(), f.mod_id)) {
                 // found during previous iteration
                 Some(fl) => file_list = fl.clone(),
                 // not found during previous iteration, checking cache
-                None => match FileList::try_from_cache(&game, &f.mod_id).await {
+                None => match FileList::try_from_cache(PathType::FileList(&game, &f.mod_id).path()).await {
                     Ok(fl) => {
                         file_list = fl.clone();
-                        file_list_map.insert((f.game.clone(), f.mod_id), fl);
+                        file_lists.insert((f.game.clone(), f.mod_id), fl);
                     }
                     Err(e) => {
                         errors.append(&mut vec![e.to_string()]);
@@ -72,32 +74,44 @@ impl Cache {
             if let Some(fd) = file_list.files.iter().find(|fd| fd.file_id == f.file_id) {
                 file_details_map.insert(f.file_id, fd.clone());
             }
-        };
+        }
 
         Ok(Self {
             game: Arc::new(game.to_owned()),
             local_files: Arc::new(RwLock::new(local_files)),
-            file_list_map: Arc::new(RwLock::new(file_list_map)),
+            file_lists: FileListCache::new(file_lists),
             file_details: FileDetailsCache::new(file_details_map),
         })
     }
 
-    pub async fn save_file_list(&self, game: &str, fl: FileList, mod_id: &u32) -> Result<(), DbError> {
-        fl.save_to_cache(&game, mod_id).await?;
-        self.file_list_map
-            .write()
-            .unwrap()
-            .insert((game.to_string(), *mod_id), fl);
+    /* TODO: when adding LocalFile,
+     * - Check if FileDetails is required (probably yes)
+     * - Send request for FileList if not present(?)
+     * - Add the FileDetails to FileDetailsCache
+     */
+
+    pub async fn save_download_link(
+        &self,
+        dl: &DownloadLink,
+        game: &str,
+        mod_id: &u32,
+        file_id: &u64,
+    ) -> Result<(), DbError> {
+        let path = PathType::DownloadLink(game, mod_id, file_id).path();
+        dl.save_to_cache(path).await?;
         Ok(())
     }
 
-    /* returns whether FileDetails is up to date
-     * TODO figure out how to keep the cache file types in sync with eachother
-     */
-    pub async fn save_local_file(&self, lf: LocalFile) -> Result<bool, DbError> {
-        let is_present: bool = self.local_files.read().unwrap().iter().any(|f| f.file_id == lf.file_id);
+    pub async fn save_file_list(&self, fl: &FileList, game: &str, mod_id: &u32) -> Result<(), DbError> {
+        let path = PathType::FileList(game, mod_id).path();
+        fl.save_to_cache(path).await?;
+        self.file_lists.insert((game.to_string(), *mod_id), fl.clone());
+        Ok(())
+    }
 
-        if is_present {
+    pub async fn save_local_file(&self, lf: LocalFile) -> Result<bool, io::Error> {
+        // returns early if LocalFile already exists
+        if self.local_files.read().unwrap().iter().any(|f| f.file_id == lf.file_id) {
             return Ok(true);
         }
 

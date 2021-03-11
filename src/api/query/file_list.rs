@@ -1,7 +1,4 @@
 use super::{FileDetails, Queriable};
-use crate::config;
-use crate::db::Cacheable;
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -19,10 +16,6 @@ pub struct FileUpdate {
     pub new_file_name: String,
     pub uploaded_timestamp: u64,
     pub uploaded_time: String,
-}
-
-impl Cacheable for FileList {
-    const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_FILE_LISTS;
 }
 
 #[async_trait]

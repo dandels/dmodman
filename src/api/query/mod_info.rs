@@ -1,7 +1,5 @@
 use super::Queriable;
 use crate::config;
-use crate::db::Cacheable;
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -43,10 +41,6 @@ pub struct UserInfo {
     pub member_group_id: u32,
     pub member_id: u32,
     pub name: String,
-}
-
-impl Cacheable for ModInfo {
-    const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_MOD_INFO;
 }
 
 #[async_trait]

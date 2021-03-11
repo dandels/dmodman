@@ -105,8 +105,10 @@ impl Client {
                 ],
             )
             .await?;
-            // TODO only for debugging. Besides, it's not using the file id as it should.
-            dl.save_to_cache(&nxm.domain_name, &nxm.mod_id).await?;
+            client
+                .cache
+                .save_download_link(&dl, &nxm.domain_name, &nxm.mod_id, &nxm.file_id)
+                .await?;
             let url: Url = Url::parse(&dl.location.URI)?;
             let _file = client.download_mod_file(&nxm, url).await?;
             Ok(())
@@ -202,7 +204,7 @@ impl Client {
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
                 self.cache.file_details.insert(nxm.file_id, fd.clone());
             }
-            self.cache.save_file_list(&nxm.domain_name, fl, &nxm.mod_id).await?;
+            self.cache.save_file_list(&fl, &nxm.domain_name, &nxm.mod_id).await?;
         }
 
         Ok(path)

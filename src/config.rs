@@ -10,11 +10,6 @@ use std::path::PathBuf;
  */
 
 pub const DOWNLOAD_DIR: &str = "downloads";
-pub const CACHE_DIR_DL_LINKS: &str = "download_links";
-pub const CACHE_DIR_FILE_DETAILS: &str = "file_lists";
-pub const CACHE_DIR_FILE_LISTS: &str = "file_lists";
-pub const CACHE_DIR_MOD_INFO: &str = "mod_info";
-pub const CACHE_DIR_MD5_SEARCH: &str = "md5_search";
 
 pub fn read_api_key() -> Result<String, RequestError> {
     let mut path: PathBuf = config_dir();

@@ -1,10 +1,11 @@
-use super::Cacheable;
-use crate::api::{ { Client, FileList, Queriable} , error::RequestError };
-use super::error::*;
-use std::path::{Path, PathBuf};
-use std::collections::{HashMap, HashSet};
-use super::cache::Cache;
 use super::local_file::*;
+use super::Cacheable;
+use crate::api::{
+    error::DownloadError,
+    {Client, FileList, Queriable},
+};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 pub struct UpdateChecker {
     pub updatable_mods: HashSet<u32>,
@@ -16,7 +17,7 @@ impl UpdateChecker {
     pub fn new_with_file_lists(file_lists: HashMap<u32, FileList>) -> Self {
         Self {
             updatable_mods: HashSet::new(),
-            file_lists
+            file_lists,
         }
     }
 
@@ -27,11 +28,11 @@ impl UpdateChecker {
         }
     }
 
-    pub async fn check_all(&mut self, client: &Client) -> Result<&HashSet<u32>, UpdateError> {
+    pub async fn check_all(&mut self, client: &Client) -> Result<&HashSet<u32>, DownloadError> {
         self.check_files(client).await
     }
 
-    pub async fn check_files(&mut self, client: &Client) -> Result<&HashSet<u32>, UpdateError> {
+    pub async fn check_files(&mut self, client: &Client) -> Result<&HashSet<u32>, DownloadError> {
         for lf in client.cache.local_files.try_read().unwrap().clone().into_iter() {
             if self.check_file(client, &lf).await? {
                 self.updatable_mods.insert(lf.mod_id);
@@ -41,30 +42,32 @@ impl UpdateChecker {
         Ok(&self.updatable_mods)
     }
 
-    pub async fn check_file(&self, client: &Client, local_file: &LocalFile) -> Result<bool, RequestError> {
+    pub async fn check_file(&self, client: &Client, local_file: &LocalFile) -> Result<bool, DownloadError> {
         /* - Find out the mod for this file
          * - If the mod is already checked, return that result
          * - Otherwise loop through the file update history
          */
 
-         if self.updatable_mods.contains(&local_file.mod_id) {
-             return Ok(true)
-         }
+        if self.updatable_mods.contains(&local_file.mod_id) {
+            return Ok(true);
+        }
 
-         let mut file_list;
-         match self.file_lists.get(&local_file.mod_id) {
-             Some(v) => file_list = v.to_owned(),
-             None => {
-                 println!("{:?}", self.file_lists);
+        let mut file_list;
+        match self.file_lists.get(&local_file.mod_id) {
+            Some(v) => file_list = v.to_owned(),
+            None => {
+                println!("{:?}", self.file_lists);
 
-                 // TODO handle files from other mods gracefully, eg. Skyrim SSE + Oldrim
-                 file_list = FileList::request(client, vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
-                 file_list.save_to_cache(&local_file.game, &local_file.mod_id).await?;
-                 file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
+                file_list = FileList::request(client, vec![&local_file.game, &local_file.mod_id.to_string()]).await?;
+                client
+                    .cache
+                    .save_file_list(&file_list, &local_file.game, &local_file.mod_id)
+                    .await?;
+                file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp)
             }
-         }
+        }
 
-         Ok(self.file_has_update(&local_file, &file_list))
+        Ok(self.file_has_update(&local_file, &file_list))
     }
 
     fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
@@ -72,16 +75,12 @@ impl UpdateChecker {
         let mut current_id = local_file.file_id;
         let mut latest_file: &str = &local_file.file_name;
 
-         /* This could be an infinite loop if the data is corrupted and the file id's point to
-          * eachother recursively. Using a for-loop fixes that, but doesn't do anything to fix the
-          * error.
+        /* This could be an infinite loop if the data is corrupted and the file id's point to
+         * eachother recursively. Using a for-loop fixes that, but doesn't do anything to fix the
+         * error.
          */
         for _ in 0..file_list.file_updates.len() {
-            match file_list
-                .file_updates
-                .iter()
-                .find(|x| x.old_file_id == current_id)
-            {
+            match file_list.file_updates.iter().find(|x| x.old_file_id == current_id) {
                 Some(v) => {
                     /* If new_file_name matches a file on disk, then there are multiple downloads of
                      * the same mod, and we're currently looking at the old version.
@@ -109,15 +108,15 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
-    use crate::Errors;
-    use crate::api::{ Client, FileList  };
-    use crate::db::update::{ UpdateChecker, UpdateError };
-    use crate::db::{ Cache, Cacheable };
+    use crate::api::{Client, FileList};
+    use crate::db::update::{DownloadError, UpdateChecker};
+    use crate::db::{Cache, Cacheable, PathType};
     use crate::test;
+    use crate::Errors;
     use std::collections::HashMap;
 
     #[tokio::test]
-    async fn update() -> Result<(), UpdateError> {
+    async fn update() -> Result<(), DownloadError> {
         test::setup();
         let game: String = "morrowind".to_owned();
 
@@ -126,8 +125,10 @@ mod tests {
 
         let mut file_lists: HashMap<u32, FileList> = HashMap::new();
 
-        let herba_list = FileList::try_from_cache(&game, &herba_id).await.unwrap();
-        let magicka_list = FileList::try_from_cache(&game, &magicka_id).await.unwrap();
+        let path = PathType::FileList(&game, &herba_id).path();
+        let herba_list = FileList::try_from_cache(path).await.unwrap();
+        let path = PathType::FileList(&game, &magicka_id).path();
+        let magicka_list = FileList::try_from_cache(path).await.unwrap();
         file_lists.insert(herba_id, herba_list);
         file_lists.insert(magicka_id, magicka_list);
 

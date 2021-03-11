@@ -1,5 +1,3 @@
-use crate::config;
-use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -70,8 +68,4 @@ impl PartialEq for FileDetails {
     fn eq(&self, other: &FileDetails) -> bool {
         self.category_name == other.category_name
     }
-}
-
-impl Cacheable for FileDetails {
-    const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_FILE_DETAILS;
 }

@@ -1,6 +1,4 @@
 use super::{ModInfo, Queriable};
-use crate::config;
-use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -33,10 +31,6 @@ pub struct Md5FileDetails {
     pub external_virus_scan_url: Option<String>,
     pub changelog_html: Option<String>,
     pub md5: String,
-}
-
-impl Cacheable for Md5Search {
-    const CACHE_DIR_NAME: &'static str = config::CACHE_DIR_MD5_SEARCH;
 }
 
 impl Queriable for Md5Search {
