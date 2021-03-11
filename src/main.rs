@@ -82,7 +82,7 @@ async fn main() -> Result<(), Error> {
     let client = Client::new(&cache, &errors).unwrap();
 
     if let Some(nxm_str) = nxm_str_opt {
-        Client::queue_download(client.clone(), nxm_str.to_string()).await;
+        client.queue_download(nxm_str.to_string()).await;
     }
 
     // listen for nxm downloads
@@ -92,7 +92,7 @@ async fn main() -> Result<(), Error> {
             while let Some(nxm_result) = nxm_rx.recv().await {
                 match nxm_result {
                     Ok(nxm_str) => {
-                        Client::queue_download(client.clone(), nxm_str.to_string()).await;
+                        client.queue_download(nxm_str.to_string()).await;
                     }
                     Err(e) => {
                         println!("{}", e.to_string());

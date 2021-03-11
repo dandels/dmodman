@@ -30,7 +30,7 @@ pub struct Client {
     client: Arc<reqwest::Client>,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
-    errors: Errors,
+    pub errors: Errors,
     pub cache: Cache,
     pub downloads: Downloads,
 }
@@ -92,11 +92,12 @@ impl Client {
         Ok(resp)
     }
 
-    pub async fn queue_download(client: Client, nxm_str: String) {
+    pub async fn queue_download(&self, nxm_str: String) {
+        let me = self.clone();
         let _handle: JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
             let nxm = NxmUrl::from_str(&nxm_str)?;
             let dl = DownloadLink::request(
-                &client,
+                &me,
                 vec![
                     &nxm.domain_name,
                     &nxm.mod_id.to_string(),
@@ -105,12 +106,11 @@ impl Client {
                 ],
             )
             .await?;
-            client
-                .cache
+            me.cache
                 .save_download_link(&dl, &nxm.domain_name, &nxm.mod_id, &nxm.file_id)
                 .await?;
             let url: Url = Url::parse(&dl.location.URI)?;
-            let _file = client.download_mod_file(&nxm, url).await?;
+            let _file = me.download_mod_file(&nxm, url).await?;
             Ok(())
         });
     }
