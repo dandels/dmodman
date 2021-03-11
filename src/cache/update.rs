@@ -109,8 +109,8 @@ impl UpdateChecker {
 #[cfg(test)]
 mod tests {
     use crate::api::{Client, FileList};
-    use crate::db::update::{DownloadError, UpdateChecker};
-    use crate::db::{Cache, Cacheable, PathType};
+    use crate::cache::update::{DownloadError, UpdateChecker};
+    use crate::cache::{Cache, Cacheable, PathType};
     use crate::test;
     use crate::Errors;
     use std::collections::HashMap;

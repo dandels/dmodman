@@ -1,4 +1,4 @@
-use crate::db::{Cache, LocalFile};
+use crate::cache::{Cache, LocalFile};
 use crate::{config, errors::Errors, util};
 
 use super::download::{DownloadStatus, Downloads, NxmUrl};

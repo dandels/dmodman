@@ -1,5 +1,5 @@
 use super::{Md5SearchError, RequestError};
-use crate::db::DbError;
+use crate::cache::CacheError;
 use std::error::Error;
 use std::fmt;
 use std::num::ParseIntError;
@@ -8,7 +8,7 @@ use url::ParseError;
 
 #[derive(Debug)]
 pub enum DownloadError {
-    DbError { source: DbError },
+    CacheError { source: CacheError },
     Expired,
     IOError { source: io::Error },
     RequestError { source: RequestError },
@@ -21,7 +21,7 @@ pub enum DownloadError {
 impl Error for DownloadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            DownloadError::DbError { ref source } => Some(source),
+            DownloadError::CacheError { ref source } => Some(source),
             DownloadError::Expired => None,
             DownloadError::IOError { ref source } => Some(source),
             DownloadError::Md5SearchError { ref source } => Some(source),
@@ -35,7 +35,7 @@ impl Error for DownloadError {
 impl fmt::Display for DownloadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            DownloadError::DbError { source } => source.fmt(f),
+            DownloadError::CacheError { source } => source.fmt(f),
             DownloadError::Expired => f.write_str("Download link is expired."),
             DownloadError::IOError { source } => source.fmt(f),
             DownloadError::Md5SearchError { source } => source.fmt(f),
@@ -84,8 +84,8 @@ impl From<reqwest::Error> for DownloadError {
     }
 }
 
-impl From<DbError> for DownloadError {
-    fn from(error: DbError) -> Self {
-        DownloadError::DbError { source: error }
+impl From<CacheError> for DownloadError {
+    fn from(error: CacheError) -> Self {
+        DownloadError::CacheError { source: error }
     }
 }

@@ -35,8 +35,8 @@ impl Cacheable for ModInfo {}
 mod tests {
     use crate::api::error::*;
     use crate::api::{FileList, ModInfo};
-    use crate::db::cacheable::Cacheable;
-    use crate::db::PathType;
+    use crate::cache::cacheable::Cacheable;
+    use crate::cache::PathType;
     use crate::test;
 
     #[tokio::test]

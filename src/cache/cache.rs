@@ -1,4 +1,4 @@
-use super::error::DbError;
+use super::error::CacheError;
 use super::PathType;
 use super::{Cacheable, FileDetailsCache, FileListCache, LocalFile};
 use crate::api::{DownloadLink, FileDetails, FileList, Md5Search, ModInfo};
@@ -29,7 +29,7 @@ impl Cache {
      * - mod_id  -> FileList
      * - file_id -> FileDetails
      */
-    pub async fn new(game: &str) -> Result<Self, DbError> {
+    pub async fn new(game: &str) -> Result<Self, CacheError> {
         let mut local_files: Vec<LocalFile> = Vec::new();
         let mut file_stream = fs::read_dir(config::download_dir(&game)).await?;
         while let Some(f) = file_stream.next_entry().await? {
@@ -96,13 +96,13 @@ impl Cache {
         game: &str,
         mod_id: &u32,
         file_id: &u64,
-    ) -> Result<(), DbError> {
+    ) -> Result<(), CacheError> {
         let path = PathType::DownloadLink(game, mod_id, file_id).path();
         dl.save_to_cache(path).await?;
         Ok(())
     }
 
-    pub async fn save_file_list(&self, fl: &FileList, game: &str, mod_id: &u32) -> Result<(), DbError> {
+    pub async fn save_file_list(&self, fl: &FileList, game: &str, mod_id: &u32) -> Result<(), CacheError> {
         let path = PathType::FileList(&game, &mod_id).path();
         fl.save_to_cache(path).await?;
         self.file_lists.insert((game.to_string(), *mod_id), fl.clone());
@@ -130,10 +130,10 @@ impl Cache {
 #[cfg(test)]
 mod test {
     use super::Cache;
-    use super::DbError;
+    use super::CacheError;
 
     #[tokio::test]
-    async fn load_cache() -> Result<(), DbError> {
+    async fn load_cache() -> Result<(), CacheError> {
         let game = "morrowind";
         let cache = Cache::new(&game).await?;
 

@@ -5,7 +5,8 @@ use self::component::*;
 use self::event::{Event, Events};
 
 use crate::api::downloads::Downloads;
-use crate::db::FileDetailsCache;
+use crate::cache::update::UpdateChecker;
+use crate::cache::FileDetailsCache;
 use crate::Errors;
 
 use std::error::Error;

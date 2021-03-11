@@ -1,7 +1,7 @@
 mod api;
+mod cache;
 mod cmd;
 mod config;
-mod db;
 mod errors;
 mod nxm_listener;
 mod test;
@@ -10,7 +10,7 @@ mod util;
 
 pub use self::errors::Errors;
 use api::Client;
-use db::Cache;
+use cache::Cache;
 use std::io::{Error, ErrorKind};
 use std::str::FromStr;
 

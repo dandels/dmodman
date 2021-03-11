@@ -1,5 +1,5 @@
 use crate::api::Downloads;
-use crate::db::FileDetailsCache;
+use crate::cache::FileDetailsCache;
 use crate::Errors;
 
 use tui::layout::Constraint;
@@ -7,7 +7,6 @@ use tui::style::{Color, Modifier, Style};
 use tui::text::Spans;
 use tui::widgets::{Block, Borders, Cell, List, ListItem, ListState, Row, Table, TableState};
 
-#[derive(Clone)]
 pub struct ErrorList<'a> {
     pub widget: List<'a>,
     pub block: Block<'a>,
@@ -121,7 +120,6 @@ impl<'a> FileTable<'a> {
     }
 }
 
-#[derive(Clone)]
 pub struct DownloadTable<'a> {
     pub widget: Table<'a>,
     pub block: Block<'a>,
