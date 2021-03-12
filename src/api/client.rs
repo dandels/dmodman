@@ -65,10 +65,16 @@ impl Client {
     }
 
     fn build_request(&self, url: Url) -> reqwest::RequestBuilder {
+        if cfg!(test) {
+            panic!("Test tried to send HTTP request.");
+        }
         self.client.get(url).headers((*self.headers).clone())
     }
 
     fn build_api_request(&self, endpoint: &str) -> Result<reqwest::RequestBuilder, RequestError> {
+        if cfg!(test) {
+            panic!("Test tried to send API request.");
+        }
         let url: Url = Url::parse(&(String::from(API_URL) + endpoint)).unwrap();
         let api_headers = match &*self.api_headers {
             Some(v) => Ok(v.clone()),
