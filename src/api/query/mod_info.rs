@@ -1,6 +1,4 @@
 use super::Queriable;
-use crate::config;
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 // TODO several of these should probably be Options
@@ -43,7 +41,6 @@ pub struct UserInfo {
     pub name: String,
 }
 
-#[async_trait]
 impl Queriable for ModInfo {
     const FORMAT_STRING: &'static str = "games/{}/mods/{}.json";
 }
