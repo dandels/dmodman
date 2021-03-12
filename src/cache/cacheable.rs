@@ -37,11 +37,9 @@ mod tests {
     use crate::api::{FileList, ModInfo};
     use crate::cache::cacheable::Cacheable;
     use crate::cache::PathType;
-    use crate::test;
 
     #[tokio::test]
     async fn read_cached_mod_info() -> Result<(), RequestError> {
-        let _rt = test::setup();
         let game = "morrowind";
         let mod_id = 46599;
         let path = PathType::ModInfo(&game, &mod_id).path();
@@ -52,7 +50,6 @@ mod tests {
 
     #[tokio::test]
     async fn read_cached_file_list() -> Result<(), RequestError> {
-        let _rt = test::setup();
         let game = "morrowind";
         let mod_id = 46599;
         let path = PathType::FileList(&game, &mod_id).path();

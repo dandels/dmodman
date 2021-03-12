@@ -4,7 +4,6 @@ mod cmd;
 mod config;
 mod errors;
 mod nxm_listener;
-mod test;
 mod ui;
 mod util;
 

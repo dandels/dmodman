@@ -2,6 +2,7 @@ use super::api::error::RequestError;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /* This approach for naming directories violates platform conventions on Windows and MacOS.
  * The "..\$Organization\$Project\" approach of Windows or the "org.$Organization.$Project/"
@@ -33,22 +34,34 @@ pub fn game() -> Result<String, std::io::Error> {
 }
 
 pub fn cache_dir(game: &str) -> PathBuf {
-    let mut path: PathBuf = dirs::data_local_dir().unwrap();
+    let mut path;
+    if cfg!(test) {
+        path = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
+        path.push("test");
+        path.push("data");
+    } else {
+        path = dirs::data_local_dir().unwrap();
+    }
     path.push(clap::crate_name!());
     path.push(&game);
     path
 }
 
 fn config_dir() -> PathBuf {
-    let mut path: PathBuf = dirs::config_dir().unwrap();
+    let mut path;
+    if cfg!(test) {
+        path = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
+        path.push("test");
+        path.push("config");
+    } else {
+        path = dirs::config_dir().unwrap();
+    }
     path.push(clap::crate_name!());
     path
 }
 
 pub fn download_dir(game: &str) -> PathBuf {
-    let mut path = dirs::data_local_dir().unwrap();
-    path.push(clap::crate_name!());
-    path.push(&game);
+    let mut path = cache_dir(game);
     path.push(DOWNLOAD_DIR);
     path
 }
@@ -57,11 +70,9 @@ pub fn download_dir(game: &str) -> PathBuf {
 mod tests {
     use crate::api::error::RequestError;
     use crate::config;
-    use crate::test;
 
     #[test]
     fn apikey_exists() -> Result<(), RequestError> {
-        test::setup();
         config::read_api_key()?;
         Ok(())
     }

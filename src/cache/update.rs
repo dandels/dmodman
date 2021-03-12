@@ -120,12 +120,10 @@ mod tests {
     use crate::api::Client;
     use crate::cache::update::{DownloadError, UpdateChecker};
     use crate::cache::Cache;
-    use crate::test;
     use crate::Errors;
 
     #[tokio::test]
     async fn update() -> Result<(), DownloadError> {
-        test::setup();
         let game: String = "morrowind".to_owned();
 
         let herba_id = 46599;
