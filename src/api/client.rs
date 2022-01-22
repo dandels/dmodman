@@ -197,6 +197,20 @@ impl Client {
             return Ok(path);
         }
 
+        // check whether download is already in progress
+        if self
+            .downloads
+            .statuses
+            .read()
+            .unwrap()
+            .iter()
+            .any(|x| x.read().unwrap().file_id == nxm.file_id)
+        {
+            self.errors
+                .push(format!("Download of {} is already in progress.", file_name));
+            return Ok(path);
+        }
+
         self.download_buffered(url, &path, &file_name, nxm.file_id).await?;
 
         /* TODO: should we just do an Md5Search instead? It would allows us to validate the file while getting its
