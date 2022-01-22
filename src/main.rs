@@ -101,7 +101,7 @@ async fn main() -> Result<(), Error> {
         });
     }
 
-    ui::init(&cache.file_details, &client.downloads, &errors);
+    ui::init(&cache.file_details, &client, &errors).await;
     Ok(())
 }
 

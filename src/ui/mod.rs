@@ -1,16 +1,16 @@
 mod component;
 mod event;
 
+use self::component::Select;
 use self::component::*;
 use self::event::{Event, Events};
 
-use crate::api::downloads::Downloads;
-use crate::cache::update::UpdateChecker;
+use crate::api::Client;
 use crate::cache::FileDetailsCache;
+use crate::cache::UpdateChecker;
 use crate::Errors;
 
 use std::error::Error;
-use std::io;
 
 use termion::event::Key;
 use termion::input::MouseTerminal;
@@ -26,13 +26,15 @@ enum ActiveWidget {
     Files,
 }
 
-pub fn init(files: &FileDetailsCache, downloads: &Downloads, errors: &Errors) -> Result<(), Box<dyn Error>> {
+pub async fn init(files: &FileDetailsCache, client: &Client, errors: &Errors) -> Result<(), Box<dyn Error>> {
     let mut terminal = term_setup().unwrap();
     let events = Events::new();
     let mut errors = ErrorList::new(errors);
     let mut files = FileTable::new(files);
-    let mut downloads = DownloadTable::new(downloads);
+    let mut downloads = DownloadTable::new(&client.downloads);
+
     let mut active = ActiveWidget::Files;
+    let updates = UpdateChecker::new(client.clone());
 
     files.focus();
 
@@ -69,47 +71,60 @@ pub fn init(files: &FileDetailsCache, downloads: &Downloads, errors: &Errors) ->
             f.render_stateful_widget(errors.widget.clone(), rect_root[1], &mut errors.state);
         })?;
 
+        let selected: &mut dyn Select = match active {
+            ActiveWidget::Downloads => &mut downloads,
+            ActiveWidget::Errors => &mut errors,
+            ActiveWidget::Files => &mut files,
+        };
+
         if let Event::Input(key) = events.next()? {
             match key {
                 Key::Char('q') => break,
                 Key::Char('e') => errors.errors.push("terribad error".to_string()),
-                Key::Down | Key::Char('j') => match active {
-                    ActiveWidget::Downloads => downloads.next(),
-                    ActiveWidget::Errors => errors.next(),
-                    ActiveWidget::Files => files.next(),
-                },
-                Key::Up | Key::Char('k') => match active {
-                    ActiveWidget::Downloads => downloads.previous(),
-                    ActiveWidget::Errors => errors.previous(),
-                    ActiveWidget::Files => files.previous(),
-                },
+                Key::Down | Key::Char('j') => selected.next(),
+                Key::Up | Key::Char('k') => selected.previous(),
                 Key::Left | Key::Char('h') => match active {
                     ActiveWidget::Errors | ActiveWidget::Downloads => {
+                        selected.unfocus();
                         active = ActiveWidget::Files;
-                        errors.unfocus();
-                        downloads.unfocus();
                         files.focus();
                     }
                     ActiveWidget::Files => {
+                        selected.unfocus();
                         active = ActiveWidget::Errors;
-                        files.unfocus();
                         errors.focus();
                     }
                 },
                 Key::Right | Key::Char('l') => match active {
                     ActiveWidget::Errors | ActiveWidget::Files => {
+                        selected.unfocus();
                         active = ActiveWidget::Downloads;
-                        errors.unfocus();
-                        files.unfocus();
                         downloads.focus();
                     }
                     ActiveWidget::Downloads => {
+                        selected.unfocus();
                         active = ActiveWidget::Errors;
-                        downloads.unfocus();
                         errors.focus();
                     }
                 },
-                _ => {}
+                Key::Char('\n') => match active {
+                    ActiveWidget::Files => match files.state.selected() {
+                        Some(i) => {
+                            let (file_id, fd) = files.files.get_index(i).unwrap();
+                            updates.check_all().await?;
+                            for (mod_id, localfiles) in updates.updatable.read().unwrap().iter() {
+                                for lf in localfiles {
+                                    errors.errors.push(format!("{}", lf.file_name));
+                                }
+                            }
+                        }
+                        None => {}
+                    },
+                    _ => {}
+                },
+                _ => {
+                    errors.errors.push(format!("{:?}", key));
+                }
             }
         }
     }
@@ -117,7 +132,7 @@ pub fn init(files: &FileDetailsCache, downloads: &Downloads, errors: &Errors) ->
 }
 
 fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
-    let stdout = io::stdout().into_raw_mode()?;
+    let stdout = std::io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
     let stdout = AlternateScreen::from(stdout);
     let backend = TermionBackend::new(stdout);
