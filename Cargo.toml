@@ -5,21 +5,21 @@ authors = ["dandels <dandels.sh@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-async-trait = "^0.1"
-clap = "^2.33"
-dirs = "^3.0"
-indexmap = "^1.6"
-md-5 = "^0.9"
-percent-encoding = "^2.1"
-reqwest = { version = "^0.11", features = ["json", "stream"] }
-serde = { version = "^1.0", features = ["derive"] }
-serde_json = "^1.0"
+async-trait = "0.1"
+clap = { version = "3.0", features = ["cargo"]}
+dirs = "4.0"
+indexmap = "1.6"
+md-5 = "0.9"
+percent-encoding = "2.1"
+reqwest = { version = "0.11", features = ["json", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 tokio = { version = "1", features = ["fs", "macros", "net", "rt", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = ["fs"] }
-url = "^2.2"
-termion = "^1.5"
-tui = "^0.14"
-users = "^0.11"
+url = "2.2"
+termion = "1.5"
+tui = { version = "0.17", default-features = false, features = ['termion'] }
+users = "0.11"
 
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.
