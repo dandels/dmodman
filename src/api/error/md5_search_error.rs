@@ -6,6 +6,7 @@ use tokio::io;
 // TODO is there a way to share some of this copypasta between other errors?
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Md5SearchError {
     /* Finding a mod from a different game when performing an md5 lookup could maybe happen
      * due to something the user has done. It could theoretically also mean an md5

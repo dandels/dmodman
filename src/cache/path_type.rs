@@ -1,6 +1,7 @@
 use crate::config;
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 pub enum PathType<'a> {
     DownloadLink(&'a str, &'a u32, &'a u64), // game, mod_id, file_id
     FileDetails(&'a str, &'a u32, &'a u64),  // game, mod_id, file_id

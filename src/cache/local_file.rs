@@ -31,10 +31,6 @@ impl LocalFile {
         path
     }
 
-    pub async fn from_str(arg: &str) -> Result<Self, CacheError> {
-        Ok(serde_json::from_str(&fs::read_to_string(&arg).await?)?)
-    }
-
     pub async fn from_path(path: &Path) -> Result<Self, CacheError> {
         Ok(serde_json::from_str(&fs::read_to_string(&path).await?)?)
     }

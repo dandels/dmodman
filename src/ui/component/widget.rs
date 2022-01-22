@@ -3,7 +3,7 @@ use crate::cache::FileDetailsCache;
 use crate::Errors;
 
 use tui::layout::Constraint;
-use tui::style::{Color, Modifier, Style};
+use tui::style::{Color, Style};
 use tui::text::Spans;
 use tui::widgets::{Block, Borders, Cell, List, ListItem, ListState, Row, Table, TableState};
 

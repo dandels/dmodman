@@ -13,7 +13,6 @@ pub struct FileDetailsCache {
 
 impl FileDetailsCache {
     pub fn new(map: IndexMap<u64, FileDetails>) -> Self {
-        let len = &map.keys().len();
         Self {
             map: Arc::new(RwLock::new(map)),
             is_changed: Arc::new(AtomicBool::new(false)),
@@ -37,11 +36,6 @@ impl FileDetailsCache {
             Some((k, v)) => Some((k.clone(), v.clone())),
             None => None,
         }
-    }
-
-    pub fn remove(&self, key: &u64) {
-        self.map.try_write().unwrap().remove(key);
-        self.is_changed.store(true, Ordering::Relaxed);
     }
 
     pub fn items(&self) -> Vec<FileDetails> {

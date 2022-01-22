@@ -1,7 +1,7 @@
 use super::error::CacheError;
 use super::PathType;
 use super::{Cacheable, FileDetailsCache, FileListCache, LocalFile};
-use crate::api::{DownloadLink, FileDetails, FileList, Md5Search, ModInfo};
+use crate::api::{DownloadLink, FileDetails, FileList};
 use crate::config;
 
 use std::collections::{HashMap, HashSet};
