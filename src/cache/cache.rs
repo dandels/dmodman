@@ -46,8 +46,6 @@ impl Cache {
          * disk. It's possible that a LocalFile has no corresponding FileList (the API forgot about an old file or it's
          * a foreign file), so we wrap it in an option to remember if we already tried once to find it or not.
          */
-        let mut errors: Vec<String> = Vec::new();
-
         let mut lf_stream = tokio_stream::iter(&local_files);
         while let Some(f) = lf_stream.next().await {
             if no_file_list_found.contains(&f.mod_id) {
@@ -64,8 +62,7 @@ impl Cache {
                         file_list = fl.clone();
                         file_lists.insert((f.game.to_string(), f.mod_id), fl);
                     }
-                    Err(e) => {
-                        errors.append(&mut vec![e.to_string()]);
+                    Err(_e) => {
                         no_file_list_found.insert(f.mod_id);
                         continue;
                     }

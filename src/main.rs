@@ -2,12 +2,12 @@ mod api;
 mod cache;
 mod cmd;
 mod config;
-mod errors;
+mod messages;
 mod nxm_listener;
 mod ui;
 mod util;
 
-pub use self::errors::Errors;
+pub use self::messages::Messages;
 use api::Client;
 use cache::Cache;
 use std::error::Error;
@@ -46,9 +46,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let game = determine_active_game(&matches, nxm_game_opt);
-    let errors = Errors::default();
+    let msgs = Messages::default();
     let cache = Cache::new(&game).await.unwrap();
-    let client = Client::new(&cache, &errors).unwrap();
+    let client = Client::new(&cache, &msgs).unwrap();
 
     /* We don't want to initialize the Cache or Client until we know we aren't exiting early, so the download can't be
      * queued before now.
@@ -57,9 +57,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client.queue_download(nxm_str.to_string()).await;
     }
 
-    listen_for_downloads(&client, &errors, nxm_rx);
+    listen_for_downloads(&client, &msgs, nxm_rx);
 
-    ui::init(&cache.file_details, &client, &errors).await?;
+    ui::init(&cache.file_details, &client, &msgs).await?;
     Ok(())
 }
 
@@ -117,15 +117,15 @@ async fn queue_download_else_bind_to_socket(
 }
 
 // Listen to socket for nxm links to download
-fn listen_for_downloads(client: &Client, errors: &Errors, mut nxm_rx: Receiver<Result<String, std::io::Error>>) {
+fn listen_for_downloads(client: &Client, msgs: &Messages, mut nxm_rx: Receiver<Result<String, std::io::Error>>) {
     let client = client.clone();
-    let errors = errors.clone();
+    let msgs = msgs.clone();
     let _handle = tokio::task::spawn(async move {
         while let Some(nxm_result) = nxm_rx.recv().await {
             match nxm_result {
                 Ok(msg) => match api::NxmUrl::from_str(&msg) {
                     Ok(_) => client.queue_download(msg).await,
-                    Err(_e) => errors.push(format!("Unable to parse string as a valid nxm url: {msg}")),
+                    Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")),
                 },
                 Err(e) => {
                     println!("{}", e.to_string());

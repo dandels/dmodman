@@ -4,15 +4,15 @@ use std::sync::{
 };
 
 #[derive(Clone, Default)]
-pub struct Errors {
-    pub errors: Arc<RwLock<Vec<String>>>,
+pub struct Messages {
+    pub messages: Arc<RwLock<Vec<String>>>,
     is_changed: Arc<AtomicBool>, // used by UI to ask if error list needs to be redrawn
     len: Arc<AtomicUsize>,
 }
 
-impl Errors {
+impl Messages {
     pub fn push(&self, msg: String) {
-        self.errors.write().unwrap().push(msg);
+        self.messages.write().unwrap().push(msg);
         self.is_changed.store(true, Ordering::Relaxed);
         self.len.fetch_add(1, Ordering::Relaxed);
     }

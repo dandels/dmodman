@@ -3,7 +3,7 @@ use crate::api::{
     error::DownloadError,
     {Client, FileList, Queriable},
 };
-use crate::Errors;
+use crate::Messages;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -13,14 +13,14 @@ use tokio::task;
 pub struct UpdateChecker {
     pub updatable: Arc<RwLock<HashMap<(String, u32), Vec<LocalFile>>>>,
     pub client: Client,
-    errors: Errors,
+    msgs: Messages,
 }
 
 impl UpdateChecker {
     pub fn new(client: Client) -> Self {
         Self {
             updatable: Arc::new(RwLock::new(HashMap::new())),
-            errors: client.errors.clone(),
+            msgs: client.msgs.clone(),
             client,
         }
     }
@@ -51,7 +51,7 @@ impl UpdateChecker {
         for h in handles {
             match h.await {
                 Ok(_) => {}
-                Err(e) => self.errors.push(e.to_string()),
+                Err(e) => self.msgs.push(e.to_string()),
             }
         }
 
@@ -120,7 +120,7 @@ mod tests {
     use crate::api::Client;
     use crate::cache::update::{DownloadError, UpdateChecker};
     use crate::cache::Cache;
-    use crate::Errors;
+    use crate::Messages;
 
     #[tokio::test]
     async fn update() -> Result<(), DownloadError> {
@@ -130,8 +130,8 @@ mod tests {
         let magicka_id = 39350;
 
         let cache = Cache::new(&game).await?;
-        let errors = Errors::default();
-        let client: Client = Client::new(&cache, &errors)?;
+        let msgs = Messages::default();
+        let client: Client = Client::new(&cache, &msgs)?;
 
         let updater = UpdateChecker::new(client);
         updater.check_all().await?;

@@ -8,7 +8,7 @@ use self::event::{Event, Events};
 use crate::api::Client;
 use crate::cache::FileDetailsCache;
 use crate::cache::UpdateChecker;
-use crate::Errors;
+use crate::Messages;
 
 use std::error::Error;
 
@@ -22,14 +22,14 @@ use tui::Terminal;
 
 enum ActiveWidget {
     Downloads,
-    Errors,
     Files,
+    Messages,
 }
 
-pub async fn init(files: &FileDetailsCache, client: &Client, errors: &Errors) -> Result<(), Box<dyn Error>> {
+pub async fn init(files: &FileDetailsCache, client: &Client, msgs: &Messages) -> Result<(), Box<dyn Error>> {
     let mut terminal = term_setup().unwrap();
     let events = Events::new();
-    let mut errors = ErrorList::new(errors);
+    let mut msglist = MessageList::new(msgs);
     let mut files = FileTable::new(files);
     let mut downloads = DownloadTable::new(&client.downloads);
 
@@ -60,61 +60,62 @@ pub async fn init(files: &FileDetailsCache, client: &Client, errors: &Errors) ->
             if downloads.is_changed() {
                 downloads.refresh();
             }
-            if errors.is_changed() {
-                errors.refresh();
+            if msglist.is_changed() {
+                msglist.refresh();
             }
 
             f.render_stateful_widget(files.widget.clone(), rect_main[0], &mut files.state);
 
             f.render_stateful_widget(downloads.widget.clone(), rect_main[1], &mut downloads.state);
 
-            f.render_stateful_widget(errors.widget.clone(), rect_root[1], &mut errors.state);
+            f.render_stateful_widget(msglist.widget.clone(), rect_root[1], &mut msglist.state);
         })?;
 
         let selected: &mut dyn Select = match active {
             ActiveWidget::Downloads => &mut downloads,
-            ActiveWidget::Errors => &mut errors,
+            ActiveWidget::Messages => &mut msglist,
             ActiveWidget::Files => &mut files,
         };
 
         if let Event::Input(key) = events.next()? {
             match key {
                 Key::Char('q') => break,
-                Key::Char('e') => errors.errors.push("terribad error".to_string()),
+                Key::Char('e') => msgs.push("terribad error".to_string()),
                 Key::Down | Key::Char('j') => selected.next(),
                 Key::Up | Key::Char('k') => selected.previous(),
                 Key::Left | Key::Char('h') => match active {
-                    ActiveWidget::Errors | ActiveWidget::Downloads => {
+                    ActiveWidget::Messages | ActiveWidget::Downloads => {
                         selected.unfocus();
                         active = ActiveWidget::Files;
                         files.focus();
                     }
                     ActiveWidget::Files => {
                         selected.unfocus();
-                        active = ActiveWidget::Errors;
-                        errors.focus();
+                        active = ActiveWidget::Messages;
+                        msglist.focus();
                     }
                 },
                 Key::Right | Key::Char('l') => match active {
-                    ActiveWidget::Errors | ActiveWidget::Files => {
+                    ActiveWidget::Messages | ActiveWidget::Files => {
                         selected.unfocus();
                         active = ActiveWidget::Downloads;
                         downloads.focus();
                     }
                     ActiveWidget::Downloads => {
                         selected.unfocus();
-                        active = ActiveWidget::Errors;
-                        errors.focus();
+                        active = ActiveWidget::Messages;
+                        msglist.focus();
                     }
                 },
                 Key::Char('\n') => match active {
                     ActiveWidget::Files => match files.state.selected() {
                         Some(i) => {
-                            let (file_id, fd) = files.files.get_index(i).unwrap();
+                            // TODO only update the selected file
+                            let (_file_id, _fd) = files.files.get_index(i).unwrap();
                             updates.check_all().await?;
-                            for (mod_id, localfiles) in updates.updatable.read().unwrap().iter() {
+                            for (_mod_id, localfiles) in updates.updatable.read().unwrap().iter() {
                                 for lf in localfiles {
-                                    errors.errors.push(format!("{}", lf.file_name));
+                                    msgs.push(format!("{} has an update", lf.file_name));
                                 }
                             }
                         }
@@ -123,7 +124,8 @@ pub async fn init(files: &FileDetailsCache, client: &Client, errors: &Errors) ->
                     _ => {}
                 },
                 _ => {
-                    errors.errors.push(format!("{:?}", key));
+                    // Uncomment to log keypresses
+                    //msgs.messages.push(format!("{:?}", key));
                 }
             }
         }

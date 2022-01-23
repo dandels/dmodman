@@ -1,5 +1,5 @@
 use crate::cache::{Cache, LocalFile};
-use crate::{config, errors::Errors, util};
+use crate::{config, util, Messages};
 
 use super::download::{DownloadStatus, Downloads, NxmUrl};
 use super::error::DownloadError;
@@ -30,13 +30,13 @@ pub struct Client {
     client: Arc<reqwest::Client>,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
-    pub errors: Errors,
+    pub msgs: Messages,
     pub cache: Cache,
     pub downloads: Downloads,
 }
 
 impl Client {
-    pub fn new(cache: &Cache, errors: &Errors) -> Result<Self, RequestError> {
+    pub fn new(cache: &Cache, msgs: &Messages) -> Result<Self, RequestError> {
         let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
 
         let mut headers = HeaderMap::new();
@@ -50,7 +50,7 @@ impl Client {
                 Some(api_headers)
             }
             Err(e) => {
-                errors.push(e.to_string());
+                msgs.push(e.to_string());
                 None
             }
         };
@@ -59,7 +59,7 @@ impl Client {
             client: Arc::new(reqwest::Client::new()),
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
-            errors: errors.clone(),
+            msgs: msgs.clone(),
             cache: cache.clone(),
             downloads: Downloads::default(),
         })
@@ -174,7 +174,7 @@ impl Client {
                     self.downloads.set_changed();
                 }
                 Err(e) => {
-                    self.errors
+                    self.msgs
                         .push(format!("Download error for {}: {}", file_name, e.to_string()));
                 }
             }
@@ -193,7 +193,7 @@ impl Client {
         path.push(&file_name.to_string());
 
         if path.exists() {
-            self.errors
+            self.msgs
                 .push(format!("{} already exists and won't be downloaded again.", file_name));
             return Ok(path);
         }
@@ -207,7 +207,7 @@ impl Client {
             .iter()
             .any(|x| x.read().unwrap().file_id == nxm.file_id)
         {
-            self.errors
+            self.msgs
                 .push(format!("Download of {} is already in progress.", file_name));
             return Ok(path);
         }

@@ -1,4 +1,4 @@
-use super::widget::*;
+use crate::ui::{DownloadTable, FileTable, MessageList};
 use tui::style::{Color, Modifier, Style};
 use tui::widgets::Borders;
 
@@ -24,7 +24,7 @@ macro_rules! impl_highlight {
 
 impl_highlight!(DownloadTable<'_>, "Downloads");
 impl_highlight!(FileTable<'_>, "Files");
-impl_highlight!(ErrorList<'_>, "Errors");
+impl_highlight!(MessageList<'_>, "Messages");
 
 pub trait Highlight {
     fn highlight_item(&mut self, highlight_style: Style);

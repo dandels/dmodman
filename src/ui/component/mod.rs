@@ -1,6 +1,10 @@
+mod download_table;
+mod file_table;
 mod highlight;
+mod message_list;
 mod select;
-mod widget;
+pub use download_table::DownloadTable;
+pub use file_table::FileTable;
 pub use highlight::Highlight;
+pub use message_list::MessageList;
 pub use select::*;
-pub use widget::*;
