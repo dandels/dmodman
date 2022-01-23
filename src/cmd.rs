@@ -7,7 +7,7 @@ pub const VAL_GAME: &str = "GAME";
 pub fn args() -> ArgMatches {
     let matches: ArgMatches = App::new(clap::crate_name!())
         .version(clap::crate_version!())
-        .about("A third-party command line frontend to the Nexusmods API.")
+        .about("A TUI frontend to manage Nexusmods downloads.")
         .arg(
             Arg::new(ARG_GAME)
                 .short('g')

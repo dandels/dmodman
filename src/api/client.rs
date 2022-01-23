@@ -45,6 +45,7 @@ impl Client {
         let api_headers = match config::read_api_key() {
             Ok(apikey) => {
                 let mut api_headers = headers.clone();
+                // TODO ideally we would ask for the username/password and not require the user to create an apikey
                 api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
                 Some(api_headers)
             }

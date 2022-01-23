@@ -1,13 +1,13 @@
+use std::io::{Error, ErrorKind};
+use std::str;
 use tokio::io::Interest;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{ mpsc, mpsc::{ Receiver } };
+use tokio::sync::{mpsc, mpsc::Receiver};
 use tokio::task;
-use std::str;
-use std::io::{Error, ErrorKind};
 
 // Listens for downloads to add
 struct NxmListener {
-    listener: UnixListener
+    listener: UnixListener,
 }
 
 impl NxmListener {
@@ -32,18 +32,16 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
         match stream.try_read(&mut data) {
             Ok(_bytes) => {
                 match str::from_utf8(&data) {
-                    Ok(s) => {
-                        return Ok(Some(s.to_string()))
-                    }
+                    Ok(s) => return Ok(Some(s.to_string())),
                     Err(e) => {
                         println!("Invalid UTF-8 sequence: {}", e);
-                        return Ok(None)
+                        return Ok(None);
                     }
                 };
             }
             // This is a false positive
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
-            Err(e) => return Err(e)
+            Err(e) => return Err(e),
         }
     // Is this an error case?
     } else {
@@ -60,15 +58,19 @@ pub fn listen(uid: &u32) -> Result<Receiver<Result<String, Error>>, Error> {
     task::spawn(async move {
         loop {
             match socket.listener.accept().await {
-                Ok((stream, _addr)) => {
-                    match handle_input(stream).await {
-                        Ok(opt_s) => if let Some(msg) = opt_s {
+                Ok((stream, _addr)) => match handle_input(stream).await {
+                    Ok(opt_s) => {
+                        if let Some(msg) = opt_s {
                             tx.send(Ok(msg)).await.unwrap();
-                        },
-                        Err(e) => { tx.send(Err(e)).await.unwrap(); }
+                        }
                     }
+                    Err(e) => {
+                        tx.send(Err(e)).await.unwrap();
+                    }
+                },
+                Err(e) => {
+                    tx.send(Err(e)).await.unwrap();
                 }
-                Err(e) => { tx.send(Err(e)).await.unwrap(); }
             }
         }
     });
@@ -88,8 +90,8 @@ pub async fn send_msg(stream: &UnixStream, msg: &[u8]) -> Result<(), Error> {
             match stream.try_write(msg) {
                 Ok(n) => {
                     println!("wrote {} bytes", n);
-                    return Ok(())
-                },
+                    return Ok(());
+                }
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
                     continue;
                 }
@@ -99,7 +101,6 @@ pub async fn send_msg(stream: &UnixStream, msg: &[u8]) -> Result<(), Error> {
             }
         }
     }
-
 }
 
 pub fn remove_existing(uid: &u32) -> Result<(), Error> {
