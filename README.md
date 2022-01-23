@@ -6,6 +6,9 @@ manager"-button to work on the Nexus site. dmodman can check for updates to file
 downloaded with it, and also supports some API queries that have little practical
 applications as of yet.
 
+![A TUI with a list of mod files, a completed download, and some files that
+could be updated.](/screenshot.png)
+
 ## Installation
 dmodman is written in Rust, and should work with any recent version of the Rust
 toolchain.
