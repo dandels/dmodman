@@ -1,7 +1,7 @@
 use crate::cache::{Cache, LocalFile};
 use crate::{config, util, Messages};
 
-use super::download::{DownloadStatus, Downloads, NxmUrl};
+use super::downloads::{DownloadStatus, Downloads, NxmUrl};
 use super::error::DownloadError;
 use super::error::RequestError;
 use super::query::{DownloadLink, FileList, Queriable, Search};

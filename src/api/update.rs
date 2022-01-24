@@ -1,8 +1,6 @@
-use super::local_file::*;
-use crate::api::{
-    error::DownloadError,
-    {Client, FileList, Queriable},
-};
+use super::error::DownloadError;
+use super::{Client, FileList, Queriable};
+use crate::cache::LocalFile;
 use crate::Messages;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -117,8 +115,7 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::Client;
-    use crate::cache::update::{DownloadError, UpdateChecker};
+    use super::{Client, DownloadError, UpdateChecker};
     use crate::cache::Cache;
     use crate::Messages;
 

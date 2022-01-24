@@ -1,4 +1,7 @@
-use super::DownloadStatus;
+pub mod download_status;
+pub mod nxm_url;
+pub use self::download_status::*;
+pub use self::nxm_url::*;
 
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},

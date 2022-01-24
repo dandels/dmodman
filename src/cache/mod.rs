@@ -1,16 +1,14 @@
 mod cache;
+mod cache_error;
 mod cacheable;
-mod error;
 mod file_details_cache;
 mod file_list_cache;
 mod local_file;
 mod path_type;
-mod update;
 pub use cache::*;
+pub use cache_error::*;
 pub use cacheable::*;
-pub use error::*;
 pub use file_details_cache::*;
 pub use file_list_cache::*;
 pub use local_file::*;
 pub use path_type::*;
-pub use update::*;

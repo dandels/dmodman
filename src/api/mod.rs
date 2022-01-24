@@ -1,8 +1,10 @@
 pub mod client;
-pub mod download;
+pub mod downloads;
 pub mod error;
 pub mod query;
+pub mod update;
 pub use self::client::*;
-pub use self::download::*;
+pub use self::downloads::*;
 pub use self::error::*;
 pub use self::query::*;
+pub use self::update::*;

@@ -1,11 +1,11 @@
-use super::error::CacheError;
+use super::CacheError;
 use crate::api::NxmUrl;
 use crate::config;
 use serde::{Deserialize, Serialize};
-use tokio::{fs, fs::File};
-use tokio::io::{Error, AsyncWriteExt};
 use std::path::Path;
 use std::path::PathBuf;
+use tokio::io::{AsyncWriteExt, Error};
+use tokio::{fs, fs::File};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalFile {

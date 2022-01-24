@@ -1,6 +1,4 @@
-use super::error::CacheError;
-use super::PathType;
-use super::{Cacheable, FileDetailsCache, FileListCache, LocalFile};
+use super::{CacheError, Cacheable, FileDetailsCache, FileListCache, LocalFile, PathType};
 use crate::api::{DownloadLink, FileDetails, FileList};
 use crate::config;
 

@@ -1,5 +1,4 @@
-/* The NXM link format isn't part of the API, but included here for convenience.
- */
+// The NXM link format is not part of the API specification. It was found through trial and error.
 
 use crate::api::error::DownloadError;
 use std::str::FromStr;
@@ -67,10 +66,7 @@ fn check_game_special_case(game: String) -> String {
 }
 
 fn check_expiration(expires: &u64) -> Result<(), DownloadError> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     match expires > &now {
         true => Ok(()),
         false => Err(DownloadError::Expired),
@@ -85,7 +81,8 @@ mod tests {
 
     #[test]
     fn expired_nxm() -> Result<(), DownloadError> {
-        let nxm_str = "nxm://SkyrimSE/mods/8850/files/27772?key=XnbXtdAspojLzUAn7x-Grw&expires=1583065790&user_id=1234321";
+        let nxm_str =
+            "nxm://SkyrimSE/mods/8850/files/27772?key=XnbXtdAspojLzUAn7x-Grw&expires=1583065790&user_id=1234321";
         if let Err(DownloadError::Expired) = NxmUrl::from_str(&nxm_str) {
             return Ok(());
         }

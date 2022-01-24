@@ -6,8 +6,8 @@ use self::component::*;
 use self::event::{Event, Events};
 
 use crate::api::Client;
+use crate::api::UpdateChecker;
 use crate::cache::FileDetailsCache;
-use crate::cache::UpdateChecker;
 use crate::Messages;
 
 use std::error::Error;
