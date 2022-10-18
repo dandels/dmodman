@@ -11,7 +11,8 @@ struct NxmListener {
 }
 
 impl NxmListener {
-    pub fn new(uid: &u32) -> Result<Self, Error> {
+    pub fn new() -> Result<Self, Error> {
+        let uid = users::get_current_uid();
         let listener = UnixListener::bind(&format!("/run/user/{}/dmodman.socket", uid))?;
         Ok(Self { listener })
     }
@@ -50,10 +51,10 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
     }
 }
 
-pub fn listen(uid: &u32) -> Result<Receiver<Result<String, Error>>, Error> {
+pub fn listen() -> Result<Receiver<Result<String, Error>>, Error> {
     // Channel capacity is arbitrarily chosen. It would be strange for a high number of downloads to be queued at once.
     let (tx, rx) = mpsc::channel(100);
-    let socket = NxmListener::new(uid)?;
+    let socket = NxmListener::new()?;
 
     task::spawn(async move {
         loop {
@@ -77,10 +78,9 @@ pub fn listen(uid: &u32) -> Result<Receiver<Result<String, Error>>, Error> {
     Ok(rx)
 }
 
-pub async fn test_connection(uid: &u32) -> Result<UnixStream, Error> {
-    let stream = UnixStream::connect(&format!("/run/user/{}/dmodman.socket", uid)).await?;
-    send_msg(&stream, b"testmsg").await?;
-    Ok(stream)
+pub async fn connect() -> Result<UnixStream, Error> {
+    let uid = users::get_current_uid();
+    UnixStream::connect(&format!("/run/user/{}/dmodman.socket", uid)).await
 }
 
 pub async fn send_msg(stream: &UnixStream, msg: &[u8]) -> Result<(), Error> {
@@ -103,7 +103,8 @@ pub async fn send_msg(stream: &UnixStream, msg: &[u8]) -> Result<(), Error> {
     }
 }
 
-pub fn remove_existing(uid: &u32) -> Result<(), Error> {
+pub fn remove_existing() -> Result<(), Error> {
+    let uid = users::get_current_uid();
     let s = &format!("/run/user/{}/dmodman.socket", uid);
     let path = std::path::Path::new(s);
     let _ = std::fs::remove_file(path)?;

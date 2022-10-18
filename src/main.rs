@@ -73,10 +73,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 async fn queue_download_else_bind_to_socket(
     nxm_str_opt: Option<&str>,
 ) -> Result<Option<Receiver<Result<String, std::io::Error>>>, std::io::Error> {
-    let uid = users::get_current_uid();
     let nxm_rx;
-
-    match nxm_listener::listen(&uid) {
+    match nxm_listener::listen() {
         Ok(v) => {
             nxm_rx = v;
         }
@@ -84,7 +82,7 @@ async fn queue_download_else_bind_to_socket(
          * closing it.
          */
         Err(ref e) if e.kind() == ErrorKind::AddrInUse => {
-            match nxm_listener::test_connection(&uid).await {
+            match nxm_listener::connect().await {
                 // Another running instance is listening to the socket
                 Ok(stream) => {
                     // If there's an nxm:// argument, queue it and exit
@@ -100,8 +98,8 @@ async fn queue_download_else_bind_to_socket(
                 }
                 // Socket probably hasn't been cleanly removed. Remove it and bind to it.
                 Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
-                    nxm_listener::remove_existing(&uid)?;
-                    nxm_rx = nxm_listener::listen(&uid)?
+                    nxm_listener::remove_existing()?;
+                    nxm_rx = nxm_listener::listen()?;
                 }
                 /* Catchall for unanticipated ways in which the socket can break. Hitting this case should be
                  * unlikely.
@@ -121,11 +119,15 @@ fn listen_for_downloads(client: &Client, msgs: &Messages, mut nxm_rx: Receiver<R
     let client = client.clone();
     let msgs = msgs.clone();
     let _handle = tokio::task::spawn(async move {
-        while let Some(nxm_result) = nxm_rx.recv().await {
-            match nxm_result {
-                Ok(msg) => match api::NxmUrl::from_str(&msg) {
-                    Ok(_) => client.queue_download(msg).await,
-                    Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")),
+        while let Some(socket_msg) = nxm_rx.recv().await {
+            match socket_msg {
+                Ok(msg) => {
+                    if msg.starts_with("nxm://") {
+                        match api::NxmUrl::from_str(&msg) {
+                            Ok(_) => client.queue_download(msg).await,
+                            Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")),
+                        }
+                    }
                 },
                 Err(e) => {
                     println!("{}", e.to_string());
