@@ -105,13 +105,13 @@ impl Cache {
     }
 
     // TODO LocalFile's should use PathType. It's currently special cased since it's not an API response type.
-    pub async fn save_local_file(&self, lf: LocalFile) -> Result<bool, io::Error> {
+    pub async fn save_local_file(&self, lf: LocalFile, game: &str) -> Result<bool, io::Error> {
         // returns early if LocalFile already exists
         if self.local_files.read().unwrap().iter().any(|f| f.file_id == lf.file_id) {
             return Ok(true);
         }
 
-        lf.write().await?;
+        lf.write(game).await?;
         let file_id = lf.file_id;
         self.local_files.write().unwrap().push(lf);
 

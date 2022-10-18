@@ -136,6 +136,7 @@ impl Client {
         file_name: &str,
         file_id: u64,
     ) -> Result<(), DownloadError> {
+        self.msgs.push(format!("Downloading to {}.", path.display()));
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
@@ -154,14 +155,24 @@ impl Client {
         let resp = builder.send().await?;
 
         let mut open_opts = OpenOptions::new();
-        let mut file = match resp.status() {
-            StatusCode::OK => {
-                bytes_read = 0;
-                open_opts.write(true).create(true).open(&part_path).await?
+        let mut file;
+        match resp.error_for_status_ref() {
+            Ok(resp) => {
+                file = match resp.status() {
+                    StatusCode::OK => {
+                        bytes_read = 0;
+                        open_opts.write(true).create(true).open(&part_path).await?
+                    }
+                    StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await?,
+                    code => panic!("Download {} got unexpected HTTP response: {}", file_name, code),
+                };
             }
-            StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await?,
-            code => panic!("Download {} got unexpected HTTP response: {}", file_name, code),
-        };
+            Err(e) => {
+                self.msgs
+                    .push(format!("Download {} failed with error: {}", file_name, e.status().unwrap()));
+                return Err(DownloadError::from(e))
+            }
+        }
         let status = Arc::new(RwLock::new(DownloadStatus::new(
             file_name.to_string(),
             file_id,
@@ -181,8 +192,11 @@ impl Client {
                     self.downloads.set_changed();
                 }
                 Err(e) => {
-                    self.msgs
-                        .push(format!("Download error for {}: {}", file_name, e.to_string()));
+                    /* The download could fail for network-related reasons. Flush the data we got so that we can
+                     * continue it at some later point.
+                     */
+                    bufwriter.flush().await?;
+                    return Err(DownloadError::from(e))
                 }
             }
         }
@@ -226,7 +240,7 @@ impl Client {
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
         let lf = LocalFile::new(&nxm, file_name);
-        let file_details_is_cached = self.cache.save_local_file(lf).await?;
+        let file_details_is_cached = self.cache.save_local_file(lf, &self.cache.game).await?;
         if !file_details_is_cached {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {

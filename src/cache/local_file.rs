@@ -35,8 +35,11 @@ impl LocalFile {
         Ok(serde_json::from_str(&fs::read_to_string(&path).await?)?)
     }
 
-    pub async fn write(&self) -> Result<(), Error> {
-        let mut path = config::download_dir(&self.game);
+    /* Because mods from multiple games can be downloaded to the same directory (eg. Skyrim and Skyrim Special Edition),
+     * the game directory has to be specified as an argument
+     */
+    pub async fn write(&self, game: &str) -> Result<(), Error> {
+        let mut path = config::download_dir(game);
         path.push(&self.file_name);
         let mut name: String = path.to_str().unwrap().to_owned();
         name.push_str(".json");
