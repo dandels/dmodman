@@ -1,4 +1,4 @@
-use crate::api::query::{DownloadLink, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
+use crate::api::query::{DownloadLinks, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -24,7 +24,7 @@ pub trait Save: Serialize + DeserializeOwned {
     }
 }
 
-impl Save for DownloadLink {}
+impl Save for DownloadLinks {}
 impl Save for FileDetails {}
 impl Save for FileList {}
 impl Save for GameInfo {}

@@ -3,12 +3,12 @@ use std::path::PathBuf;
 
 #[allow(dead_code)]
 pub enum PathType<'a> {
-    DownloadLink(&'a str, &'a u32, &'a u64), // game, mod_id, file_id
-    FileDetails(&'a str, &'a u32, &'a u64),  // game, mod_id, file_id
-    FileList(&'a str, &'a u32),              // game, mod_id
-    GameInfo(&'a str),                       // game
-    Md5Search(&'a str, &'a u32, &'a u64),    // game, mod_id, file_id
-    ModInfo(&'a str, &'a u32),               // game, mod_id
+    DownloadLinks(&'a str, &'a u32, &'a u64), // game, mod_id, file_id
+    FileDetails(&'a str, &'a u32, &'a u64),   // game, mod_id, file_id
+    FileList(&'a str, &'a u32),               // game, mod_id
+    GameInfo(&'a str),                        // game
+    Md5Search(&'a str, &'a u32, &'a u64),     // game, mod_id, file_id
+    ModInfo(&'a str, &'a u32),                // game, mod_id
 }
 
 impl PathType<'_> {
@@ -22,7 +22,7 @@ impl PathType<'_> {
         let mut path;
 
         match self {
-            Self::DownloadLink(game, mod_id, file_id) => {
+            Self::DownloadLinks(game, mod_id, file_id) => {
                 path = config::cache_dir(&game);
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id.to_string(), file_id.to_string()));

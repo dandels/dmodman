@@ -1,4 +1,4 @@
-use crate::api::query::{DownloadLink, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
+use crate::api::query::{DownloadLinks, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -24,7 +24,7 @@ pub trait Cacheable: Serialize + DeserializeOwned {
     }
 }
 
-impl Cacheable for DownloadLink {}
+impl Cacheable for DownloadLinks {}
 impl Cacheable for FileDetails {}
 impl Cacheable for FileList {}
 impl Cacheable for GameInfo {}

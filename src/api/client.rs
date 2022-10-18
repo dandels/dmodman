@@ -4,7 +4,7 @@ use crate::{config, util, Messages};
 use super::downloads::{DownloadStatus, Downloads, NxmUrl};
 use super::error::DownloadError;
 use super::error::RequestError;
-use super::query::{DownloadLink, FileList, Queriable, Search};
+use super::query::{DownloadLinks, FileList, Queriable, Search};
 
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
 use reqwest::{Response, StatusCode};
@@ -103,7 +103,7 @@ impl Client {
         let me = self.clone();
         let _handle: JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
             let nxm = NxmUrl::from_str(&nxm_str)?;
-            let dl = DownloadLink::request(
+            let dls: DownloadLinks = DownloadLinks::request(
                 &me,
                 vec![
                     &nxm.domain_name,
@@ -114,9 +114,16 @@ impl Client {
             )
             .await?;
             me.cache
-                .save_download_link(&dl, &nxm.domain_name, &nxm.mod_id, &nxm.file_id)
+                .save_download_links(&dls, &nxm.domain_name, &nxm.mod_id, &nxm.file_id)
                 .await?;
-            let url: Url = Url::parse(&dl.location.URI)?;
+            /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
+             * global CDN, unless the user has selected a preferred download location.
+             * For small files the download URL is the same regardless of location choice.
+             * Free-tier users only get one location choice.
+             * Either way, we can just pick the first location.
+             */
+            let location = &dls.locations.first().unwrap();
+            let url: Url = Url::parse(&location.URI)?;
             let _file = me.download_mod_file(&nxm, url).await?;
             Ok(())
         });

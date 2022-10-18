@@ -1,5 +1,5 @@
 use super::{CacheError, Cacheable, FileDetailsCache, FileListCache, LocalFile, PathType};
-use crate::api::{DownloadLink, FileDetails, FileList};
+use crate::api::{DownloadLinks, FileDetails, FileList};
 use crate::config;
 
 use std::collections::{HashMap, HashSet};
@@ -85,14 +85,14 @@ impl Cache {
      * - Add the FileDetails to FileDetailsCache
      */
 
-    pub async fn save_download_link(
+    pub async fn save_download_links(
         &self,
-        dl: &DownloadLink,
+        dl: &DownloadLinks,
         game: &str,
         mod_id: &u32,
         file_id: &u64,
     ) -> Result<(), CacheError> {
-        let path = PathType::DownloadLink(game, mod_id, file_id).path();
+        let path = PathType::DownloadLinks(game, mod_id, file_id).path();
         dl.save_to_cache(path).await?;
         Ok(())
     }
