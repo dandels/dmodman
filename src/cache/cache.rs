@@ -29,16 +29,25 @@ impl Cache {
      */
     pub async fn new(game: &str) -> Result<Self, CacheError> {
         let mut local_files: Vec<LocalFile> = Vec::new();
-        let mut file_stream = fs::read_dir(config::download_dir(&game)).await?;
+        let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
+        let mut no_file_list_found: HashSet<u32> = HashSet::new();
+        let mut file_details_map: IndexMap<u64, FileDetails> = IndexMap::new();
+
+        let mut file_stream;
+        match fs::read_dir(config::download_dir(&game)).await {
+            Ok(fs) => file_stream = fs,
+            Err(_e) => return Ok(Self {
+                game: Arc::new(game.to_owned()),
+                local_files: Arc::new(RwLock::new(local_files)),
+                file_lists: FileListCache::new(file_lists),
+                file_details: FileDetailsCache::new(file_details_map),
+            })
+        }
         while let Some(f) = file_stream.next_entry().await? {
             if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("json") {
                 local_files.push(LocalFile::from_path(&f.path()).await?);
             }
         }
-
-        let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
-        let mut no_file_list_found: HashSet<u32> = HashSet::new();
-        let mut file_details_map: IndexMap<u64, FileDetails> = IndexMap::new();
 
         /* For each LocalFile, if that file's mod already has a FileList mapped, we use it. Otherwise we load it from
          * disk. It's possible that a LocalFile has no corresponding FileList (the API forgot about an old file or it's
