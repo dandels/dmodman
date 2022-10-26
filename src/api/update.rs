@@ -94,12 +94,17 @@ impl UpdateChecker {
         Ok(have_updates)
     }
 
+
+    /* There might be several versions of a file present, so if we're looking at the oldest one, it's not enough to
+     * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
+     * doesn't exist.
+     */
     fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
         let mut has_update = false;
         let mut current_id = local_file.file_id;
         let mut latest_file: &str = &local_file.file_name;
 
-        // For this to work the file updates need to be sorted by key. It's up to the caller to do so to preserve
+        // This relies on the API keeping the files sorted.
         file_list.file_updates.iter().for_each(|x| {
             if x.old_file_id == current_id {
                 current_id = x.new_file_id;
