@@ -1,17 +1,17 @@
 use super::error::DownloadError;
 use super::{Client, FileList, Queriable};
 use crate::cache::LocalFile;
-use crate::Messages;
+use crate::config::PathType;
 use crate::Config;
+use crate::Messages;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 use tokio::task;
-use crate::config::PathType;
 
 #[derive(Clone)]
 pub struct UpdateChecker {
-    pub updatable: Arc<RwLock<HashMap<(String, u32), Vec<LocalFile>>>>,
+    pub updatable: Arc<RwLock<HashMap<(String, u32), Vec<LocalFile>>>>, // (game, mod id), Vec<files>
     client: Client,
     config: Config,
     msgs: Messages,
@@ -69,14 +69,15 @@ impl UpdateChecker {
         /* We might be able to tell that a file needs updates using the cached filelist, but it's not certain. First we
          * check the local version - if it doesn't have updates, we query the API.
          */
-        let mut have_updates = Vec::new();
+        let mut to_update = Vec::new();
         let mut needs_refresh = false;
         match self.client.cache.file_lists.get(&game, mod_id) {
             Some(mut fl) => {
+                // The update algorithm in file_has_update() requires the file list to be sorted
                 fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
                 for lf in files.clone() {
                     if self.file_has_update(&lf, &fl) {
-                        have_updates.push(lf);
+                        to_update.push(lf);
                         needs_refresh = false;
                     }
                 }
@@ -91,36 +92,45 @@ impl UpdateChecker {
 
             for lf in files {
                 if self.file_has_update(&lf, &file_list) {
-                    have_updates.push(lf);
+                    to_update.push(lf);
                 }
             }
         }
-        Ok(have_updates)
+        Ok(to_update)
     }
 
-
-    /* There might be several versions of a file present, so if we're looking at the oldest one, it's not enough to
+    /* There might be several versions of a file present. If we're looking at the oldest one, it's not enough to
      * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
      * doesn't exist.
      */
     fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
         let mut has_update = false;
         let mut current_id = local_file.file_id;
-        let mut latest_file: &str = &local_file.file_name;
+        let mut current_file: &str = &local_file.file_name;
 
-        // This relies on the API keeping the files sorted.
         file_list.file_updates.iter().for_each(|x| {
             if x.old_file_id == current_id {
                 current_id = x.new_file_id;
-                latest_file = &x.new_file_name;
+                current_file = &x.new_file_name;
                 has_update = true;
             }
         });
 
         let mut f = self.config.path_for(PathType::LocalFile(local_file)).parent().unwrap().to_path_buf();
-        //let mut f: PathBuf = local_file.path().parent().unwrap().to_path_buf();
-        f.push(latest_file);
-        return !Path::new(&f).exists() && has_update;
+        f.push(current_file);
+        match f.try_exists() {
+            Ok(true) => {
+                return false;
+            }
+            Ok(false) => {
+                return has_update;
+            }
+            Err(e) => {
+                self.msgs
+                    .push(format!("Error when checking update for {:?}: {:?}", local_file, e));
+                return has_update;
+            }
+        }
     }
 }
 
@@ -136,8 +146,8 @@ mod tests {
         let game: String = "morrowind".to_owned();
         let config = Config::new(Some(&game), None).unwrap();
 
-        let herba_id = 46599;
-        let magicka_id = 39350;
+        let fair_magicka_regen_id = 39350;
+        let graphic_herbalism_id = 46599;
 
         let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
@@ -147,21 +157,25 @@ mod tests {
         updater.check_all().await?;
 
         let upds = updater.updatable.read().unwrap();
-        assert_eq!(false, upds.get(&(game.clone(), magicka_id)).unwrap().first().is_some());
-
-        for upd in upds.iter() {
-            println!("upds: {:?}", upd);
-        }
-
         assert_eq!(
-            upds.get(&(game.clone(), herba_id)).unwrap().get(0).unwrap().file_name,
-            "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z"
+            false,
+            upds.get(&(game.clone(), fair_magicka_regen_id))
+                .unwrap()
+                .first()
+                .is_some()
         );
 
-        assert_eq!(
-            upds.get(&(game, herba_id)).unwrap().get(1).unwrap().file_name,
-            "GH TR - PT Meshes-46599-1-01-1556986716.7z"
-        );
+        assert!(upds
+            .get(&(game.clone(), graphic_herbalism_id))
+            .unwrap()
+            .iter()
+            .any(|fl| fl.file_name == "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z"));
+
+        assert!(upds
+            .get(&(game.clone(), graphic_herbalism_id))
+            .unwrap()
+            .iter()
+            .any(|fl| fl.file_name == "GH TR - PT Meshes-46599-1-01-1556986716.7z"));
 
         Ok(())
     }

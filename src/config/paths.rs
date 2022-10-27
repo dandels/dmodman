@@ -59,8 +59,7 @@ impl Config {
             }
             PathType::LocalFile(lf) => {
                 path = self.download_dir();
-                path.push(&lf.file_name);
-                path.push(".json");
+                path.push(format!("{}.json", lf.file_name));
             }
         }
         path
