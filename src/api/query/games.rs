@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
+pub struct Games {
+    games: Vec<GameInfo>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct GameInfo {
     id: u64,
     name: String,
