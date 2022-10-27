@@ -1,5 +1,5 @@
 use crate::cache::{Cache, LocalFile};
-use crate::{config, util, Messages};
+use crate::{config::Config, util, Messages};
 
 use super::downloads::{DownloadStatus, Downloads, NxmUrl};
 use super::error::DownloadError;
@@ -32,25 +32,26 @@ pub struct Client {
     api_headers: Arc<Option<HeaderMap>>,
     pub msgs: Messages,
     pub cache: Cache,
+    pub config: Config,
     pub downloads: Downloads,
 }
 
 impl Client {
-    pub fn new(cache: &Cache, msgs: &Messages) -> Result<Self, RequestError> {
+    pub fn new(cache: &Cache, config: &Config, msgs: &Messages) -> Result<Self, RequestError> {
         let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
 
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
 
-        let api_headers = match config::read_api_key() {
-            Ok(apikey) => {
+        let api_headers = match &config.apikey {
+            Some(apikey) => {
                 let mut api_headers = headers.clone();
                 // TODO ideally we would ask for the username/password and not require the user to create an apikey
                 api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
                 Some(api_headers)
             }
-            Err(e) => {
-                msgs.push(e.to_string());
+            None => {
+                msgs.push("No apikey configured. API connections are disabled.".to_owned());
                 None
             }
         };
@@ -61,6 +62,7 @@ impl Client {
             api_headers: Arc::new(api_headers),
             msgs: msgs.clone(),
             cache: cache.clone(),
+            config: config.clone(),
             downloads: Downloads::default(),
         })
     }
@@ -114,7 +116,7 @@ impl Client {
             )
             .await?;
             me.cache
-                .save_download_links(&dls, &nxm.domain_name, &nxm.mod_id, &nxm.file_id)
+                .save_download_links(&dls, &nxm.mod_id, &nxm.file_id)
                 .await?;
             /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
              * global CDN, unless the user has selected a preferred download location.
@@ -209,7 +211,7 @@ impl Client {
 
     pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
         let file_name = util::file_name_from_url(&url);
-        let mut path = config::download_dir(&self.cache.game);
+        let mut path = self.config.download_dir();
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
         path.push(&file_name.to_string());
 
@@ -240,13 +242,13 @@ impl Client {
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
         let lf = LocalFile::new(&nxm, file_name);
-        let file_details_is_cached = self.cache.save_local_file(lf, &self.cache.game).await?;
+        let file_details_is_cached = self.cache.save_local_file(lf).await?;
         if !file_details_is_cached {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
                 self.cache.file_details.insert(nxm.file_id, fd.clone());
             }
-            self.cache.save_file_list(&fl, &nxm.domain_name, &nxm.mod_id).await?;
+            self.cache.save_file_list(&fl, &nxm.mod_id).await?;
         }
 
         Ok(path)

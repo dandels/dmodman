@@ -7,7 +7,8 @@ use self::event::{Event, Events};
 
 use crate::api::Client;
 use crate::api::UpdateChecker;
-use crate::cache::FileDetailsCache;
+use crate::cache::Cache;
+use crate::config::Config;
 use crate::Messages;
 
 use std::error::Error;
@@ -26,15 +27,15 @@ enum ActiveWidget {
     Messages,
 }
 
-pub async fn init(files: &FileDetailsCache, client: &Client, msgs: &Messages) -> Result<(), Box<dyn Error>> {
+pub async fn init(cache: &Cache, client: &Client, config: &Config, msgs: &Messages) -> Result<(), Box<dyn Error>> {
     let mut terminal = term_setup().unwrap();
     let events = Events::new();
     let mut msglist = MessageList::new(msgs);
-    let mut files = FileTable::new(files);
+    let mut files = FileTable::new(&cache.file_details);
     let mut downloads = DownloadTable::new(&client.downloads);
 
     let mut active = ActiveWidget::Files;
-    let updates = UpdateChecker::new(client.clone());
+    let updates = UpdateChecker::new(client.clone(), config.clone());
 
     files.focus();
 

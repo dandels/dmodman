@@ -7,13 +7,15 @@ mod nxm_listener;
 mod ui;
 mod util;
 
-pub use self::messages::Messages;
 use api::Client;
 use cache::Cache;
+use config::Config;
+use messages::Messages;
 use std::error::Error;
 use std::io::ErrorKind;
 use std::str::FromStr;
 use tokio::sync::mpsc::Receiver;
+use std::rc::Rc;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
@@ -39,27 +41,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    let config: Rc<Config> = Rc::new(Config::new(matches.value_of(cmd::ARG_GAME), nxm_game_opt).unwrap());
+
+    /* Check if another instance for the same game is already running. If it is, optionally queue the download, then
+     * exit early.
+     */
     let nxm_rx;
     match queue_download_else_bind_to_socket(nxm_str_opt).await? {
         Some(v) => nxm_rx = v,
-        None => return Ok(()),
+        None => return Ok(())
     }
 
-    let game = determine_active_game(&matches, nxm_game_opt);
     let msgs = Messages::default();
-    let cache = Cache::new(&game).await.unwrap();
-    let client = Client::new(&cache, &msgs).unwrap();
+    let cache = Cache::new(&config).await.unwrap();
+    let client = Client::new(&cache, &config, &msgs).unwrap();
 
-    /* We don't want to initialize the Cache or Client until we know we aren't exiting early, so the download can't be
-     * queued before now.
-     */
     if let Some(nxm_str) = nxm_str_opt {
         client.queue_download(nxm_str.to_string()).await;
     }
 
     listen_for_downloads(&client, &msgs, nxm_rx);
 
-    ui::init(&cache.file_details, &client, &msgs).await?;
+    ui::init(&cache, &client, &config, &msgs).await?;
     Ok(())
 }
 
@@ -135,28 +138,4 @@ fn listen_for_downloads(client: &Client, msgs: &Messages, mut nxm_rx: Receiver<R
             }
         }
     });
-}
-
-/* Downloading mods from another game is a valid use case for Skyrim / Skyrim Special Edition users.
- * The game name is the same format as the url on nexusmods, eg. https://www.nexusmods.com/skyrimspecialedition/
- *
- * Order of precedence in which the game to manage is determined:
- * 1) Command line option
- * 2) Configuration file
- * 3) The game in the nxm url
- *
- * If none of these are set, bail out.
- * TODO: ask for game at runtime, and/or provide a readme that explains how to set it.
- */
-fn determine_active_game(matches: &clap::ArgMatches, nxm_game_opt: Option<String>) -> String {
-    if let Some(g) = matches.value_of(cmd::ARG_GAME) {
-        g.to_string()
-    } else if let Ok(configured_game) = config::game() {
-        configured_game
-    } else if let Some(nxm_game) = nxm_game_opt {
-        nxm_game
-    } else {
-        // TODO handle this gracefully
-        panic!("The game to manage was neither specified nor found in the configuration file.");
-    }
 }

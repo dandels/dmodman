@@ -1,79 +1,114 @@
-use super::api::error::RequestError;
+pub mod config_error;
+pub mod paths;
+
+pub use self::config_error::ConfigError;
+pub use self::paths::PathType;
+
+use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-/* This approach for naming directories violates platform conventions on Windows and MacOS.
- * The "..\$Organization\$Project\" approach of Windows or the "org.$Organization.$Project/"
- * doesn't seem appropriate for an open source project.
- * Figure out a satisfying solution if we ever decide to support those platforms.
- */
+use serde::Deserialize;
 
-pub const DOWNLOAD_DIR: &str = "downloads";
+#[derive(Clone, Deserialize)]
+pub struct Config {
+    pub apikey: Option<String>,
+    pub cross_game_modding: Option<bool>,
+    pub game: Option<String>,
+    cache_dir: Option<String>,
+    download_dir: Option<String>,
+}
 
-pub fn read_api_key() -> Result<String, RequestError> {
-    let mut path: PathBuf = config_dir();
-    path.push("apikey");
-    let mut contents = String::new();
-    match File::open(path) {
-        Ok(mut f) => {
-            f.read_to_string(&mut contents)?;
-            Ok(contents.trim().to_string())
+impl Config {
+    pub fn new(game_arg: Option<&str>, nxm_game_opt: Option<String>) -> Result<Self, ConfigError> {
+        let mut contents = String::new();
+        let mut f = File::open(config_file())?;
+        f.read_to_string(&mut contents)?;
+        let mut config: Self = toml::from_str(&contents)?;
+
+        if let Some(game) = game_arg {
+            config.game = Some(game.to_string())
+        } else if let Some(true) = config.cross_game_modding {
+            if let Some(nxm_game) = nxm_game_opt {
+                config.game = Some(nxm_game)
+            }
         }
-        Err(_e) => Err(RequestError::ApiKeyMissing),
+
+        Ok(config)
+    }
+
+    pub fn game_cache_dir(&self) -> PathBuf {
+        let mut path;
+        match &self.cache_dir {
+            Some(dir) => path = PathBuf::from_str(&dir).unwrap(),
+            None => {
+                if cfg!(test) {
+                    path = PathBuf::from(format!("{}/test/data", env!("CARGO_MANIFEST_DIR")));
+                } else {
+                    path = dirs::data_local_dir().unwrap();
+                }
+                path.push(clap::crate_name!());
+            }
+        }
+        path.push(self.game.clone().unwrap());
+        path
+    }
+
+    pub fn download_dir(&self) -> PathBuf {
+        let mut path;
+        match &self.download_dir {
+            Some(dl_dir) => path = PathBuf::from_str(&dl_dir).unwrap(),
+            None => {
+                if cfg!(test) {
+                    path = PathBuf::from(format!("{}/test/downloads", env!("CARGO_MANIFEST_DIR")));
+                } else {
+                    path = dirs::download_dir().unwrap();
+                }
+                path.push(clap::crate_name!());
+            }
+        }
+        path.push(self.game.clone().unwrap());
+        path
     }
 }
 
-pub fn game() -> Result<String, std::io::Error> {
-    let mut path = config_dir();
-    path.push("game");
-    let mut contents = String::new();
-    let _n = File::open(path)?.read_to_string(&mut contents);
-    Ok(contents.trim().to_string())
-}
-
-pub fn cache_dir(game: &str) -> PathBuf {
+fn config_file() -> PathBuf {
     let mut path;
-    if cfg!(test) {
-        path = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
-        path.push("test");
-        path.push("data");
-    } else {
-        path = dirs::data_local_dir().unwrap();
-    }
-    path.push(clap::crate_name!());
-    path.push(&game);
-    path
-}
 
-fn config_dir() -> PathBuf {
-    let mut path;
     if cfg!(test) {
-        path = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap();
-        path.push("test");
-        path.push("config");
+        path = PathBuf::from(format!("{}/test/config", env!("CARGO_MANIFEST_DIR")));
     } else {
         path = dirs::config_dir().unwrap();
     }
-    path.push(clap::crate_name!());
-    path
-}
 
-pub fn download_dir(game: &str) -> PathBuf {
-    let mut path = cache_dir(game);
-    path.push(DOWNLOAD_DIR);
+    path.push(clap::crate_name!());
+    path.push("config.toml");
     path
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::api::error::RequestError;
-    use crate::config;
+    use crate::config::Config;
+    use crate::config::ConfigError;
 
     #[test]
-    fn apikey_exists() -> Result<(), RequestError> {
-        config::read_api_key()?;
+    fn read_apikey() -> Result<(), ConfigError> {
+        let config = Config::new(None, None).unwrap();
+        assert_eq!(config.apikey, Some("1234".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn modfile_exists() -> Result<(), ConfigError> {
+        let game = "morrowind";
+        let modfile = "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z";
+        let config = Config::new(Some(game), None).unwrap();
+        let mut path = config.download_dir();
+        path.push(modfile);
+        println!("path: {:?}", path);
+        assert!(path.exists());
         Ok(())
     }
 }

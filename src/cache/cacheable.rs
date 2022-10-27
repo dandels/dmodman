@@ -36,13 +36,18 @@ mod tests {
     use crate::api::error::*;
     use crate::api::{FileList, ModInfo};
     use crate::cache::cacheable::Cacheable;
-    use crate::cache::PathType;
+    use crate::config::Config;
+    use crate::config::PathType;
 
     #[tokio::test]
     async fn read_cached_mod_info() -> Result<(), RequestError> {
         let game = "morrowind";
         let mod_id = 46599;
-        let path = PathType::ModInfo(&game, &mod_id).path();
+
+        let config = Config::new(Some(game), None).unwrap();
+        let path = config.path_for(PathType::ModInfo(&mod_id));
+        println!("{:?}", path);
+
         let mi: ModInfo = ModInfo::try_from_cache(path).await?;
         assert_eq!(mi.name, "Graphic Herbalism - MWSE and OpenMW Edition");
         Ok(())
@@ -52,7 +57,10 @@ mod tests {
     async fn read_cached_file_list() -> Result<(), RequestError> {
         let game = "morrowind";
         let mod_id = 46599;
-        let path = PathType::FileList(&game, &mod_id).path();
+
+        let config = Config::new(Some(game), None).unwrap();
+        let path = config.path_for(PathType::FileList(&mod_id));
+
         let fl = FileList::try_from_cache(path).await?;
         assert_eq!(1000014198, fl.files.first().unwrap().id.0);
         assert_eq!(fl.files.first().unwrap().name, "Graphic Herbalism MWSE");
