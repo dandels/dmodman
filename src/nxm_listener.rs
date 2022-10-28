@@ -1,9 +1,14 @@
 use std::io::{Error, ErrorKind};
 use std::str;
+use std::str::FromStr;
 use tokio::io::Interest;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, mpsc::Receiver};
 use tokio::task;
+
+use crate::Messages;
+use crate::api::{Client, NxmUrl};
+use crate::config::Config;
 
 // Listens for downloads to add
 struct NxmListener {
@@ -11,9 +16,23 @@ struct NxmListener {
 }
 
 impl NxmListener {
-    pub fn new() -> Result<Self, Error> {
+    pub fn new(config: &Config, msgs: &Messages) -> Result<Self, Error> {
         let uid = users::get_current_uid();
-        let listener = UnixListener::bind(&format!("/run/user/{}/dmodman.socket", uid))?;
+        let path = match config.cross_game_modding {
+            Some(true) => {
+                match &config.game {
+                    Some(game) => format!("/run/user/{}/dmodman-{}.socket", uid, game),
+                    /* TODO don't bind to socket until we know which game we're modding.
+                     */
+                    None => {
+                        msgs.push("Error: Cross-game modding is enabled and the current game to use is not configured.");
+                        format!("/run/user/{}/dmodman.socket", uid)
+                    },
+                }
+            },
+            Some(false) | None => format!("/run/user/{}/dmodman.socket", uid)
+        };
+        let listener = UnixListener::bind(path)?;
         Ok(Self { listener })
     }
 }
@@ -51,10 +70,10 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
     }
 }
 
-pub fn listen() -> Result<Receiver<Result<String, Error>>, Error> {
+pub fn listen(config: &Config, msgs: &Messages) -> Result<Receiver<Result<String, Error>>, Error> {
     // Channel capacity is arbitrarily chosen. It would be strange for a high number of downloads to be queued at once.
     let (tx, rx) = mpsc::channel(100);
-    let socket = NxmListener::new()?;
+    let socket = NxmListener::new(&config, msgs)?;
 
     task::spawn(async move {
         loop {
@@ -109,4 +128,80 @@ pub fn remove_existing() -> Result<(), Error> {
     let path = std::path::Path::new(s);
     let _ = std::fs::remove_file(path)?;
     Ok(())
+}
+
+// Listen to socket for nxm links to download
+pub fn listen_for_downloads(client: &Client, msgs: &Messages, mut nxm_rx: Receiver<Result<String, std::io::Error>>) {
+    let client = client.clone();
+    let msgs = msgs.clone();
+    let _handle = tokio::task::spawn(async move {
+        while let Some(socket_msg) = nxm_rx.recv().await {
+            match socket_msg {
+                Ok(msg) => {
+                    if msg.starts_with("nxm://") {
+                        match NxmUrl::from_str(&msg) {
+                            Ok(_) => client.queue_download(msg).await,
+                            Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")),
+                        }
+                    }
+                },
+                Err(e) => {
+                    println!("{}", e.to_string());
+                }
+            }
+        }
+    });
+}
+
+/* Try bind to /run/user/$uid/dmodman.socket in order to queue downloads for nxm:// urls.
+ * If the socket is already in use and the program was invoked with an nxm url, queue that download in the already
+ * running instance and exit early.
+ * If another instance is already running, we exit early.
+ *
+ * Returns Ok(None) if we we want to exit early, otherwise returns the mpsc receiver for the socket we bind to.
+ */
+pub async fn queue_download_else_bind_to_socket(
+    config: &Config,
+    msgs: &Messages,
+    nxm_str_opt: Option<&str>,
+) -> Result<Option<Receiver<Result<String, std::io::Error>>>, std::io::Error> {
+    let nxm_rx;
+    match listen(config, msgs) {
+        Ok(v) => {
+            nxm_rx = v;
+        }
+        /* If the address is in use, either another instance is using it or a previous instance was killed without
+         * closing it.
+         */
+        Err(ref e) if e.kind() == ErrorKind::AddrInUse => {
+            match connect().await {
+                // Another running instance is listening to the socket
+                Ok(stream) => {
+                    // If there's an nxm:// argument, queue it and exit
+                    if let Some(nxm_str) = nxm_str_opt {
+                        send_msg(&stream, &nxm_str.as_bytes()).await?;
+                        println!("Added download to already running instance: {}", nxm_str);
+                        return Ok(None);
+                    // otherwise just exit to avoid duplicate instances.
+                    } else {
+                        println!("Another instance of dmodman is already running.");
+                        return Ok(None);
+                    }
+                }
+                // Socket probably hasn't been cleanly removed. Remove it and bind to it.
+                Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
+                    remove_existing()?;
+                    nxm_rx = listen(config, msgs)?;
+                }
+                /* Catchall for unanticipated ways in which the socket can break. Hitting this case should be
+                 * unlikely.
+                 */
+                Err(e) => {
+                    panic!("{}", e.to_string());
+                }
+            }
+        }
+        Err(e) => return Err(e),
+    }
+    Ok(Some(nxm_rx))
 }
