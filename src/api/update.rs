@@ -5,7 +5,6 @@ use crate::config::PathType;
 use crate::Config;
 use crate::Messages;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::{Arc, RwLock};
 use tokio::task;
 
