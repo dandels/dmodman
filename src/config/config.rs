@@ -1,9 +1,3 @@
-pub mod config_error;
-pub mod paths;
-
-pub use self::config_error::ConfigError;
-pub use self::paths::PathType;
-
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -11,13 +5,13 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::Deserialize;
+use super::ConfigError;
 
 #[derive(Clone, Deserialize)]
 pub struct Config {
     pub apikey: Option<String>,
     pub cross_game_modding: Option<bool>,
     pub game: Option<String>,
-    cache_dir: Option<String>,
     download_dir: Option<String>,
 }
 
@@ -41,17 +35,12 @@ impl Config {
 
     pub fn game_cache_dir(&self) -> PathBuf {
         let mut path;
-        match &self.cache_dir {
-            Some(dir) => path = PathBuf::from_str(&dir).unwrap(),
-            None => {
-                if cfg!(test) {
-                    path = PathBuf::from(format!("{}/test/data", env!("CARGO_MANIFEST_DIR")));
-                } else {
-                    path = dirs::data_local_dir().unwrap();
-                }
-                path.push(clap::crate_name!());
-            }
+        if cfg!(test) {
+            path = PathBuf::from(format!("{}/test/data", env!("CARGO_MANIFEST_DIR")));
+        } else {
+            path = dirs::data_local_dir().unwrap();
         }
+        path.push(clap::crate_name!());
         path.push(self.game.clone().unwrap());
         path
     }
