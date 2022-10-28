@@ -16,22 +16,9 @@ struct NxmListener {
 }
 
 impl NxmListener {
-    pub fn new(config: &Config, msgs: &Messages) -> Result<Self, Error> {
+    pub fn new() -> Result<Self, Error> {
         let uid = users::get_current_uid();
-        let path = match config.cross_game_modding {
-            Some(true) => {
-                match &config.game {
-                    Some(game) => format!("/run/user/{}/dmodman-{}.socket", uid, game),
-                    /* TODO don't bind to socket until we know which game we're modding.
-                     */
-                    None => {
-                        msgs.push("Error: Cross-game modding is enabled and the current game to use is not configured.");
-                        format!("/run/user/{}/dmodman.socket", uid)
-                    },
-                }
-            },
-            Some(false) | None => format!("/run/user/{}/dmodman.socket", uid)
-        };
+        let path = format!("/run/user/{}/dmodman.socket", uid);
         let listener = UnixListener::bind(path)?;
         Ok(Self { listener })
     }
@@ -42,7 +29,7 @@ impl Drop for NxmListener {
     fn drop(&mut self) {
         let addr = self.listener.local_addr().unwrap();
         let path = addr.as_pathname().unwrap();
-        let _ = std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(path).unwrap();
     }
 }
 
@@ -70,10 +57,10 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
     }
 }
 
-pub fn listen(config: &Config, msgs: &Messages) -> Result<Receiver<Result<String, Error>>, Error> {
+pub fn listen() -> Result<Receiver<Result<String, Error>>, Error> {
     // Channel capacity is arbitrarily chosen. It would be strange for a high number of downloads to be queued at once.
     let (tx, rx) = mpsc::channel(100);
-    let socket = NxmListener::new(&config, msgs)?;
+    let socket = NxmListener::new()?;
 
     task::spawn(async move {
         loop {
@@ -161,15 +148,10 @@ pub fn listen_for_downloads(client: &Client, msgs: &Messages, mut nxm_rx: Receiv
  * Returns Ok(None) if we we want to exit early, otherwise returns the mpsc receiver for the socket we bind to.
  */
 pub async fn queue_download_else_bind_to_socket(
-    config: &Config,
-    msgs: &Messages,
     nxm_str_opt: Option<&str>,
 ) -> Result<Option<Receiver<Result<String, std::io::Error>>>, std::io::Error> {
-    let nxm_rx;
-    match listen(config, msgs) {
-        Ok(v) => {
-            nxm_rx = v;
-        }
+    match listen() {
+        Ok(nxm_rx) => Ok(Some(nxm_rx)),
         /* If the address is in use, either another instance is using it or a previous instance was killed without
          * closing it.
          */
@@ -181,17 +163,17 @@ pub async fn queue_download_else_bind_to_socket(
                     if let Some(nxm_str) = nxm_str_opt {
                         send_msg(&stream, &nxm_str.as_bytes()).await?;
                         println!("Added download to already running instance: {}", nxm_str);
-                        return Ok(None);
+                        Ok(None)
                     // otherwise just exit to avoid duplicate instances.
                     } else {
                         println!("Another instance of dmodman is already running.");
-                        return Ok(None);
+                        Ok(None)
                     }
                 }
                 // Socket probably hasn't been cleanly removed. Remove it and bind to it.
                 Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
                     remove_existing()?;
-                    nxm_rx = listen(config, msgs)?;
+                    Ok(Some(listen()?))
                 }
                 /* Catchall for unanticipated ways in which the socket can break. Hitting this case should be
                  * unlikely.
@@ -201,7 +183,6 @@ pub async fn queue_download_else_bind_to_socket(
                 }
             }
         }
-        Err(e) => return Err(e),
+        Err(e) => Err(e),
     }
-    Ok(Some(nxm_rx))
 }
