@@ -43,7 +43,7 @@ impl Client {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
 
-        let api_headers = match &config.apikey {
+        let api_headers = match config.apikey() {
             Some(apikey) => {
                 let mut api_headers = headers.clone();
                 // TODO ideally we would ask for the username/password and not require the user to create an apikey

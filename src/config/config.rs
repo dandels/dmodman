@@ -3,16 +3,25 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::{atomic::AtomicBool, Arc, RwLock};
 
-use serde::Deserialize;
 use super::ConfigError;
+use serde::Deserialize;
 
-#[derive(Clone, Deserialize)]
-pub struct Config {
-    pub apikey: Option<String>,
-    pub cross_game_modding: Option<bool>,
-    pub game: Option<String>,
+#[derive(Deserialize)]
+struct ParsedConfig {
+    apikey: Option<String>,
+    cross_game_modding: Option<bool>,
+    game: Option<String>,
     download_dir: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct Config {
+    apikey: Arc<RwLock<Option<String>>>,
+    pub cross_game_modding: Arc<AtomicBool>,
+    game: Arc<RwLock<Option<String>>>,
+    download_dir: Arc<RwLock<String>>,
 }
 
 impl Config {
@@ -20,9 +29,10 @@ impl Config {
         let mut contents = String::new();
         let mut f = File::open(config_file())?;
         f.read_to_string(&mut contents)?;
-        let mut config: Self = toml::from_str(&contents)?;
+        let mut config: ParsedConfig = toml::from_str(&contents)?;
 
         if let Some(game) = game_arg {
+            println!("REACHABLE CODE");
             config.game = Some(game.to_string())
         } else if let Some(true) = config.cross_game_modding {
             if let Some(nxm_game) = nxm_game_opt {
@@ -30,7 +40,32 @@ impl Config {
             }
         }
 
-        Ok(config)
+        let cross_game_modding = match config.cross_game_modding {
+            Some(true) => AtomicBool::new(true),
+            _ => AtomicBool::new(false),
+        };
+
+        let download_dir = match config.download_dir {
+            Some(dl_dir) => dl_dir,
+            None => {
+                if cfg!(test) {
+                    format!("{}/test/downloads/{}", env!("CARGO_MANIFEST_DIR"), clap::crate_name!())
+                } else {
+                    format!(
+                        "{:?}/{}",
+                        dirs::download_dir().unwrap().to_string_lossy(),
+                        clap::crate_name!()
+                    )
+                }
+            }
+        };
+
+        Ok(Self {
+            apikey: Arc::new(RwLock::new(config.apikey)),
+            game: Arc::new(RwLock::new(config.game)),
+            cross_game_modding: Arc::new(cross_game_modding),
+            download_dir: Arc::new(RwLock::new(download_dir)),
+        })
     }
 
     pub fn game_cache_dir(&self) -> PathBuf {
@@ -41,25 +76,22 @@ impl Config {
             path = dirs::data_local_dir().unwrap();
         }
         path.push(clap::crate_name!());
-        path.push(self.game.clone().unwrap());
+        path.push(self.game().unwrap());
         path
     }
 
     pub fn download_dir(&self) -> PathBuf {
-        let mut path;
-        match &self.download_dir {
-            Some(dl_dir) => path = PathBuf::from_str(&dl_dir).unwrap(),
-            None => {
-                if cfg!(test) {
-                    path = PathBuf::from(format!("{}/test/downloads", env!("CARGO_MANIFEST_DIR")));
-                } else {
-                    path = dirs::download_dir().unwrap();
-                }
-                path.push(clap::crate_name!());
-            }
-        }
-        path.push(self.game.clone().unwrap());
+        let mut path = PathBuf::from_str(&(*self.download_dir.read().unwrap())).unwrap();
+        path.push(self.game().unwrap());
         path
+    }
+
+    pub fn apikey(&self) -> Option<String> {
+        return self.apikey.read().unwrap().clone()
+    }
+
+    pub fn game(&self) -> Option<String> {
+        return self.game.read().unwrap().clone()
     }
 }
 
@@ -85,7 +117,7 @@ mod tests {
     #[test]
     fn read_apikey() -> Result<(), ConfigError> {
         let config = Config::new(None, None).unwrap();
-        assert_eq!(config.apikey, Some("1234".to_string()));
+        assert_eq!(*config.apikey, Some("1234".to_string()));
         Ok(())
     }
 

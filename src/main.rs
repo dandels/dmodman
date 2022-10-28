@@ -13,7 +13,6 @@ use config::Config;
 use messages::Messages;
 use std::error::Error;
 use std::str::FromStr;
-use std::rc::Rc;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
@@ -39,14 +38,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let config: Rc<Config> = Rc::new(Config::new(matches.value_of(cmd::ARG_GAME), nxm_game_opt).unwrap());
+    let config  = Config::new(matches.value_of(cmd::ARG_GAME), nxm_game_opt).unwrap();
     let msgs = Messages::default();
 
     /* Check if another instance for the same game is already running. If it is, optionally queue the download, then
      * exit early.
      */
     let nxm_rx;
-    match nxm_listener::queue_download_else_bind_to_socket(&config, &msgs, nxm_str_opt).await? {
+    match nxm_listener::queue_download_else_bind_to_socket(nxm_str_opt).await? {
         Some(v) => nxm_rx = v,
         None => return Ok(())
     }
@@ -60,6 +59,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx);
 
-    ui::init(&cache, &client, &config, &msgs).await?;
-    Ok(())
+    return ui::UI::init(cache, client, config, msgs).await?.run().await;
 }
