@@ -11,8 +11,8 @@ pub struct Messages {
 }
 
 impl Messages {
-    pub fn push(&self, msg: String) {
-        self.messages.write().unwrap().push(msg);
+    pub fn push<S: Into<String>>(&self, msg: S) {
+        self.messages.write().unwrap().push(msg.into());
         self.is_changed.store(true, Ordering::Relaxed);
         self.len.fetch_add(1, Ordering::Relaxed);
     }

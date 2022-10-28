@@ -29,6 +29,7 @@ impl UpdateChecker {
 
     pub async fn check_all(&self) -> Result<(), DownloadError> {
         let mut mods_to_check: HashMap<(String, u32), Vec<LocalFile>> = HashMap::new();
+
         for lf in self.client.cache.local_files.try_read().unwrap().clone().into_iter() {
             match mods_to_check.get_mut(&(lf.game.clone(), lf.mod_id)) {
                 Some(vec) => vec.push(lf.clone()),
@@ -126,8 +127,9 @@ impl UpdateChecker {
                 return has_update;
             }
             Err(e) => {
-                self.msgs
-                    .push(format!("Error when checking update for {:?}: {:?}", local_file, e));
+                self.msgs.push("Error when checking update for:");
+                self.msgs.push(format!("    {:?}", local_file));
+                self.msgs.push(format!("    {:?}", e));
                 return has_update;
             }
         }

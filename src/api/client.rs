@@ -51,7 +51,7 @@ impl Client {
                 Some(api_headers)
             }
             None => {
-                msgs.push("No apikey configured. API connections are disabled.".to_owned());
+                msgs.push("No apikey configured. API connections are disabled.");
                 None
             }
         };
@@ -138,7 +138,7 @@ impl Client {
         file_name: &str,
         file_id: u64,
     ) -> Result<(), DownloadError> {
-        self.msgs.push(format!("Downloading to {}.", path.display()));
+        self.msgs.push(format!("Downloading to {:?}.", path));
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
