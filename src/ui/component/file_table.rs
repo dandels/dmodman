@@ -7,14 +7,14 @@ use tui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 pub struct FileTable<'a> {
     pub widget: Table<'a>,
     pub block: Block<'a>,
-    pub files: &'a FileDetailsCache,
+    pub files: FileDetailsCache,
     headers: Row<'a>,
     pub state: TableState,
     pub highlight_style: Style,
 }
 
 impl<'a> FileTable<'a> {
-    pub fn new(files: &'a FileDetailsCache) -> Self {
+    pub fn new(files:  FileDetailsCache) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Files");
 
         let highlight_style = Style::default();
@@ -26,7 +26,7 @@ impl<'a> FileTable<'a> {
         );
 
         Self {
-            widget: Self::create(block.clone(), headers.clone(), files, highlight_style),
+            widget: Self::create(block.clone(), headers.clone(), &files, highlight_style),
             block,
             files,
             headers,

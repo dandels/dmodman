@@ -7,17 +7,17 @@ use tui::widgets::{Block, Borders, List, ListItem, ListState};
 pub struct MessageList<'a> {
     pub widget: List<'a>,
     pub block: Block<'a>,
-    pub msgs: &'a Messages,
+    pub msgs: Messages,
     pub state: ListState,
     pub highlight_style: Style,
 }
 
 impl<'a> MessageList<'a> {
-    pub fn new(msgs: &'a Messages) -> Self {
+    pub fn new(msgs: Messages) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Messages");
         let highlight_style = Style::default();
         Self {
-            widget: Self::create(block.clone(), msgs, highlight_style),
+            widget: Self::create(block.clone(), &msgs, highlight_style),
             block,
             msgs,
             state: ListState::default(),

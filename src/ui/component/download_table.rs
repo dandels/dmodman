@@ -7,14 +7,14 @@ use tui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 pub struct DownloadTable<'a> {
     pub widget: Table<'a>,
     pub block: Block<'a>,
-    pub downloads: &'a Downloads,
+    pub downloads: Downloads,
     headers: Row<'a>,
     pub state: TableState,
     pub highlight_style: Style,
 }
 
 impl<'a> DownloadTable<'a> {
-    pub fn new(downloads: &'a Downloads) -> Self {
+    pub fn new(downloads: Downloads) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Downloads");
 
         let headers = Row::new(
@@ -26,7 +26,7 @@ impl<'a> DownloadTable<'a> {
         let highlight_style = Style::default();
 
         Self {
-            widget: Self::create(block.clone(), headers.clone(), downloads, highlight_style),
+            widget: Self::create(block.clone(), headers.clone(), &downloads, highlight_style),
             block,
             downloads,
             headers,
