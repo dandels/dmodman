@@ -1,6 +1,6 @@
 use super::error::DownloadError;
 use super::{Client, FileList, Queriable};
-use crate::cache::LocalFile;
+use crate::cache::{Cache, LocalFile};
 use crate::config::PathType;
 use crate::Config;
 use crate::Messages;
@@ -12,15 +12,17 @@ use tokio::task;
 pub struct UpdateChecker {
     pub updatable: Arc<RwLock<HashMap<(String, u32), Vec<LocalFile>>>>, // (game, mod id), Vec<files>
     client: Client,
+    cache: Cache,
     config: Config,
     msgs: Messages,
 }
 
 impl UpdateChecker {
-    pub fn new(client: Client, config: Config) -> Self {
+    pub fn new(cache: Cache, client: Client, config: Config, msgs: Messages) -> Self {
         Self {
             updatable: Arc::new(RwLock::new(HashMap::new())),
-            msgs: client.msgs.clone(),
+            msgs,
+            cache,
             client,
             config,
         }
@@ -29,7 +31,7 @@ impl UpdateChecker {
     pub async fn check_all(&self) -> Result<(), DownloadError> {
         let mut mods_to_check: HashMap<(String, u32), Vec<LocalFile>> = HashMap::new();
 
-        for lf in self.client.cache.local_files.try_read().unwrap().clone().into_iter() {
+        for lf in self.cache.local_files.items().into_iter() {
             match mods_to_check.get_mut(&(lf.game.clone(), lf.mod_id)) {
                 Some(vec) => vec.push(lf.clone()),
                 None => {
@@ -71,7 +73,7 @@ impl UpdateChecker {
          */
         let mut to_update = Vec::new();
         let mut needs_refresh = false;
-        match self.client.cache.file_lists.get(&game, mod_id) {
+        match self.cache.file_lists.get(&game, mod_id) {
             Some(mut fl) => {
                 // The update algorithm in file_has_update() requires the file list to be sorted
                 fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
@@ -87,7 +89,7 @@ impl UpdateChecker {
 
         if needs_refresh {
             let mut file_list = FileList::request(&self.client, vec![&game, &mod_id.to_string()]).await?;
-            self.client.cache.save_file_list(&file_list, &mod_id).await?;
+            self.cache.save_file_list(&file_list, &mod_id).await?;
             file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
 
             for lf in files {
@@ -139,13 +141,14 @@ impl UpdateChecker {
 mod tests {
     use super::{Client, DownloadError, UpdateChecker};
     use crate::cache::Cache;
+    use crate::config::InitialConfig;
     use crate::Config;
     use crate::Messages;
 
     #[tokio::test]
     async fn update() -> Result<(), DownloadError> {
         let game: String = "morrowind".to_owned();
-        let config = Config::new(Some(&game), None).unwrap();
+        let config = Config::new(InitialConfig::default(), Some(&game), None).unwrap();
 
         let fair_magicka_regen_id = 39350;
         let graphic_herbalism_id = 46599;
@@ -154,16 +157,15 @@ mod tests {
         let msgs = Messages::default();
         let client: Client = Client::new(&cache, &config, &msgs)?;
 
-        let updater = UpdateChecker::new(client, config);
+        let msgs = Messages::default();
+
+        let updater = UpdateChecker::new(cache, client, config, msgs);
         updater.check_all().await?;
 
         let upds = updater.updatable.read().unwrap();
         assert_eq!(
             false,
-            upds.get(&(game.clone(), fair_magicka_regen_id))
-                .unwrap()
-                .first()
-                .is_some()
+            upds.get(&(game.clone(), fair_magicka_regen_id)).unwrap().first().is_some()
         );
 
         assert!(upds

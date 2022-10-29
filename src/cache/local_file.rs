@@ -1,10 +1,5 @@
-use super::CacheError;
 use crate::api::NxmUrl;
-use crate::Config;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use tokio::io::{AsyncWriteExt, Error};
-use tokio::{fs, fs::File};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LocalFile {
@@ -22,26 +17,5 @@ impl LocalFile {
             mod_id: nxm.mod_id,
             file_id: nxm.file_id,
         }
-    }
-
-    pub async fn from_path(path: &Path) -> Result<Self, CacheError> {
-        Ok(serde_json::from_str(&fs::read_to_string(&path).await?)?)
-    }
-
-    /* Because mods from multiple games can be downloaded to the same directory (eg. Skyrim and Skyrim Special Edition),
-     * the game directory has to be specified as an argument
-     * TODO unit test this
-     */
-    pub async fn write(&self, config: &Config) -> Result<(), Error> {
-        let mut path = config.download_dir();
-        path.push(&self.file_name);
-        let mut name: String = path.to_str().unwrap().to_owned();
-        name.push_str(".json");
-
-        let mut file: File = File::create(name).await?;
-
-        let data = serde_json::to_string_pretty(&self)?;
-        file.write_all(data.as_bytes()).await?;
-        Ok(())
     }
 }

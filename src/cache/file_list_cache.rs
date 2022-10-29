@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
 pub struct FileListCache {
-    pub map: Arc<RwLock<HashMap<(String, u32), FileList>>>,
+    map: Arc<RwLock<HashMap<(String, u32), FileList>>>,
 }
 
 impl FileListCache {

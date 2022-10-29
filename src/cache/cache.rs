@@ -1,10 +1,9 @@
-use super::{CacheError, Cacheable, FileDetailsCache, FileListCache, LocalFile};
+use super::{CacheError, Cacheable, FileDetailsCache, FileListCache, LocalFile, LocalFileCache};
 use crate::api::{DownloadLinks, FileDetails, FileList};
 use crate::config::{Config, PathType};
 
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
-use std::sync::{Arc, RwLock};
 
 use indexmap::IndexMap;
 use tokio::fs;
@@ -13,7 +12,7 @@ use tokio_stream::StreamExt;
 
 #[derive(Clone)]
 pub struct Cache {
-    pub local_files: Arc<RwLock<Vec<LocalFile>>>,
+    pub local_files: LocalFileCache,
     pub file_lists: FileListCache,
     pub file_details: FileDetailsCache,
     config: Config,
@@ -28,7 +27,7 @@ impl Cache {
      * - file_id -> FileDetails
      */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
-        let mut local_files: Vec<LocalFile> = Vec::new();
+        let mut local_files: HashMap<u64, LocalFile> = HashMap::new();
         let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
         let mut no_file_list_found: HashSet<u32> = HashSet::new();
         let mut file_details_map: IndexMap<u64, FileDetails> = IndexMap::new();
@@ -40,7 +39,7 @@ impl Cache {
                 println!("Found no mod data, initializing empty cache.");
                 return Ok(Self {
                     config: config.clone(),
-                    local_files: Arc::new(RwLock::new(local_files)),
+                    local_files: LocalFileCache::new(local_files),
                     file_lists: FileListCache::new(file_lists),
                     file_details: FileDetailsCache::new(file_details_map),
                 })
@@ -48,7 +47,8 @@ impl Cache {
         }
         while let Some(f) = file_stream.next_entry().await? {
             if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("json") {
-                local_files.push(LocalFile::from_path(&f.path()).await?);
+                let lf = LocalFile::load(f.path()).await?;
+                local_files.insert(lf.file_id, lf);
             }
         }
 
@@ -56,7 +56,7 @@ impl Cache {
          * disk. It's possible that a LocalFile has no corresponding FileList (the API forgot about an old file or it's
          * a foreign file), so we wrap it in an option to remember if we already tried once to find it or not.
          */
-        let mut lf_stream = tokio_stream::iter(&local_files);
+        let mut lf_stream = tokio_stream::iter(local_files.clone().into_values().collect::<Vec<LocalFile>>());
         while let Some(f) = lf_stream.next().await {
             if no_file_list_found.contains(&f.mod_id) {
                 continue;
@@ -68,8 +68,8 @@ impl Cache {
                 Some(fl) => file_list = fl.clone(),
                 // not found during previous iteration, checking cache
                 None => {
-                    let foo = config.path_for(PathType::FileList(&f.mod_id));
-                    match FileList::try_from_cache(foo).await {
+                    let fl = config.path_for(PathType::FileList(&f.mod_id));
+                    match FileList::load(fl).await {
                         Ok(fl) => {
                             file_list = fl.clone();
                             file_lists.insert((f.game.to_string(), f.mod_id), fl);
@@ -88,7 +88,7 @@ impl Cache {
 
         Ok(Self {
             config: config.clone(),
-            local_files: Arc::new(RwLock::new(local_files)),
+            local_files: LocalFileCache::new(local_files),
             file_lists: FileListCache::new(file_lists),
             file_details: FileDetailsCache::new(file_details_map),
         })
@@ -99,7 +99,6 @@ impl Cache {
      * - Send request for FileList if not present(?)
      * - Add the FileDetails to FileDetailsCache
      */
-
     pub async fn save_download_links(
         &self,
         dl: &DownloadLinks,
@@ -107,32 +106,27 @@ impl Cache {
         file_id: &u64,
     ) -> Result<(), CacheError> {
         let path = self.config.path_for(PathType::DownloadLinks(mod_id, file_id));
-        dl.save_to_cache(path).await?;
+        dl.save(path).await?;
         Ok(())
     }
 
     pub async fn save_file_list(&self, fl: &FileList, mod_id: &u32) -> Result<(), CacheError> {
         let path = self.config.path_for(PathType::FileList(&mod_id));
-        fl.save_to_cache(path).await?;
+        fl.save(path).await?;
         self.file_lists.insert((self.config.game().unwrap(), *mod_id), fl.clone());
         Ok(())
     }
 
-    // TODO LocalFile's should use PathType. It's currently special cased since it's not an API response type.
-    pub async fn save_local_file(&self, lf: LocalFile) -> Result<bool, io::Error> {
+    pub async fn add_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
         // returns early if LocalFile already exists
-        if self.local_files.read().unwrap().iter().any(|f| f.file_id == lf.file_id) {
-            return Ok(true);
+        if self.local_files.get(lf.file_id).is_some() {
+            return Ok(());
         }
 
-        lf.write(&self.config).await?;
+        lf.save(self.config.path_for(PathType::LocalFile(&lf))).await?;
         let file_id = lf.file_id;
-        self.local_files.write().unwrap().push(lf);
-
-        match self.file_details.get(&file_id) {
-            Some(_) => Ok(true),
-            None => Ok(false),
-        }
+        self.local_files.push(lf);
+        Ok(())
     }
 }
 
@@ -141,11 +135,12 @@ mod test {
     use super::Cache;
     use super::CacheError;
     use crate::Config;
+    use crate::InitialConfig;
 
     #[tokio::test]
     async fn load_cache() -> Result<(), CacheError> {
         let game = "morrowind";
-        let config = Config::new(Some(game), None).unwrap();
+        let config = Config::new(InitialConfig::default(), Some(game), None).unwrap();
         let cache = Cache::new(&config).await?;
 
         let _fd = cache.file_details.get(&82041).unwrap();

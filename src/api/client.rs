@@ -30,9 +30,9 @@ pub struct Client {
     client: Arc<reqwest::Client>,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
-    pub msgs: Messages,
-    pub cache: Cache,
-    pub config: Config,
+    msgs: Messages,
+    cache: Cache,
+    config: Config,
     pub downloads: Downloads,
 }
 
@@ -46,7 +46,7 @@ impl Client {
         let api_headers = match config.apikey() {
             Some(apikey) => {
                 let mut api_headers = headers.clone();
-                // TODO ideally we would ask for the username/password and not require the user to create an apikey
+                // TODO register this app with Nexus so we can get the apikey via SSO login
                 api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
                 Some(api_headers)
             }
@@ -115,9 +115,7 @@ impl Client {
                 ],
             )
             .await?;
-            me.cache
-                .save_download_links(&dls, &nxm.mod_id, &nxm.file_id)
-                .await?;
+            me.cache.save_download_links(&dls, &nxm.mod_id, &nxm.file_id).await?;
             /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
              * global CDN, unless the user has selected a preferred download location.
              * For small files the download URL is the same regardless of location choice.
@@ -170,9 +168,12 @@ impl Client {
                 };
             }
             Err(e) => {
-                self.msgs
-                    .push(format!("Download {} failed with error: {}", file_name, e.status().unwrap()));
-                return Err(DownloadError::from(e))
+                self.msgs.push(format!(
+                    "Download {} failed with error: {}",
+                    file_name,
+                    e.status().unwrap()
+                ));
+                return Err(DownloadError::from(e));
             }
         }
         let status = Arc::new(RwLock::new(DownloadStatus::new(
@@ -198,7 +199,7 @@ impl Client {
                      * continue it at some later point.
                      */
                     bufwriter.flush().await?;
-                    return Err(DownloadError::from(e))
+                    return Err(DownloadError::from(e));
                 }
             }
         }
@@ -216,22 +217,13 @@ impl Client {
         path.push(&file_name.to_string());
 
         if path.exists() {
-            self.msgs
-                .push(format!("{} already exists and won't be downloaded again.", file_name));
+            self.msgs.push(format!("{} already exists and won't be downloaded again.", file_name));
             return Ok(path);
         }
 
         // check whether download is already in progress
-        if self
-            .downloads
-            .statuses
-            .read()
-            .unwrap()
-            .iter()
-            .any(|x| x.read().unwrap().file_id == nxm.file_id)
-        {
-            self.msgs
-                .push(format!("Download of {} is already in progress.", file_name));
+        if self.downloads.statuses.read().unwrap().iter().any(|x| x.read().unwrap().file_id == nxm.file_id) {
+            self.msgs.push(format!("Download of {} is already in progress.", file_name));
             return Ok(path);
         }
 
@@ -242,8 +234,9 @@ impl Client {
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
         let lf = LocalFile::new(&nxm, file_name);
-        let file_details_is_cached = self.cache.save_local_file(lf).await?;
-        if !file_details_is_cached {
+        self.cache.add_local_file(lf.clone()).await?;
+
+        if self.cache.file_details.get(&lf.file_id).is_none() {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
                 self.cache.file_details.insert(nxm.file_id, fd.clone());

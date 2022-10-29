@@ -7,10 +7,13 @@ use std::sync::{
 
 #[derive(Clone)]
 pub struct FileDetailsCache {
-    pub map: Arc<RwLock<IndexMap<u64, FileDetails>>>,
+    map: Arc<RwLock<IndexMap<u64, FileDetails>>>,
     is_changed: Arc<AtomicBool>, // used by UI to ask if file table needs to be redrawn
 }
 
+/* TODO there's a lot of stuff here that would be nice to have in a trait, but traits can't currently access
+ * fields.
+ */
 impl FileDetailsCache {
     pub fn new(map: IndexMap<u64, FileDetails>) -> Self {
         Self {
