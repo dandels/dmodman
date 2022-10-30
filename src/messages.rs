@@ -12,14 +12,14 @@ pub struct Messages {
 
 impl Messages {
     pub fn push<S: Into<String>>(&self, msg: S) {
-        self.messages.write().unwrap().push(msg.into());
+        self.messages.write().unwrap().push(format!("{:?}: {}", self.len, msg.into()));
         self.has_changed.store(true, Ordering::Relaxed);
         self.len.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn has_changed(&self) -> bool {
         let ret = self.has_changed.load(Ordering::Relaxed);
-        self.has_changed.store(!self.has_changed.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.has_changed.store(false, Ordering::Relaxed);
         ret
     }
 

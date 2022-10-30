@@ -1,16 +1,11 @@
-use crate::ui::{DownloadTable, FileTable, MessageList};
+use crate::ui::component::{DownloadTable, FileTable, MessageList};
 use tui::style::{Color, Modifier, Style};
-use tui::widgets::Borders;
 
 macro_rules! impl_highlight {
     ($T:ty, $title:expr) => {
         impl Highlight for $T {
             fn highlight_block(&mut self, block_style: Style) {
-                self.block = self
-                    .block
-                    .clone()
-                    .border_style(block_style)
-                    .title($title);
+                self.block = self.block.clone().border_style(block_style).title($title);
             }
 
             fn highlight_item(&mut self, highlight_style: Style) {
