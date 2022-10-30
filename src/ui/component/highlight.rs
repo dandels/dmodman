@@ -2,10 +2,10 @@ use crate::ui::component::{DownloadTable, FileTable, MessageList};
 use tui::style::{Color, Modifier, Style};
 
 macro_rules! impl_highlight {
-    ($T:ty, $title:expr) => {
+    ($T:ty) => {
         impl Highlight for $T {
             fn highlight_block(&mut self, block_style: Style) {
-                self.block = self.block.clone().border_style(block_style).title($title);
+                self.block = self.block.clone().border_style(block_style);
             }
 
             fn highlight_item(&mut self, highlight_style: Style) {
@@ -16,9 +16,9 @@ macro_rules! impl_highlight {
     };
 }
 
-impl_highlight!(DownloadTable<'_>, "Downloads");
-impl_highlight!(FileTable<'_>, "Files");
-impl_highlight!(MessageList<'_>, "Messages");
+impl_highlight!(DownloadTable<'_>);
+impl_highlight!(FileTable<'_>);
+impl_highlight!(MessageList<'_>);
 
 pub trait Highlight {
     fn highlight_item(&mut self, highlight_style: Style);
