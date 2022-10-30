@@ -16,9 +16,7 @@ use std::sync::Arc;
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use termion::event::Key;
-use tokio_stream::StreamExt;
-use tui::backend::Backend;
-use tui::layout::{Constraint, Direction, Layout};
+use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
 use tui::text::{Span, Spans};
 use tui::widgets::Paragraph;
@@ -41,10 +39,11 @@ pub struct UI<'a> {
     events: Events,
     focused: FocusedWidget,
     updates: UpdateChecker,
+    botbar: Paragraph<'a>,
 }
 
 impl<'a> UI<'static> {
-    pub async fn init(cache: Cache, client: Client, config: Config, msgs: Messages) -> Result<Self, Box<dyn Error>> {
+    pub fn init(cache: Cache, client: Client, config: Config, msgs: Messages) -> Result<Self, Box<dyn Error>> {
         let mut ret = Self {
             cache: cache.clone(),
             client: client.clone(),
@@ -56,6 +55,7 @@ impl<'a> UI<'static> {
             events: Events::new(),
             focused: FocusedWidget::FileTable,
             updates: UpdateChecker::new(cache.clone(), client.clone(), config.clone(), msgs.clone()),
+            botbar: Paragraph::new(client.request_counter.format()).alignment(Alignment::Right),
         };
         ret.files_view.focus();
         Ok(ret)
@@ -64,17 +64,21 @@ impl<'a> UI<'static> {
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let mut terminal = term_setup().unwrap();
 
-        let root_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)]);
-
         let topbar_layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Percentage(99)]);
+            .constraints([Constraint::Min(1), Constraint::Percentage(100)]);
+
+        let botbar_layout =
+            // TODO learn to use the constraints
+            Layout::default().direction(Direction::Vertical).constraints([Constraint::Min(1), Constraint::Max(1)]);
 
         let tables_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]);
+
+        let main_vertical_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)]);
 
         let topbar_text = vec![Spans::from(vec![
             Span::styled("<q>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
@@ -97,10 +101,12 @@ impl<'a> UI<'static> {
 
         loop {
             if needs_redraw.load(Ordering::Relaxed) {
+                needs_redraw.store(false, Ordering::Relaxed);
                 terminal.draw(|f| {
-                    let rect_root = root_layout.split(f.size());
+                    let rect_root = main_vertical_layout.split(f.size());
                     let rect_topbar = topbar_layout.split(rect_root[0]);
                     let rect_main = tables_layout.split(rect_topbar[1]);
+                    let rect_botbar = botbar_layout.split(rect_root[1]);
 
                     f.render_stateful_widget(self.files_view.widget.clone(), rect_main[0], &mut self.files_view.state);
                     f.render_stateful_widget(
@@ -110,8 +116,8 @@ impl<'a> UI<'static> {
                     );
                     f.render_stateful_widget(self.msg_view.widget.clone(), rect_root[1], &mut self.msg_view.state);
                     f.render_widget(topbar.clone(), rect_topbar[0]);
+                    f.render_widget(self.botbar.clone(), rect_botbar[1]);
                 })?;
-                needs_redraw.store(false, Ordering::Relaxed);
             }
 
             // TODO doing this in the loop is wasteful, but otherwise it causes lifetime issues
@@ -217,6 +223,11 @@ impl<'a> UI<'static> {
         if self.msg_view.msgs.has_changed() {
             self.msg_view.refresh();
             needs_redraw.store(true, Ordering::Relaxed);
+        }
+
+        if self.client.request_counter.has_changed() {
+            self.msgs.push("I'M HERE");
+            self.botbar = Paragraph::new(self.client.request_counter.format()).alignment(Alignment::Right)
         }
     }
 }

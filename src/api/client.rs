@@ -2,9 +2,9 @@ use crate::cache::{Cache, LocalFile};
 use crate::{config::Config, util, Messages};
 
 use super::downloads::{DownloadStatus, Downloads, NxmUrl};
-use super::error::DownloadError;
-use super::error::RequestError;
+use super::error::{DownloadError, RequestError};
 use super::query::{DownloadLinks, FileList, Queriable, Search};
+use super::request_counter::RequestCounter;
 
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
 use reqwest::{Response, StatusCode};
@@ -34,6 +34,7 @@ pub struct Client {
     cache: Cache,
     config: Config,
     pub downloads: Downloads,
+    pub request_counter: RequestCounter,
 }
 
 impl Client {
@@ -64,6 +65,7 @@ impl Client {
             cache: cache.clone(),
             config: config.clone(),
             downloads: Downloads::default(),
+            request_counter: RequestCounter::new(),
         })
     }
 
@@ -105,7 +107,7 @@ impl Client {
         let me = self.clone();
         let _handle: JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
             let nxm = NxmUrl::from_str(&nxm_str)?;
-            let dls: DownloadLinks = DownloadLinks::request(
+            let dls = DownloadLinks::request(
                 &me,
                 vec![
                     &nxm.domain_name,
