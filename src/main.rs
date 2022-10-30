@@ -1,6 +1,5 @@
 mod api;
 mod cache;
-mod cmd;
 mod config;
 mod messages;
 mod nxm_listener;
@@ -10,9 +9,15 @@ mod util;
 use api::Client;
 use cache::Cache;
 use config::Config;
+use config::InitialConfig;
 use messages::Messages;
+use std::env::args;
 use std::error::Error;
 use std::str::FromStr;
+
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
@@ -22,24 +27,24 @@ use std::str::FromStr;
  */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let matches = cmd::args();
-
     let mut nxm_str_opt: Option<&str> = None;
-    let mut nxm_game_opt: Option<String> = None;
+    let mut game: Option<String> = None;
 
-    if let Some(unnamed_arg) = matches.value_of(cmd::ARG_UNNAMED) {
-        if unnamed_arg.starts_with("nxm://") {
-            let nxm = api::NxmUrl::from_str(unnamed_arg).expect("Unable to parse nxm url, aborting.");
-            nxm_str_opt = Some(unnamed_arg);
-            nxm_game_opt = Some(nxm.domain_name);
+    let args: Vec<String> = args().collect();
+    if args.len() > 2 {
+        println!("Too many arguments.");
+        return Ok(());
+    }
+    if let Some(first_arg) = args.get(1) {
+        if first_arg.starts_with("nxm://") {
+            let nxm = api::NxmUrl::from_str(first_arg).expect("Unable to parse nxm url, aborting.");
+            nxm_str_opt = Some(first_arg);
+            game = Some(nxm.domain_name);
         } else {
-            println!("Invalid unnamed argument. See --help for usage.");
+            println!("Arguments are expected only when acting as an nxm:// URL handler.");
             return Ok(());
         }
     }
-
-    let config  = Config::new(matches.value_of(cmd::ARG_GAME), nxm_game_opt).unwrap();
-    let msgs = Messages::default();
 
     /* Check if another instance for the same game is already running. If it is, optionally queue the download, then
      * exit early.
@@ -47,8 +52,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let nxm_rx;
     match nxm_listener::queue_download_else_bind_to_socket(nxm_str_opt).await? {
         Some(v) => nxm_rx = v,
-        None => return Ok(())
+        None => return Ok(()),
     }
+
+    let msgs = Messages::default();
+
+    let initialconfig = match InitialConfig::load() {
+        Ok(mut ic) => {
+            if let None = ic.apikey {
+                ic.apikey = gen_apikey(&msgs);
+            }
+            if let None = ic.game {
+                // ask game
+            }
+            ic
+        }
+        Err(e) => {
+            // ask apikey
+            // ask game
+            // show user dialog to configure game, set rest to default
+            let mut ic = InitialConfig::default();
+            ic
+        }
+    };
+
+    let config = Config::new(initialconfig, game).unwrap();
 
     let cache = Cache::new(&config).await.unwrap();
     let client = Client::new(&cache, &config, &msgs).unwrap();
@@ -59,5 +87,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx);
 
-    return ui::UI::init(cache, client, config, msgs).await?.run().await;
+    return ui::UI::init(cache, client, config, msgs)?.run().await;
+}
+
+fn gen_apikey(msgs: &Messages) -> Option<String> {
+    let mut generate_apikey = false;
+    println!("You have not configured an API key.");
+    println!("Would you like to create one? (This opens your browser.)");
+    println!("[y]es, [n]o");
+    /* Read y/n without waiting for the user to press return.
+     * Entering raw mode messes with stdout, so we can't println until this scope ends.
+     * Stdout is restored when _stdout is dropped. */
+    {
+        let _stdout = std::io::stdout().into_raw_mode().unwrap();
+        let mut stdin = termion::async_stdin().keys();
+        loop {
+            if let Some(Ok(key)) = stdin.next() {
+                match key {
+                    Key::Char('y') => {
+                        generate_apikey = true;
+                        break;
+                    }
+                    Key::Char('n') => break,
+                    _ => continue,
+                }
+            }
+        }
+    }
+    if generate_apikey {
+        // TODO begin Single Sign-On flow
+        // Some("".to_string())
+        return None;
+    } else {
+        return None;
+    }
 }

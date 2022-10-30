@@ -9,11 +9,29 @@ use super::ConfigError;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-struct ParsedConfig {
-    apikey: Option<String>,
-    cross_game_modding: Option<bool>,
-    game: Option<String>,
-    download_dir: Option<String>,
+pub struct InitialConfig {
+    pub apikey: Option<String>,
+    pub cross_game_modding: Option<bool>,
+    pub game: Option<String>,
+    pub download_dir: Option<String>,
+}
+
+impl InitialConfig {
+    pub fn default() -> Self {
+        Self {
+            apikey: None,
+            cross_game_modding: None,
+            game: None,
+            download_dir: None,
+        }
+    }
+
+    pub fn load() -> Result<Self, ConfigError> {
+        let mut contents = String::new();
+        let mut f = File::open(config_file())?;
+        f.read_to_string(&mut contents)?;
+        Ok(toml::from_str(&contents)?)
+    }
 }
 
 #[derive(Clone)]
@@ -25,21 +43,10 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(game_arg: Option<&str>, nxm_game_opt: Option<String>) -> Result<Self, ConfigError> {
-        let mut contents = String::new();
-        let mut f = File::open(config_file())?;
-        f.read_to_string(&mut contents)?;
-        let mut config: ParsedConfig = toml::from_str(&contents)?;
-
-        if let Some(game) = game_arg {
-            println!("REACHABLE CODE");
-            config.game = Some(game.to_string())
-        } else if let Some(true) = config.cross_game_modding {
-            if let Some(nxm_game) = nxm_game_opt {
-                config.game = Some(nxm_game)
-            }
+    pub fn new(mut config: InitialConfig, game: Option<String>) -> Result<Self, ConfigError> {
+        if game.is_some() {
+            config.game = game;
         }
-
         let cross_game_modding = match config.cross_game_modding {
             Some(true) => AtomicBool::new(true),
             _ => AtomicBool::new(false),
@@ -49,12 +56,16 @@ impl Config {
             Some(dl_dir) => dl_dir,
             None => {
                 if cfg!(test) {
-                    format!("{}/test/downloads/{}", env!("CARGO_MANIFEST_DIR"), clap::crate_name!())
+                    format!(
+                        "{}/test/downloads/{}",
+                        env!("CARGO_MANIFEST_DIR"),
+                        env!("CARGO_CRATE_NAME")
+                    )
                 } else {
                     format!(
-                        "{:?}/{}",
+                        "{}/{}",
                         dirs::download_dir().unwrap().to_string_lossy(),
-                        clap::crate_name!()
+                        env!("CARGO_CRATE_NAME")
                     )
                 }
             }
@@ -75,7 +86,7 @@ impl Config {
         } else {
             path = dirs::data_local_dir().unwrap();
         }
-        path.push(clap::crate_name!());
+        path.push(env!("CARGO_CRATE_NAME"));
         path.push(self.game().unwrap());
         path
     }
@@ -87,15 +98,15 @@ impl Config {
     }
 
     pub fn apikey(&self) -> Option<String> {
-        return self.apikey.read().unwrap().clone()
+        return self.apikey.read().unwrap().clone();
     }
 
     pub fn game(&self) -> Option<String> {
-        return self.game.read().unwrap().clone()
+        return self.game.read().unwrap().clone();
     }
 }
 
-fn config_file() -> PathBuf {
+pub fn config_file() -> PathBuf {
     let mut path;
 
     if cfg!(test) {
@@ -104,7 +115,7 @@ fn config_file() -> PathBuf {
         path = dirs::config_dir().unwrap();
     }
 
-    path.push(clap::crate_name!());
+    path.push(env!("CARGO_CRATE_NAME"));
     path.push("config.toml");
     path
 }
@@ -113,11 +124,15 @@ fn config_file() -> PathBuf {
 mod tests {
     use crate::config::Config;
     use crate::config::ConfigError;
+    use crate::config::InitialConfig;
+    use crate::config::*;
 
     #[test]
     fn read_apikey() -> Result<(), ConfigError> {
-        let config = Config::new(None, None).unwrap();
-        assert_eq!(*config.apikey, Some("1234".to_string()));
+        let config = Config::new(InitialConfig::load()?, None).unwrap();
+        println!("{:?}", config::config_file());
+        println!("{:?}", config.apikey);
+        assert_eq!(config.apikey(), Some("1234".to_string()));
         Ok(())
     }
 
@@ -125,7 +140,7 @@ mod tests {
     fn modfile_exists() -> Result<(), ConfigError> {
         let game = "morrowind";
         let modfile = "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z";
-        let config = Config::new(Some(game), None).unwrap();
+        let config = Config::new(InitialConfig::default(), Some(game.to_string())).unwrap();
         let mut path = config.download_dir();
         path.push(modfile);
         println!("path: {:?}", path);

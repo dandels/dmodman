@@ -38,7 +38,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(cache: &Cache, config: &Config, msgs: &Messages) -> Result<Self, RequestError> {
-        let version = String::from(clap::crate_name!()) + " " + clap::crate_version!();
+        let version = String::from(env!("CARGO_CRATE_NAME")) + " " + env!("CARGO_PKG_VERSION");
 
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
