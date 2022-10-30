@@ -18,9 +18,7 @@ impl<'a> DownloadTable<'a> {
         let block = Block::default().borders(Borders::ALL).title("Downloads");
 
         let headers = Row::new(
-            vec!["Filename", "Progress"]
-                .iter()
-                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
+            vec!["Filename", "Progress"].iter().map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
         );
 
         let highlight_style = Style::default();
@@ -63,9 +61,5 @@ impl<'a> DownloadTable<'a> {
             .highlight_style(highlight_style);
 
         table
-    }
-
-    pub fn is_changed(&self) -> bool {
-        self.downloads.is_changed()
     }
 }

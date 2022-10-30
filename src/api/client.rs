@@ -236,10 +236,10 @@ impl Client {
         let lf = LocalFile::new(&nxm, file_name);
         self.cache.add_local_file(lf.clone()).await?;
 
-        if self.cache.file_details.get(&lf.file_id).is_none() {
+        if self.cache.file_index.get(&lf.file_id).is_none() {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
-                self.cache.file_details.insert(nxm.file_id, fd.clone());
+                self.cache.file_index.insert(nxm.file_id, fd.clone());
             }
             self.cache.save_file_list(&fl, &nxm.mod_id).await?;
         }

@@ -1,37 +1,36 @@
-use crate::cache::FileDetailsCache;
+use crate::cache::FileIndex;
 
 use tui::layout::Constraint;
 use tui::style::{Color, Style};
 use tui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 
 pub struct FileTable<'a> {
-    pub widget: Table<'a>,
-    pub block: Block<'a>,
-    pub files: FileDetailsCache,
     headers: Row<'a>,
-    pub state: TableState,
+    pub block: Block<'a>,
+    pub files: FileIndex,
     pub highlight_style: Style,
+    pub state: TableState,
+    pub widget: Table<'a>,
 }
 
 impl<'a> FileTable<'a> {
-    pub fn new(files:  FileDetailsCache) -> Self {
+    pub fn new(files: &FileIndex) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Files");
 
         let highlight_style = Style::default();
 
-        let headers = Row::new(
-            vec!["Name", "Version"]
-                .iter()
-                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
-        );
+        let headers =
+            Row::new(vec!["Name", "Version"].iter().map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))));
+
+        let widget = Self::create(block.clone(), headers.clone(), &files, highlight_style);
 
         Self {
-            widget: Self::create(block.clone(), headers.clone(), &files, highlight_style),
             block,
-            files,
+            files: files.clone(),
             headers,
-            state: TableState::default(),
             highlight_style,
+            state: TableState::default(),
+            widget,
         }
     }
 
@@ -41,11 +40,10 @@ impl<'a> FileTable<'a> {
             self.headers.clone(),
             &self.files,
             self.highlight_style,
-        );
+        )
     }
 
-    // TODO handle missing FileDetails and foreign (non-Nexusmods) mods
-    fn create(block: Block<'a>, headers: Row<'a>, files: &FileDetailsCache, highlight_style: Style) -> Table<'a> {
+    fn create(block: Block<'a>, headers: Row<'a>, files: &FileIndex, highlight_style: Style) -> Table<'a> {
         let rows: Vec<Row> = files
             .items()
             .iter()
@@ -64,9 +62,5 @@ impl<'a> FileTable<'a> {
             .highlight_style(highlight_style);
 
         table
-    }
-
-    pub fn is_changed(&self) -> bool {
-        self.files.is_changed()
     }
 }

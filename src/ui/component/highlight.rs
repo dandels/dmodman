@@ -10,7 +10,6 @@ macro_rules! impl_highlight {
                     .block
                     .clone()
                     .border_style(block_style)
-                    .borders(Borders::ALL)
                     .title($title);
             }
 

@@ -43,8 +43,4 @@ impl<'a> MessageList<'a> {
 
         List::new(list_items).block(block).highlight_style(highlight_style)
     }
-
-    pub fn is_changed(&self) -> bool {
-        self.msgs.is_changed()
-    }
 }

@@ -73,7 +73,7 @@ impl UpdateChecker {
          */
         let mut to_update = Vec::new();
         let mut needs_refresh = false;
-        match self.cache.file_lists.get(&game, mod_id) {
+        match self.cache.file_lists.get(&mod_id) {
             Some(mut fl) => {
                 // The update algorithm in file_has_update() requires the file list to be sorted
                 fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
