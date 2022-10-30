@@ -21,7 +21,9 @@ impl Downloads {
     }
 
     pub fn has_changed(&self) -> bool {
-        self.has_changed.load(Ordering::Relaxed)
+        let ret = self.has_changed.load(Ordering::Relaxed);
+        self.has_changed.store(false, Ordering::Relaxed);
+        ret
     }
 
     pub fn add(&self, status: Arc<RwLock<DownloadStatus>>) {
