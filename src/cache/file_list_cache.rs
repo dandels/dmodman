@@ -10,7 +10,6 @@ use tokio::fs;
 #[derive(Clone)]
 pub struct FileListCache {
     map: Arc<RwLock<HashMap<u32, FileList>>>,
-    //map: Arc<RwLock<HashMap<(String, u32), FileList>>>,
 }
 
 impl FileListCache {
