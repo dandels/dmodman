@@ -3,7 +3,7 @@ use crate::{config::Config, util, Messages};
 
 use super::downloads::{DownloadStatus, Downloads, NxmUrl};
 use super::error::{DownloadError, RequestError};
-use super::query::{DownloadLinks, FileList, Queriable, Search};
+use super::query::{DownloadLink, FileList, Queriable, Search};
 use super::request_counter::RequestCounter;
 
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
@@ -108,7 +108,7 @@ impl Client {
         let me = self.clone();
         let _handle: JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
             let nxm = NxmUrl::from_str(&nxm_str)?;
-            let dls = DownloadLinks::request(
+            let dls = DownloadLink::request(
                 &me,
                 vec![
                     &nxm.domain_name,

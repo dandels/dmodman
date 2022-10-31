@@ -1,4 +1,4 @@
-use crate::api::query::{DownloadLinks, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
+use crate::api::query::{DownloadLink, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
 use crate::cache::LocalFile;
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
@@ -19,11 +19,14 @@ pub trait Cacheable: Serialize + DeserializeOwned {
     }
 
     async fn load(path: PathBuf) -> Result<Self, Error> {
-        Ok(serde_json::from_str(&fs::read_to_string(&path).await?)?)
+        tokio::task::spawn_blocking(move || async move { Ok(serde_json::from_str(&fs::read_to_string(&path).await?)?) })
+            .await
+            .unwrap()
+            .await
     }
 }
 
-impl Cacheable for DownloadLinks {}
+impl Cacheable for DownloadLink {}
 impl Cacheable for FileDetails {}
 impl Cacheable for FileList {}
 impl Cacheable for GameInfo {}

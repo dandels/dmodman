@@ -11,7 +11,7 @@ pub const MOD_INFO: &str = "mod_info";
 #[allow(dead_code)]
 pub enum PathType<'a> {
     // API formats
-    DownloadLinks(&'a u32, &'a u64), // game, mod_id, file_id
+    DownloadLink(&'a u32, &'a u64), // game, mod_id, file_id
     FileList(&'a u32),               // game, mod_id
     GameInfo(),                      // game
     Md5Search(&'a u32, &'a u64),     // game, mod_id, file_id
@@ -26,7 +26,7 @@ impl Config {
         let mut path;
 
         match path_type {
-            PathType::DownloadLinks(mod_id, file_id) => {
+            PathType::DownloadLink(mod_id, file_id) => {
                 path = self.game_cache_dir();
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id.to_string(), file_id.to_string()));

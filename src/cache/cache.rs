@@ -1,5 +1,5 @@
 use super::{CacheError, Cacheable, FileIndex, FileListCache, LocalFile, LocalFileCache};
-use crate::api::{DownloadLinks, FileList};
+use crate::api::{DownloadLink, FileList};
 use crate::config::{Config, PathType};
 
 use tokio::io;
@@ -39,8 +39,8 @@ impl Cache {
      * - Send request for FileList if not present(?)
      * - Add the FileDetails to FileDetailsCache
      */
-    pub async fn save_download_links(&self, dl: &DownloadLinks, mod_id: &u32, file_id: &u64) -> Result<(), CacheError> {
-        let path = self.config.path_for(PathType::DownloadLinks(mod_id, file_id));
+    pub async fn save_download_links(&self, dl: &DownloadLink, mod_id: &u32, file_id: &u64) -> Result<(), CacheError> {
+        let path = self.config.path_for(PathType::DownloadLink(mod_id, file_id));
         dl.save(path).await?;
         Ok(())
     }
