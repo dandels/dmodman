@@ -80,14 +80,15 @@ impl UpdateChecker {
         files: Vec<LocalFile>,
     ) -> Result<Vec<LocalFile>, DownloadError> {
         /* We might be able to tell that a file needs updates using the cached filelist, but it's not certain. First we
-         * check the local version - if it doesn't have updates, we query the API.
-         */
+         * check the local version - if it doesn't have updates, we query the API. */
         let mut to_update = Vec::new();
         let mut needs_refresh = false;
         match self.cache.file_lists.get(&mod_id).await {
-            Some(mut fl) => {
-                // The update algorithm in file_has_update() requires the file list to be sorted
-                fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
+            Some(fl) => {
+                /* The update algorithm in file_has_update() requires the file list to be sorted.
+                 * It _should_ be sorted by default (I'm waiting for an answer in the Discord). In case of fire,
+                 * uncomment this. */
+                //fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
                 for lf in files.clone() {
                     if self.file_has_update(&lf, &fl).await {
                         to_update.push(lf);
