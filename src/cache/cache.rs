@@ -63,13 +63,12 @@ impl Cache {
 mod test {
     use super::Cache;
     use super::CacheError;
-    use crate::Config;
-    use crate::InitialConfig;
+    use crate::config::ConfigBuilder;
 
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
         let game = "morrowind";
-        let config = Config::new(InitialConfig::default(), game.to_string());
+        let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
 
         let _fd = cache.file_index.get(&82041).await.unwrap();

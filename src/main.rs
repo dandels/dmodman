@@ -9,7 +9,7 @@ mod util;
 use api::Client;
 use cache::Cache;
 use config::Config;
-use config::InitialConfig;
+use config::ConfigBuilder;
 use messages::Messages;
 use std::env::args;
 use std::error::Error;
@@ -28,7 +28,7 @@ use termion::raw::IntoRawMode;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut nxm_str_opt: Option<&str> = None;
-    let mut game: Option<String> = None;
+    let mut game_opt: Option<String> = None;
 
     let args: Vec<String> = args().collect();
     if args.len() > 2 {
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if first_arg.starts_with("nxm://") {
             let nxm = api::NxmUrl::from_str(first_arg).expect("Unable to parse nxm url, aborting.");
             nxm_str_opt = Some(first_arg);
-            game = Some(nxm.domain_name);
+            game_opt = Some(nxm.domain_name);
         } else {
             println!("Arguments are expected only when acting as an nxm:// URL handler.");
             return Ok(());
@@ -57,29 +57,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let msgs = Messages::default();
 
-    let initialconfig = match InitialConfig::load() {
+    let initialconfig = match ConfigBuilder::load() {
         Ok(mut ic) => {
             if let None = ic.apikey {
                 ic.apikey = gen_apikey(&msgs);
             }
             if let None = ic.game {
-                // ask game
+                if game_opt.is_some() {
+                    ic.game = game_opt;
+                } else {
+                    panic!("TODO ask game");
+                }
             }
             ic
         }
-        Err(e) => {
+        Err(_e) => {
+            panic!("Setting generation is not implemented.");
             // ask apikey
             // ask game
             // show user dialog to configure game, set rest to default
-            let mut ic = InitialConfig::default();
-            ic
         }
     };
 
-    let config = Config::new(initialconfig, game).unwrap();
+    let config = initialconfig.build()?;
 
-    let cache = Cache::new(&config).await.unwrap();
-    let client = Client::new(&cache, &config, &msgs).unwrap();
+    let cache = Cache::new(&config).await?;
+    let client = Client::new(&cache, &config, &msgs).await?;
 
     if let Some(nxm_str) = nxm_str_opt {
         client.queue_download(nxm_str.to_string()).await;
@@ -90,7 +93,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(ui::ui::run(cache, client, config, msgs).await?)
 }
 
-fn gen_apikey(msgs: &Messages) -> Option<String> {
+fn gen_apikey(_msgs: &Messages) -> Option<String> {
     let mut generate_apikey = false;
     println!("You have not configured an API key.");
     println!("Would you like to create one? (This opens your browser.)");

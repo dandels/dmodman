@@ -157,14 +157,14 @@ impl UpdateChecker {
 mod tests {
     use super::{Client, DownloadError, UpdateChecker};
     use crate::cache::Cache;
-    use crate::config::InitialConfig;
-    use crate::Config;
+    use crate::ConfigBuilder;
     use crate::Messages;
 
+    // TODO this correctly fails since it tries to send API request
     #[tokio::test]
     async fn update() -> Result<(), DownloadError> {
-        let game: String = "morrowind".to_owned();
-        let config = Config::new(InitialConfig::default(), game);
+        let game = "morrowind";
+        let config = ConfigBuilder::default().game(game).build().unwrap();
 
         let fair_magicka_regen_id = 39350;
         let graphic_herbalism_id = 46599;
@@ -181,17 +181,17 @@ mod tests {
         let upds = updater.updatable.read().await;
         assert_eq!(
             false,
-            upds.get(&(game.clone(), fair_magicka_regen_id)).unwrap().first().is_some()
+            upds.get(&(game.to_string(), fair_magicka_regen_id)).unwrap().first().is_some()
         );
 
         assert!(upds
-            .get(&(game.clone(), graphic_herbalism_id))
+            .get(&(game.to_string(), graphic_herbalism_id))
             .unwrap()
             .iter()
             .any(|fl| fl.file_name == "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z"));
 
         assert!(upds
-            .get(&(game.clone(), graphic_herbalism_id))
+            .get(&(game.to_string(), graphic_herbalism_id))
             .unwrap()
             .iter()
             .any(|fl| fl.file_name == "GH TR - PT Meshes-46599-1-01-1556986716.7z"));

@@ -36,8 +36,7 @@ mod tests {
     use crate::api::error::*;
     use crate::api::{FileList, ModInfo};
     use crate::cache::cacheable::Cacheable;
-    use crate::config::Config;
-    use crate::config::InitialConfig;
+    use crate::config::ConfigBuilder;
     use crate::config::PathType;
 
     #[tokio::test]
@@ -45,7 +44,7 @@ mod tests {
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = Config::new(InitialConfig::default(), Some(game.to_string())).unwrap();
+        let config = ConfigBuilder::load().unwrap().game(game).build().unwrap();
         let path = config.path_for(PathType::ModInfo(&mod_id));
         println!("{:?}", path);
 
@@ -59,7 +58,7 @@ mod tests {
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = Config::new(InitialConfig::default(), Some(game.to_string())).unwrap();
+        let config = ConfigBuilder::default().game(game).build().unwrap();
         let path = config.path_for(PathType::FileList(&mod_id));
 
         let fl = FileList::load(path).await?;

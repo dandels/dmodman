@@ -38,7 +38,7 @@ impl Config {
             }
             PathType::GameInfo() => {
                 path = self.game_cache_dir();
-                path.push(format!("{}.json", self.game().unwrap()));
+                path.push(format!("{}.json", self.game));
             }
             PathType::Md5Search(mod_id, file_id) => {
                 path = self.game_cache_dir();
