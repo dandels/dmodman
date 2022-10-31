@@ -17,6 +17,9 @@ pub fn file_name_from_url(url: &Url) -> String {
  * TODO this implementation is probably not suitable for big files.
  * This is currently unused because the Nexus md5 lookup is broken, see:
  * https://github.com/Nexus-Mods/web-issues/issues/1312
+ * TODO use it anyway and report if the hash is wrong.
+ *
+ * TODO this has to use tokio for reading the file, or it will block the thread
  */
 #[allow(dead_code)]
 pub fn md5sum(path: &Path) -> Result<String, std::io::Error> {

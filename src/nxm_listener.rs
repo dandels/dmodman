@@ -6,9 +6,8 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, mpsc::Receiver};
 use tokio::task;
 
-use crate::Messages;
 use crate::api::{Client, NxmUrl};
-use crate::config::Config;
+use crate::Messages;
 
 // Listens for downloads to add
 struct NxmListener {
@@ -118,7 +117,11 @@ pub fn remove_existing() -> Result<(), Error> {
 }
 
 // Listen to socket for nxm links to download
-pub fn listen_for_downloads(client: &Client, msgs: &Messages, mut nxm_rx: Receiver<Result<String, std::io::Error>>) {
+pub async fn listen_for_downloads(
+    client: &Client,
+    msgs: &Messages,
+    mut nxm_rx: Receiver<Result<String, std::io::Error>>,
+) {
     let client = client.clone();
     let msgs = msgs.clone();
     let _handle = tokio::task::spawn(async move {
@@ -128,10 +131,10 @@ pub fn listen_for_downloads(client: &Client, msgs: &Messages, mut nxm_rx: Receiv
                     if msg.starts_with("nxm://") {
                         match NxmUrl::from_str(&msg) {
                             Ok(_) => client.queue_download(msg).await,
-                            Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")),
+                            Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")).await,
                         }
                     }
-                },
+                }
                 Err(e) => {
                     println!("{}", e.to_string());
                 }

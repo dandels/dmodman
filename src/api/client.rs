@@ -14,7 +14,8 @@ use url::Url;
 
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
@@ -27,7 +28,7 @@ const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 
 #[derive(Clone)]
 pub struct Client {
-    client: Arc<reqwest::Client>,
+    client: reqwest::Client,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
     msgs: Messages,
@@ -38,13 +39,13 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(cache: &Cache, config: &Config, msgs: &Messages) -> Result<Self, RequestError> {
+    pub async fn new(cache: &Cache, config: &Config, msgs: &Messages) -> Result<Self, RequestError> {
         let version = String::from(env!("CARGO_CRATE_NAME")) + " " + env!("CARGO_PKG_VERSION");
 
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
 
-        let api_headers = match config.apikey() {
+        let api_headers = match config.apikey.to_owned() {
             Some(apikey) => {
                 let mut api_headers = headers.clone();
                 // TODO register this app with Nexus so we can get the apikey via SSO login
@@ -52,13 +53,13 @@ impl Client {
                 Some(api_headers)
             }
             None => {
-                msgs.push("No apikey configured. API connections are disabled.");
+                msgs.push("No apikey configured. API connections are disabled.").await;
                 None
             }
         };
 
         Ok(Self {
-            client: Arc::new(reqwest::Client::new()),
+            client: reqwest::Client::new(),
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
             msgs: msgs.clone(),
@@ -131,6 +132,7 @@ impl Client {
         });
     }
 
+    // TODO look into the threading here, we want downloads to continue when the main thread is blocked
     async fn download_buffered(
         &self,
         url: Url,
@@ -138,7 +140,7 @@ impl Client {
         file_name: &str,
         file_id: u64,
     ) -> Result<(), DownloadError> {
-        self.msgs.push(format!("Downloading to {:?}.", path));
+        self.msgs.push(format!("Downloading to {:?}.", path)).await;
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
@@ -148,10 +150,10 @@ impl Client {
         /* The HTTP Range header is used to resume downloads.
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
          */
-        let mut bytes_read = 0;
+        let bytes_read = Arc::new(AtomicU64::new(0));
         if part_path.exists() {
-            bytes_read = std::fs::metadata(&part_path)?.len();
-            builder = builder.header(RANGE, format!("bytes={}-", bytes_read));
+            bytes_read.store(std::fs::metadata(&part_path)?.len(), Ordering::Relaxed);
+            builder = builder.header(RANGE, format!("bytes={:?}-", bytes_read));
         }
 
         let resp = builder.send().await?;
@@ -161,30 +163,24 @@ impl Client {
         match resp.error_for_status_ref() {
             Ok(resp) => {
                 file = match resp.status() {
-                    StatusCode::OK => {
-                        bytes_read = 0;
-                        open_opts.write(true).create(true).open(&part_path).await?
-                    }
+                    StatusCode::OK => open_opts.write(true).create(true).open(&part_path).await?,
                     StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await?,
                     code => panic!("Download {} got unexpected HTTP response: {}", file_name, code),
                 };
             }
             Err(e) => {
-                self.msgs.push(format!(
-                    "Download {} failed with error: {}",
-                    file_name,
-                    e.status().unwrap()
-                ));
+                self.msgs
+                    .push(format!(
+                        "Download {} failed with error: {}",
+                        file_name,
+                        e.status().unwrap()
+                    ))
+                    .await;
                 return Err(DownloadError::from(e));
             }
         }
-        let status = Arc::new(RwLock::new(DownloadStatus::new(
-            file_name.to_string(),
-            file_id,
-            bytes_read,
-            resp.content_length(),
-        )));
-        self.downloads.add(status.clone());
+        let mut status = DownloadStatus::new(file_name.to_string(), file_id, bytes_read, resp.content_length());
+        self.downloads.add(status.clone()).await;
 
         let mut bufwriter = BufWriter::new(&mut file);
         let mut stream = resp.bytes_stream();
@@ -193,8 +189,8 @@ impl Client {
             match item {
                 Ok(bytes) => {
                     bufwriter.write_all(&bytes).await?;
-                    status.write().unwrap().update_progress(bytes.len() as u64);
-                    self.downloads.set_changed();
+                    status.update_progress(bytes.len() as u64);
+                    self.downloads.has_changed.store(true, Ordering::Relaxed);
                 }
                 Err(e) => {
                     /* The download could fail for network-related reasons. Flush the data we got so that we can
@@ -219,13 +215,13 @@ impl Client {
         path.push(&file_name.to_string());
 
         if path.exists() {
-            self.msgs.push(format!("{} already exists and won't be downloaded again.", file_name));
+            self.msgs.push(format!("{} already exists and won't be downloaded again.", file_name)).await;
             return Ok(path);
         }
 
         // check whether download is already in progress
-        if self.downloads.statuses.read().unwrap().iter().any(|x| x.read().unwrap().file_id == nxm.file_id) {
-            self.msgs.push(format!("Download of {} is already in progress.", file_name));
+        if self.downloads.get(&nxm.file_id).await.is_some() {
+            self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
             return Ok(path);
         }
 
@@ -238,10 +234,10 @@ impl Client {
         let lf = LocalFile::new(&nxm, file_name);
         self.cache.add_local_file(lf.clone()).await?;
 
-        if self.cache.file_index.get(&lf.file_id).is_none() {
+        if self.cache.file_index.get(&lf.file_id).await.is_none() {
             let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
-                self.cache.file_index.insert(nxm.file_id, fd.clone());
+                self.cache.file_index.insert(nxm.file_id, fd.clone()).await;
             }
             self.cache.save_file_list(&fl, &nxm.mod_id).await?;
         }

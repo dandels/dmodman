@@ -19,7 +19,7 @@ use termion::event::Key;
 use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
 use tui::text::{Span, Spans};
-use tui::widgets::Paragraph;
+use tui::widgets::{List, Paragraph, Table};
 
 enum FocusedWidget {
     DownloadTable,
@@ -27,207 +27,198 @@ enum FocusedWidget {
     Messages,
 }
 
-#[allow(dead_code)]
-pub struct UI<'a> {
-    cache: Cache,
-    client: Client,
-    config: Config,
-    msgs: Messages,
-    files_view: FileTable<'a>,
-    download_view: DownloadTable<'a>,
-    msg_view: MessageList<'a>,
-    events: Events,
-    focused: FocusedWidget,
-    updates: UpdateChecker,
-    botbar: Paragraph<'a>,
-}
+pub async fn run(cache: Cache, client: Client, config: Config, msgs: Messages) -> Result<(), Box<dyn Error>> {
+    let mut focused = FocusedWidget::FileTable;
+    // TODO use Tokio events?
+    let events = Events::new();
+    let updates = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), msgs.clone());
 
-impl<'a> UI<'static> {
-    pub fn init(cache: Cache, client: Client, config: Config, msgs: Messages) -> Result<Self, Box<dyn Error>> {
-        let mut ret = Self {
-            cache: cache.clone(),
-            client: client.clone(),
-            config: config.clone(),
-            msgs: msgs.clone(),
-            download_view: DownloadTable::new(client.clone().downloads),
-            files_view: FileTable::new(&cache.file_index),
-            msg_view: MessageList::new(msgs.clone()),
-            events: Events::new(),
-            focused: FocusedWidget::FileTable,
-            updates: UpdateChecker::new(cache.clone(), client.clone(), config.clone(), msgs.clone()),
-            botbar: Paragraph::new(client.request_counter.format()).alignment(Alignment::Right),
+    // TODO learn to use the constraints
+    let topbar_layout: Layout =
+        Layout::default().direction(Direction::Vertical).constraints([Constraint::Min(1), Constraint::Percentage(99)]);
+
+    let botbar_layout: Layout =
+        Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(99), Constraint::Min(1)]);
+
+    let tables_layout: Layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]);
+
+    let main_vertical_layout: Layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)]);
+
+    let topbar_text: Vec<Spans> = vec![Spans::from(vec![
+        Span::styled("<q>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::raw("quit,"),
+        Span::styled(" <u>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::raw("update all"),
+        Span::styled(" <U>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::raw("update selected,"),
+    ])];
+
+    let topbar = Paragraph::new(topbar_text);
+
+    /* X11 (and maybe Wayland?) sends SIGWINCH when the window is resized, so we can listen to that. Otherwise we
+     * redraw when something has changed
+     */
+    let got_sigwinch = Arc::new(AtomicBool::new(true));
+    let signals = Signals::new(&[SIGWINCH])?;
+    let handle = signals.handle();
+    let _sigwinch_task = tokio::task::spawn(handle_sigwinch(signals, got_sigwinch.clone()));
+
+    let mut terminal = term_setup().unwrap();
+    let mut files_view = FileTable::new(&cache.file_index);
+    let mut download_view = DownloadTable::new(client.downloads.clone());
+    let mut msg_view = MessageList::new(msgs.clone());
+    files_view.focus();
+
+    let mut files_widget = files_view.create().await;
+    let mut download_widget = download_view.create().await;
+    let mut msg_widget = msg_view.create().await;
+    let mut bottom_bar_widget: Paragraph =
+        Paragraph::new(client.request_counter.format().await).alignment(Alignment::Right);
+
+    loop {
+        let mut redraw_files = false;
+        let mut redraw_downloads = false;
+        let mut redraw_msgs = false;
+        let mut redraw_botbar = false;
+        let mut redraw_topbar = false;
+
+        if got_sigwinch.load(Ordering::Relaxed) {
+            redraw_files = true;
+            redraw_downloads = true;
+            redraw_msgs = true;
+            redraw_botbar = true;
+            redraw_topbar = true;
+            files_widget = files_view.create().await;
+            download_widget = download_view.create().await;
+            msg_widget = msg_view.create().await;
+        } else {
+            if cache.file_index.has_changed() {
+                files_widget = files_view.create().await;
+                redraw_files = true;
+            }
+            if client.downloads.has_changed() {
+                download_widget = download_view.create().await;
+                redraw_downloads = true;
+            }
+            if msgs.has_changed() {
+                msg_widget = msg_view.create().await;
+                redraw_msgs = true;
+            }
+            if client.request_counter.has_changed() {
+                bottom_bar_widget = Paragraph::new(client.request_counter.format().await).alignment(Alignment::Right);
+                redraw_botbar = true;
+            }
+        }
+
+        terminal.draw(|f| {
+            // TODO only recreate these after SIGWINCH
+            let rect_root = main_vertical_layout.split(f.size());
+            let rect_topbar = topbar_layout.split(rect_root[0]);
+            let rect_main = tables_layout.split(rect_topbar[1]);
+            let rect_botbar = botbar_layout.split(rect_root[1]);
+
+            if redraw_files {
+                f.render_stateful_widget(files_widget.clone(), rect_main[0], &mut files_view.state);
+            }
+            if redraw_downloads {
+                f.render_stateful_widget(download_widget.clone(), rect_main[1], &mut download_view.state);
+            }
+            if redraw_msgs {
+                f.render_stateful_widget(msg_widget.clone(), rect_root[1], &mut msg_view.state);
+            }
+            if redraw_topbar {
+                f.render_widget(topbar.clone(), rect_topbar[0]);
+            }
+            if redraw_botbar {
+                f.render_widget(bottom_bar_widget.clone(), rect_botbar[1]);
+            }
+        })?;
+
+        // FIXME
+        let selected: &mut dyn Select = match focused {
+            FocusedWidget::DownloadTable => &mut download_view,
+            FocusedWidget::Messages => &mut msg_view,
+            FocusedWidget::FileTable => &mut files_view,
         };
-        ret.files_view.focus();
-        Ok(ret)
-    }
 
-    pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut terminal = term_setup().unwrap();
-
-        let topbar_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Percentage(100)]);
-
-        let botbar_layout =
-            // TODO learn to use the constraints
-            Layout::default().direction(Direction::Vertical).constraints([Constraint::Min(1), Constraint::Max(1)]);
-
-        let tables_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]);
-
-        let main_vertical_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)]);
-
-        let topbar_text = vec![Spans::from(vec![
-            Span::styled("<q>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw("quit,"),
-            Span::styled(" <u>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw("update all"),
-            Span::styled(" <U>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw("update selected,"),
-        ])];
-
-        let topbar = Paragraph::new(topbar_text);
-
-        /* X11 (and maybe Wayland?) sends SIGWINCH when the window is resized, so we can listen to that. Otherwise we
-         * redraw when something has changed
-         */
-        let needs_redraw = Arc::new(AtomicBool::new(true));
-        let signals = Signals::new(&[SIGWINCH])?;
-        let handle = signals.handle();
-        let _sigwinch_task = tokio::task::spawn(handle_sigwinch(signals, needs_redraw.clone()));
-
-        loop {
-            if needs_redraw.load(Ordering::Relaxed) {
-                needs_redraw.store(false, Ordering::Relaxed);
-                terminal.draw(|f| {
-                    let rect_root = main_vertical_layout.split(f.size());
-                    let rect_topbar = topbar_layout.split(rect_root[0]);
-                    let rect_main = tables_layout.split(rect_topbar[1]);
-                    let rect_botbar = botbar_layout.split(rect_root[1]);
-
-                    f.render_stateful_widget(self.files_view.widget.clone(), rect_main[0], &mut self.files_view.state);
-                    f.render_stateful_widget(
-                        self.download_view.widget.clone(),
-                        rect_main[1],
-                        &mut self.download_view.state,
-                    );
-                    f.render_stateful_widget(self.msg_view.widget.clone(), rect_root[1], &mut self.msg_view.state);
-                    f.render_widget(topbar.clone(), rect_topbar[0]);
-                    f.render_widget(self.botbar.clone(), rect_botbar[1]);
-                })?;
-            }
-
-            // TODO doing this in the loop is wasteful, but otherwise it causes lifetime issues
-            let selected: &mut dyn Select = match self.focused {
-                FocusedWidget::DownloadTable => &mut self.download_view,
-                FocusedWidget::Messages => &mut self.msg_view,
-                FocusedWidget::FileTable => &mut self.files_view,
-            };
-
-            if let Event::Input(key) = self.events.next()? {
-                match key {
-                    Key::Char('q') | Key::Ctrl('c') => break,
-                    Key::Down | Key::Char('j') => selected.next(),
-                    Key::Up | Key::Char('k') => selected.previous(),
-                    Key::Left | Key::Char('h') => match self.focused {
-                        FocusedWidget::Messages | FocusedWidget::DownloadTable => {
-                            selected.unfocus();
-                            self.focused = FocusedWidget::FileTable;
-                            self.files_view.focus();
-                        }
-                        FocusedWidget::FileTable => {
-                            selected.unfocus();
-                            self.focused = FocusedWidget::Messages;
-                            self.msg_view.focus();
-                        }
-                    },
-                    Key::Right | Key::Char('l') => match self.focused {
-                        FocusedWidget::Messages | FocusedWidget::FileTable => {
-                            selected.unfocus();
-                            self.focused = FocusedWidget::DownloadTable;
-                            self.download_view.focus();
-                        }
-                        FocusedWidget::DownloadTable => {
-                            selected.unfocus();
-                            self.focused = FocusedWidget::Messages;
-                            self.msg_view.focus();
-                        }
-                    },
-                    Key::Char('u') => match self.focused {
-                        FocusedWidget::FileTable => match self.files_view.state.selected() {
-                            Some(_i) => {
-                                self.updates.check_all().await?;
-                                for (_mod_id, localfiles) in self.updates.updatable.read().unwrap().iter() {
-                                    for lf in localfiles {
-                                        self.msgs.push(format!("{} has an update", lf.file_name));
-                                    }
-                                }
-                            }
-                            None => {}
-                        },
-                        _ => {}
-                    },
-                    Key::Char('U') => match self.focused {
-                        FocusedWidget::FileTable => match self.files_view.state.selected() {
-                            Some(i) => {
-                                let (file_id, _lf) = self.files_view.files.get_index(i).unwrap();
-                                let lf = self.cache.local_files.get(file_id).unwrap();
-                                self.updates.check_mod(&lf.game, lf.mod_id, vec![lf.clone()]).await.unwrap();
-                                for (_mod_id, localfiles) in self.updates.updatable.read().unwrap().iter() {
-                                    for lf in localfiles {
-                                        self.msgs.push(format!("{} has an update", lf.file_name));
-                                    }
-                                }
-                            }
-                            None => {}
-                        },
-                        _ => {}
-                    },
-                    Key::Delete => match self.focused {
-                        FocusedWidget::FileTable => match self.files_view.state.selected() {
-                            Some(i) => {
-                                let (file_id, _fd) = self.files_view.files.get_index(i).unwrap();
-                            }
-                            _ => {}
-                        },
-                        _ => {}
-                    },
-                    _ => {
-                        // Uncomment to log keypresses
-                        self.msgs.push(format!("{:?}", key));
+        if let Event::Input(key) = events.next()? {
+            match key {
+                Key::Char('q') | Key::Ctrl('c') => break,
+                Key::Down | Key::Char('j') => selected.next(),
+                Key::Up | Key::Char('k') => selected.previous(),
+                Key::Left | Key::Char('h') => match focused {
+                    FocusedWidget::Messages | FocusedWidget::DownloadTable => {
+                        selected.unfocus();
+                        focused = FocusedWidget::FileTable;
+                        files_view.focus();
                     }
+                    FocusedWidget::FileTable => {
+                        selected.unfocus();
+                        focused = FocusedWidget::Messages;
+                        msg_view.focus();
+                    }
+                },
+                Key::Right | Key::Char('l') => match focused {
+                    FocusedWidget::Messages | FocusedWidget::FileTable => {
+                        selected.unfocus();
+                        focused = FocusedWidget::DownloadTable;
+                        download_view.focus();
+                    }
+                    FocusedWidget::DownloadTable => {
+                        selected.unfocus();
+                        focused = FocusedWidget::Messages;
+                        msg_view.focus();
+                    }
+                },
+                Key::Char('u') => match focused {
+                    FocusedWidget::FileTable => match files_view.state.selected() {
+                        Some(_i) => {
+                            updates.check_all().await?;
+                            for (_mod_id, localfiles) in updates.updatable.read().await.iter() {
+                                for lf in localfiles {
+                                    msgs.push(format!("{} has an update", lf.file_name)).await;
+                                }
+                            }
+                        }
+                        None => {}
+                    },
+                    _ => {}
+                },
+                Key::Char('U') => match focused {
+                    FocusedWidget::FileTable => match files_view.state.selected() {
+                        Some(i) => {
+                            if let Some((file_id, fd)) = files_view.files.get_index(i).await {
+                                let lf = cache.local_files.get(file_id).await.unwrap();
+                                if updates.check_file(lf.clone()).await {
+                                    msgs.push(format!("{} has an update", lf.file_name)).await;
+                                }
+                            }
+                        }
+                        None => {}
+                    },
+                    _ => {}
+                },
+                Key::Delete => match focused {
+                    FocusedWidget::FileTable => match files_view.state.selected() {
+                        Some(i) => {
+                            let (_file_id, _fd) = files_view.files.get_index(i).await.unwrap();
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                },
+                _ => {
+                    // Uncomment to log keypresses
+                    msgs.push(format!("{:?}", key)).await;
                 }
-                needs_redraw.store(true, Ordering::Relaxed);
             }
-            self.refresh_widgets(needs_redraw.clone());
-        }
-        handle.close();
-        Ok(())
-    }
-
-    fn refresh_widgets(&mut self, needs_redraw: Arc<AtomicBool>) {
-        if self.files_view.files.has_changed() {
-            self.files_view.refresh();
-            needs_redraw.store(true, Ordering::Relaxed);
-            self.msgs.push("files changed");
-        }
-
-        if self.download_view.downloads.has_changed() {
-            self.download_view.refresh();
-            needs_redraw.store(true, Ordering::Relaxed);
-            self.msgs.push("downloads changed");
-        }
-        if self.msg_view.msgs.has_changed() {
-            self.msg_view.refresh();
-            needs_redraw.store(true, Ordering::Relaxed);
-        }
-
-        if self.client.request_counter.has_changed() {
-            self.msgs.push("I'M HERE");
-            self.botbar = Paragraph::new(self.client.request_counter.format()).alignment(Alignment::Right)
+            got_sigwinch.store(true, Ordering::Relaxed);
         }
     }
+    handle.close();
+    Ok(())
 }

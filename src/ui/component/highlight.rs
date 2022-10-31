@@ -10,7 +10,6 @@ macro_rules! impl_highlight {
 
             fn highlight_item(&mut self, highlight_style: Style) {
                 self.highlight_style = highlight_style;
-                self.refresh();
             }
         }
     };

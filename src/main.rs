@@ -85,9 +85,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client.queue_download(nxm_str.to_string()).await;
     }
 
-    nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx);
+    nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx).await;
 
-    return ui::UI::init(cache, client, config, msgs)?.run().await;
+    Ok(ui::ui::run(cache, client, config, msgs).await?)
 }
 
 fn gen_apikey(msgs: &Messages) -> Option<String> {

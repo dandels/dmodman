@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt;
 use std::num::ParseIntError;
 use tokio::io;
+use tokio::task::JoinError;
 use url::ParseError;
 
 #[derive(Debug)]
@@ -11,6 +12,7 @@ pub enum DownloadError {
     CacheError { source: CacheError },
     Expired,
     IOError { source: io::Error },
+    JoinError { source: JoinError },
     RequestError { source: RequestError },
     Md5SearchError { source: Md5SearchError },
     ParseError { source: ParseError },
@@ -24,6 +26,7 @@ impl Error for DownloadError {
             DownloadError::CacheError { ref source } => Some(source),
             DownloadError::Expired => None,
             DownloadError::IOError { ref source } => Some(source),
+            DownloadError::JoinError { ref source } => Some(source),
             DownloadError::Md5SearchError { ref source } => Some(source),
             DownloadError::ParseError { ref source } => Some(source),
             DownloadError::ParseIntError { ref source } => Some(source),
@@ -38,6 +41,7 @@ impl fmt::Display for DownloadError {
             DownloadError::CacheError { source } => source.fmt(f),
             DownloadError::Expired => f.write_str("Download link is expired."),
             DownloadError::IOError { source } => source.fmt(f),
+            DownloadError::JoinError { source } => source.fmt(f),
             DownloadError::Md5SearchError { source } => source.fmt(f),
             DownloadError::ParseError { source } => source.fmt(f),
             DownloadError::ParseIntError { source } => source.fmt(f),
@@ -46,15 +50,21 @@ impl fmt::Display for DownloadError {
     }
 }
 
-impl From<io::Error> for DownloadError {
-    fn from(error: io::Error) -> Self {
-        DownloadError::IOError { source: error }
+impl From<JoinError> for DownloadError {
+    fn from(error: JoinError) -> Self {
+        DownloadError::JoinError { source: error }
     }
 }
 
-impl From<RequestError> for DownloadError {
-    fn from(error: RequestError) -> Self {
-        DownloadError::RequestError { source: error }
+impl From<CacheError> for DownloadError {
+    fn from(error: CacheError) -> Self {
+        DownloadError::CacheError { source: error }
+    }
+}
+
+impl From<io::Error> for DownloadError {
+    fn from(error: io::Error) -> Self {
+        DownloadError::IOError { source: error }
     }
 }
 
@@ -83,9 +93,8 @@ impl From<reqwest::Error> for DownloadError {
         }
     }
 }
-
-impl From<CacheError> for DownloadError {
-    fn from(error: CacheError) -> Self {
-        DownloadError::CacheError { source: error }
+impl From<RequestError> for DownloadError {
+    fn from(error: RequestError) -> Self {
+        DownloadError::RequestError { source: error }
     }
 }

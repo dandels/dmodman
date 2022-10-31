@@ -3,7 +3,8 @@ use crate::Config;
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use tokio::fs;
 
@@ -31,18 +32,18 @@ impl LocalFileCache {
         })
     }
 
-    pub fn push(&self, value: LocalFile) {
-        self.map.try_write().unwrap().insert(value.file_id, value);
+    pub async fn push(&self, value: LocalFile) {
+        self.map.write().await.insert(value.file_id, value);
     }
 
-    pub fn get(&self, key: u64) -> Option<LocalFile> {
-        match self.map.try_read().unwrap().get(&key) {
+    pub async fn get(&self, key: u64) -> Option<LocalFile> {
+        match self.map.read().await.get(&key) {
             Some(v) => Some(v.clone()),
             None => None,
         }
     }
 
-    pub fn items(&self) -> Vec<LocalFile> {
-        self.map.try_read().unwrap().values().cloned().collect()
+    pub async fn items(&self) -> Vec<LocalFile> {
+        self.map.read().await.values().cloned().collect()
     }
 }

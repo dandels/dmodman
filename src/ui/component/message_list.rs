@@ -1,11 +1,11 @@
 use crate::Messages;
 
+use tokio_stream::StreamExt;
 use tui::style::Style;
 use tui::text::Spans;
 use tui::widgets::{Block, Borders, List, ListItem, ListState};
 
 pub struct MessageList<'a> {
-    pub widget: List<'a>,
     pub block: Block<'a>,
     pub msgs: Messages,
     pub state: ListState,
@@ -17,7 +17,6 @@ impl<'a> MessageList<'a> {
         let block = Block::default().borders(Borders::ALL).title("Messages");
         let highlight_style = Style::default();
         Self {
-            widget: Self::create(block.clone(), &msgs, highlight_style),
             block,
             msgs,
             state: ListState::default(),
@@ -25,22 +24,19 @@ impl<'a> MessageList<'a> {
         }
     }
 
-    pub fn refresh(&mut self) {
-        self.widget = Self::create(self.block.clone(), &self.msgs, self.highlight_style);
-    }
+    // If the list gets long, it might be a good idea to create only the visible parts of the list
+    pub async fn create<'b>(&self) -> List<'b>
+    where
+        'a: 'b, {
+        let mut items: Vec<ListItem<'b>> = vec![];
+        let msgs = self.msgs.messages.read().await;
+        let mut stream = tokio_stream::iter(msgs.iter());
 
-    fn create(block: Block<'a>, msgs: &Messages, highlight_style: Style) -> List<'a> {
-        let list_items: Vec<ListItem> = msgs
-            .messages
-            .read()
-            .unwrap()
-            .iter()
-            .map(|i| {
-                let lines = vec![Spans::from(i.to_string())];
-                ListItem::new(lines)
-            })
-            .collect();
+        while let Some(val) = stream.next().await {
+            let lines = vec![Spans::from(val.to_string())];
+            items.push(ListItem::new(lines))
+        }
 
-        List::new(list_items).block(block).highlight_style(highlight_style)
+        List::new(items).block(self.block.to_owned()).highlight_style(self.highlight_style.to_owned())
     }
 }

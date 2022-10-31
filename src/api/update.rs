@@ -5,7 +5,8 @@ use crate::config::PathType;
 use crate::Config;
 use crate::Messages;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::task;
 
 #[derive(Clone)]
@@ -31,7 +32,7 @@ impl UpdateChecker {
     pub async fn check_all(&self) -> Result<(), DownloadError> {
         let mut mods_to_check: HashMap<(String, u32), Vec<LocalFile>> = HashMap::new();
 
-        for lf in self.cache.local_files.items().into_iter() {
+        for lf in self.cache.local_files.items().await.into_iter() {
             match mods_to_check.get_mut(&(lf.game.clone(), lf.mod_id)) {
                 Some(vec) => vec.push(lf.clone()),
                 None => {
@@ -47,7 +48,7 @@ impl UpdateChecker {
             let me = self.clone();
             let handle: task::JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
                 let upds = me.check_mod(&game, mod_id, files).await?;
-                me.updatable.write().unwrap().insert((game, mod_id), upds);
+                me.updatable.write().await.insert((game, mod_id), upds);
                 Ok(())
             });
             handles.push(handle);
@@ -55,11 +56,21 @@ impl UpdateChecker {
         for h in handles {
             match h.await {
                 Ok(_) => {}
-                Err(e) => self.msgs.push(e.to_string()),
+                Err(e) => self.msgs.push(e.to_string()).await,
             }
         }
 
         Ok(())
+    }
+
+    pub async fn check_file(&self, file: LocalFile) -> bool {
+        match self.check_mod(&file.game.to_string(), file.mod_id, vec![file]).await {
+            Ok(lfs) => lfs.first().is_some(),
+            Err(e) => {
+                self.msgs.push(e.to_string()).await;
+                false
+            }
+        }
     }
 
     pub async fn check_mod(
@@ -73,14 +84,16 @@ impl UpdateChecker {
          */
         let mut to_update = Vec::new();
         let mut needs_refresh = false;
-        match self.cache.file_lists.get(&mod_id) {
+        match self.cache.file_lists.get(&mod_id).await {
             Some(mut fl) => {
                 // The update algorithm in file_has_update() requires the file list to be sorted
                 fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
                 for lf in files.clone() {
-                    if self.file_has_update(&lf, &fl) {
+                    if self.file_has_update(&lf, &fl).await {
                         to_update.push(lf);
                         needs_refresh = false;
+                    } else {
+                        needs_refresh = true;
                     }
                 }
             }
@@ -93,7 +106,7 @@ impl UpdateChecker {
             file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
 
             for lf in files {
-                if self.file_has_update(&lf, &file_list) {
+                if self.file_has_update(&lf, &file_list).await {
                     to_update.push(lf);
                 }
             }
@@ -105,7 +118,7 @@ impl UpdateChecker {
      * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
      * doesn't exist.
      */
-    fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
+    async fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
         let mut has_update = false;
         let mut current_id = local_file.file_id;
         let mut current_file: &str = &local_file.file_name;
@@ -128,9 +141,12 @@ impl UpdateChecker {
                 return has_update;
             }
             Err(e) => {
-                self.msgs.push("Error when checking update for:");
-                self.msgs.push(format!("    {:?}", local_file));
-                self.msgs.push(format!("    {:?}", e));
+                self.msgs
+                    .push(format!(
+                        "Error when checking update for {:?}: {e:?}",
+                        local_file.file_name
+                    ))
+                    .await;
                 return has_update;
             }
         }
@@ -148,21 +164,21 @@ mod tests {
     #[tokio::test]
     async fn update() -> Result<(), DownloadError> {
         let game: String = "morrowind".to_owned();
-        let config = Config::new(InitialConfig::default(), Some(&game), None).unwrap();
+        let config = Config::new(InitialConfig::default(), game);
 
         let fair_magicka_regen_id = 39350;
         let graphic_herbalism_id = 46599;
 
         let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
-        let client: Client = Client::new(&cache, &config, &msgs)?;
+        let client: Client = Client::new(&cache, &config, &msgs).await?;
 
         let msgs = Messages::default();
 
         let updater = UpdateChecker::new(cache, client, config, msgs);
         updater.check_all().await?;
 
-        let upds = updater.updatable.read().unwrap();
+        let upds = updater.updatable.read().await;
         assert_eq!(
             false,
             upds.get(&(game.clone(), fair_magicka_regen_id)).unwrap().first().is_some()

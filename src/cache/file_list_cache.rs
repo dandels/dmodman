@@ -4,8 +4,9 @@ use crate::config::{paths, Config};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::fs;
+use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct FileListCache {
@@ -38,12 +39,12 @@ impl FileListCache {
         })
     }
 
-    pub fn insert(&self, key: u32, value: FileList) {
-        self.map.try_write().unwrap().insert(key, value);
+    pub async fn insert(&self, key: u32, value: FileList) {
+        self.map.write().await.insert(key, value);
     }
 
-    pub fn get(&self, key: &u32) -> Option<FileList> {
-        match self.map.try_read().unwrap().get(key) {
+    pub async fn get(&self, key: &u32) -> Option<FileList> {
+        match self.map.read().await.get(key) {
             Some(v) => Some(v.clone()),
             None => None,
         }

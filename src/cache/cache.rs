@@ -48,13 +48,13 @@ impl Cache {
     pub async fn save_file_list(&self, fl: &FileList, mod_id: &u32) -> Result<(), CacheError> {
         let path = self.config.path_for(PathType::FileList(&mod_id));
         fl.save(path).await?;
-        self.file_lists.insert(*mod_id, fl.clone());
+        self.file_lists.insert(*mod_id, fl.clone()).await;
         Ok(())
     }
 
     pub async fn add_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
         lf.save(self.config.path_for(PathType::LocalFile(&lf))).await?;
-        self.local_files.push(lf);
+        self.local_files.push(lf).await;
         Ok(())
     }
 }
@@ -69,10 +69,10 @@ mod test {
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
         let game = "morrowind";
-        let config = Config::new(InitialConfig::default(), Some(game), None).unwrap();
+        let config = Config::new(InitialConfig::default(), game.to_string());
         let cache = Cache::new(&config).await?;
 
-        let _fd = cache.file_index.get(&82041).unwrap();
+        let _fd = cache.file_index.get(&82041).await.unwrap();
         Ok(())
     }
 }
