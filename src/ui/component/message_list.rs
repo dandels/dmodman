@@ -10,6 +10,7 @@ pub struct MessageList<'a> {
     pub msgs: Messages,
     pub state: ListState,
     pub highlight_style: Style,
+    pub widget: List<'a>,
 }
 
 impl<'a> MessageList<'a> {
@@ -21,13 +22,14 @@ impl<'a> MessageList<'a> {
             msgs,
             state: ListState::default(),
             highlight_style,
+            widget: List::new(vec![]),
         }
     }
 
     // If the list gets long, it might be a good idea to create only the visible parts of the list
-    pub async fn create<'b>(&self) -> List<'b>
+    pub async fn refresh<'b>(&mut self)
     where
-        'a: 'b, {
+        'b: 'a, {
         let mut items: Vec<ListItem<'b>> = vec![];
         let msgs = self.msgs.messages.read().await;
         let mut stream = tokio_stream::iter(msgs.iter());
@@ -37,6 +39,6 @@ impl<'a> MessageList<'a> {
             items.push(ListItem::new(lines))
         }
 
-        List::new(items).block(self.block.to_owned()).highlight_style(self.highlight_style.to_owned())
+        self.widget = List::new(items).block(self.block.to_owned()).highlight_style(self.highlight_style.to_owned());
     }
 }

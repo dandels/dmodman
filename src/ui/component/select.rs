@@ -1,4 +1,4 @@
-use super::{DownloadTable, FileTable, Highlight, MessageList};
+use super::{DownloadTable, FileTable, MessageList};
 
 macro_rules! impl_stateful {
     ($T:ty, $collection:ident) => {
@@ -22,7 +22,7 @@ impl_stateful!(DownloadTable<'_>, downloads);
 impl_stateful!(FileTable<'_>, files);
 impl_stateful!(MessageList<'_>, msgs);
 
-pub trait Select: Highlight {
+pub trait Select: Send {
     fn select(&mut self, index: Option<usize>);
 
     fn selected(&self) -> Option<usize>;

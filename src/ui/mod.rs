@@ -1,18 +1,21 @@
 mod component;
 mod event;
-pub mod ui;
+mod ui;
 
-pub use self::ui::UI;
+pub use ui::UI;
 
+//use self::event::{Event, Events};
 use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use signal_hook_tokio::Signals;
+//use termion::event::Key;
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
 use tokio_stream::StreamExt;
+//use tui::layout::{Constraint, Direction, Layout};
 
 use tui::backend::{Backend, TermionBackend};
 use tui::Terminal;
@@ -32,3 +35,38 @@ pub async fn handle_sigwinch(mut signals: Signals, is_window_resized: Arc<Atomic
         is_window_resized.store(true, Ordering::Relaxed);
     }
 }
+
+//pub fn pick_from_list<'a>(title: String, list: Vec<String>) -> Result<Option<String>, Box<dyn Error>> {
+//    let mut terminal = term_setup().unwrap();
+//    let mut lp = ListPicker::new(title, list);
+//    let needs_redraw = Arc::new(AtomicBool::new(true));
+//    let root_layout = Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(100)]);
+//    let events = Events::new();
+//
+//    loop {
+//        if needs_redraw.load(Ordering::Relaxed) {
+//            terminal.draw(|f| {
+//                let rect_root = root_layout.split(f.size());
+//
+//                f.render_stateful_widget(lp.widget.clone(), rect_root[0], &mut lp.state);
+//            })?;
+//            needs_redraw.store(false, Ordering::Relaxed);
+//        }
+//
+//        if let Event::Input(key) = events.next()? {
+//            match key {
+//                Key::Char('q') | Key::Ctrl('c') => return Ok(None),
+//                Key::Char('\n') => match lp.state.selected() {
+//                    Some(i) => {
+//                        return Ok(match lp.list.get(i) {
+//                            Some(game) => Some(game.to_string()),
+//                            None => None,
+//                        })
+//                    }
+//                    None => return Ok(None),
+//                },
+//                _ => continue,
+//            }
+//        }
+//    }
+//}

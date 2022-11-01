@@ -15,6 +15,7 @@ pub struct Events {
     rx: mpsc::Receiver<Event<Key>>,
 }
 
+// TODO should either the sender or receiver use tokio's version?
 impl Events {
     pub fn new() -> Events {
         let tick_rate = Duration::from_millis(250);

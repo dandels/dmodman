@@ -11,6 +11,7 @@ pub struct FileTable<'a> {
     pub highlight_style: Style,
     pub files: FileIndex,
     pub state: TableState,
+    pub widget: Table<'a>,
 }
 
 impl<'a> FileTable<'a> {
@@ -18,20 +19,20 @@ impl<'a> FileTable<'a> {
         let block = Block::default().borders(Borders::ALL).title("Files");
         let headers =
             Row::new(vec!["Name", "Version"].iter().map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))));
-        let highlight_style = Style::default();
 
         Self {
             block,
             files: files.clone(),
             headers,
-            highlight_style,
+            highlight_style: Style::default(),
             state: TableState::default(),
+            widget: Table::new(vec![]),
         }
     }
 
-    pub async fn create<'b>(&self) -> Table<'b>
+    pub async fn refresh<'b>(&mut self)
     where
-        'a: 'b, {
+        'b: 'a, {
         let files = self.files.items().await;
         let mut stream = tokio_stream::iter(files);
         let mut rows: Vec<Row> = vec![];
@@ -42,12 +43,10 @@ impl<'a> FileTable<'a> {
             ]))
         }
 
-        let table = Table::new(rows)
+        self.widget = Table::new(rows)
             .header(self.headers.to_owned())
             .block(self.block.to_owned())
             .widths(&[Constraint::Percentage(85), Constraint::Percentage(15)])
             .highlight_style(self.highlight_style.to_owned());
-
-        table
     }
 }
