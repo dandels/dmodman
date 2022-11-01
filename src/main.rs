@@ -79,6 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
+    // TODO wrap Config in an Arc or something, we're currently cloning it when we shouldn't be
     let config = initialconfig.build()?;
 
     let cache = Cache::new(&config).await?;
@@ -90,7 +91,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx).await;
 
-    Ok(ui::ui::run(cache, client, config, msgs).await?)
+    Ok(ui::UI::new(cache, client, config, msgs).run().await?)
 }
 
 fn gen_apikey(_msgs: &Messages) -> Option<String> {

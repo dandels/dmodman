@@ -20,74 +20,8 @@ use tokio::sync::RwLock;
 use tokio::task;
 use tui::layout::{Constraint, Direction, Layout, Rect};
 
-#[derive(Clone)]
-enum FocusedWidget {
-    DownloadTable(Arc<RwLock<dyn Highlight>>),
-    FileTable(Arc<RwLock<dyn Highlight>>),
-    MessageList(Arc<RwLock<dyn Highlight>>),
-}
-
-impl FocusedWidget {
-    async fn next(&self) {
-        match self {
-            FocusedWidget::DownloadTable(current)
-            | FocusedWidget::FileTable(current)
-            | FocusedWidget::MessageList(current) => {
-                current.write().await.next();
-            }
-        }
-    }
-
-    async fn focus(&self) {
-        match self {
-            FocusedWidget::DownloadTable(current)
-            | FocusedWidget::FileTable(current)
-            | FocusedWidget::MessageList(current) => {
-                current.write().await.focus().await;
-            }
-        }
-    }
-
-    async fn unfocus(&self) {
-        match self {
-            FocusedWidget::DownloadTable(current)
-            | FocusedWidget::FileTable(current)
-            | FocusedWidget::MessageList(current) => {
-                current.write().await.unfocus().await;
-            }
-        }
-    }
-
-    async fn previous(&self) {
-        match self {
-            FocusedWidget::DownloadTable(current)
-            | FocusedWidget::FileTable(current)
-            | FocusedWidget::MessageList(current) => {
-                current.write().await.previous();
-            }
-        }
-    }
-
-    pub async fn change_to(&mut self, selected: FocusedWidget) {
-        match self {
-            FocusedWidget::DownloadTable(current)
-            | FocusedWidget::FileTable(current)
-            | FocusedWidget::MessageList(current) => {
-                current.write().await.unfocus().await;
-                selected.focus().await;
-                //self = FocusedWidget::Messages;
-            }
-        }
-        //selected.focus().await;
-        //match self {
-        //    DownloadTable { table } => {
-        //    }
-        //}
-    }
-}
-
 pub struct UI<'a> {
-    focused: FocusedWidget,
+    focused: FocusedWidget<'a>,
     download_view: Arc<RwLock<DownloadTable<'a>>>,
     files_view: Arc<RwLock<FileTable<'a>>>,
     msg_view: Arc<RwLock<MessageList<'a>>>,
@@ -176,6 +110,7 @@ impl<'a> UI<'static> {
                 self.files_view.write().await.refresh().await;
                 self.download_view.write().await.refresh().await;
                 self.msg_view.write().await.refresh().await;
+                self.top_bar.write().await.refresh().await;
                 self.bottom_bar.write().await.refresh().await;
                 let (width, height) = termion::terminal_size()?;
                 rect_root = main_vertical_layout.split(Rect {
@@ -231,22 +166,32 @@ impl<'a> UI<'static> {
                         handle.close();
                         return Ok(());
                     }
-                    Key::Down | Key::Char('j') => self.focused.next().await,
-                    Key::Up | Key::Char('k') => self.focused.previous().await,
+                    Key::Down | Key::Char('j') => {
+                        self.focused.next().await;
+                        needs_redraw = true;
+                    }
+                    Key::Up | Key::Char('k') => {
+                        self.focused.previous().await;
+                        needs_redraw = true;
+                    }
                     Key::Left | Key::Char('h') => match self.focused {
                         FocusedWidget::MessageList(_) | FocusedWidget::DownloadTable(_) => {
                             self.focused.change_to(FocusedWidget::FileTable(self.files_view.clone())).await;
+                            needs_redraw = true;
                         }
                         FocusedWidget::FileTable(_) => {
                             self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
+                            needs_redraw = true;
                         }
                     },
                     Key::Right | Key::Char('l') => match self.focused {
                         FocusedWidget::MessageList(_) | FocusedWidget::FileTable(_) => {
                             self.focused.change_to(FocusedWidget::DownloadTable(self.download_view.clone())).await;
+                            needs_redraw = true;
                         }
                         FocusedWidget::DownloadTable(_) => {
                             self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
+                            needs_redraw = true;
                         }
                     },
                     Key::Char('U') => {
