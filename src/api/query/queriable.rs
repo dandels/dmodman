@@ -9,6 +9,7 @@ use tokio::task;
 pub trait Queriable: DeserializeOwned {
     const FORMAT_STRING: &'static str;
 
+    // TODO don't crash if server returns unexpected json
     async fn request(client: &Client, params: Vec<&str>) -> Result<Self, RequestError> {
         let endpoint = format::vec_with_format_string(Self::FORMAT_STRING, params);
         let resp = client.send_api_request(&endpoint).await?.error_for_status()?;

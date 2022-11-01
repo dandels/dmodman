@@ -19,7 +19,7 @@ impl RequestCounter {
     pub fn new() -> Self {
         Self {
             counter: Arc::new(RwLock::new(Counter::default())),
-            has_changed: Arc::new(AtomicBool::from(true)),
+            has_changed: Arc::new(AtomicBool::from(false)),
         }
     }
 

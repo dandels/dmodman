@@ -29,7 +29,7 @@ impl UpdateChecker {
         }
     }
 
-    pub async fn check_all(&self) -> Result<(), DownloadError> {
+    pub async fn check_all(&self) {
         let mut mods_to_check: HashMap<(String, u32), Vec<LocalFile>> = HashMap::new();
 
         for lf in self.cache.local_files.items().await.into_iter() {
@@ -59,8 +59,6 @@ impl UpdateChecker {
                 Err(e) => self.msgs.push(e.to_string()).await,
             }
         }
-
-        Ok(())
     }
 
     pub async fn check_file(&self, file: LocalFile) -> bool {
@@ -84,11 +82,11 @@ impl UpdateChecker {
         let mut to_update = Vec::new();
         let mut needs_refresh = false;
         match self.cache.file_lists.get(&mod_id).await {
-            Some(fl) => {
+            Some(mut fl) => {
                 /* The update algorithm in file_has_update() requires the file list to be sorted.
                  * It _should_ be sorted by default (I'm waiting for an answer in the Discord). In case of fire,
                  * uncomment this. */
-                //fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
+                fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
                 for lf in files.clone() {
                     if self.file_has_update(&lf, &fl).await {
                         to_update.push(lf);
@@ -177,7 +175,7 @@ mod tests {
         let msgs = Messages::default();
 
         let updater = UpdateChecker::new(cache, client, config, msgs);
-        updater.check_all().await?;
+        updater.check_all().await;
 
         let upds = updater.updatable.read().await;
         assert_eq!(
