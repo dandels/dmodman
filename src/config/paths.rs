@@ -12,10 +12,10 @@ pub const MOD_INFO: &str = "mod_info";
 pub enum PathType<'a> {
     // API formats
     DownloadLink(&'a u32, &'a u64), // game, mod_id, file_id
-    FileList(&'a u32),               // game, mod_id
-    GameInfo(),                      // game
-    Md5Search(&'a u32, &'a u64),     // game, mod_id, file_id
-    ModInfo(&'a u32),                // game, mod_id
+    FileList(&'a u32),              // game, mod_id
+    GameInfo(),                     // game
+    Md5Search(&'a u32, &'a u64),    // game, mod_id, file_id
+    ModInfo(&'a u32),               // game, mod_id
 
     // Local formats
     LocalFile(&'a LocalFile),

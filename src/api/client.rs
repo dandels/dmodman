@@ -70,16 +70,16 @@ impl Client {
         })
     }
 
-    fn build_request(&self, url: Url) -> reqwest::RequestBuilder {
+    fn build_request(&self, url: Url) -> Result<reqwest::RequestBuilder, RequestError> {
         if cfg!(test) {
-            panic!("Test tried to send HTTP request.");
+            return Err(RequestError::IsUnitTest);
         }
-        self.client.get(url).headers((*self.headers).clone())
+        Ok(self.client.get(url).headers((*self.headers).clone()))
     }
 
     fn build_api_request(&self, endpoint: &str) -> Result<reqwest::RequestBuilder, RequestError> {
         if cfg!(test) {
-            panic!("Test tried to send API request.");
+            return Err(RequestError::IsUnitTest);
         }
         let url: Url = Url::parse(&(String::from(API_URL) + endpoint)).unwrap();
         let api_headers = match &*self.api_headers {
@@ -110,6 +110,7 @@ impl Client {
             let nxm = NxmUrl::from_str(&nxm_str)?;
             let dls = DownloadLink::request(
                 &me,
+                me.msgs.clone(),
                 vec![
                     &nxm.domain_name,
                     &nxm.mod_id.to_string(),
@@ -145,7 +146,7 @@ impl Client {
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
 
-        let mut builder = self.build_request(url);
+        let mut builder = self.build_request(url)?;
 
         /* The HTTP Range header is used to resume downloads.
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
@@ -235,7 +236,12 @@ impl Client {
         self.cache.add_local_file(lf.clone()).await?;
 
         if self.cache.file_index.get(&lf.file_id).await.is_none() {
-            let fl = FileList::request(&self, vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
+            let fl = FileList::request(
+                &self,
+                self.msgs.clone(),
+                vec![&nxm.domain_name, &nxm.mod_id.to_string()],
+            )
+            .await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
                 self.cache.file_index.insert(nxm.file_id, fd.clone()).await;
             }
@@ -250,7 +256,7 @@ impl Client {
     pub async fn mod_search(&self, query: String) -> Result<Search, RequestError> {
         let base: Url = Url::parse(SEARCH_URL).unwrap();
         let url = base.join(&query).unwrap();
-        let builder = self.build_request(url);
+        let builder = self.build_request(url)?;
         Ok(builder.send().await?.json().await?)
     }
 }

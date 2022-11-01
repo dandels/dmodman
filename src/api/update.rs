@@ -100,7 +100,8 @@ impl UpdateChecker {
         }
 
         if needs_refresh {
-            let mut file_list = FileList::request(&self.client, vec![&game, &mod_id.to_string()]).await?;
+            let mut file_list =
+                FileList::request(&self.client, self.msgs.clone(), vec![&game, &mod_id.to_string()]).await?;
             self.cache.save_file_list(&file_list, &mod_id).await?;
             file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
 
@@ -159,7 +160,7 @@ mod tests {
     use crate::ConfigBuilder;
     use crate::Messages;
 
-    // TODO this correctly fails since it tries to send API request
+    // TODO this currently fails since it tries to send API request
     #[tokio::test]
     async fn update() -> Result<(), DownloadError> {
         let game = "morrowind";
