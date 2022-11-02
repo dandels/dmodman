@@ -1,0 +1,13 @@
+## Note that relative paths and environment variables are not yet handled.
+
+## Download directory as an absolute path. Default: $XDG_DOWNLOAD_DIR/dmodman.
+#download_dir = "/home/user/downloads/dmodman"
+
+## The game name is the first part of the NexusMods website path
+## https://www.nexusmods.com/skyrimspecialedition/
+##                           ^game name
+#game = "morrowind"
+
+## A personal API key for development can be generated at https://www.nexusmods.com/users/myaccount?tab=api.
+## This is temporary, since NexusMods requires that released applications don't use personal API keys.
+#apikey = "hunter2"
