@@ -129,6 +129,7 @@ impl<'a> UI<'static> {
                     needs_redraw = true;
                     self.msgs.push("redraw files").await;
                 }
+                // TODO make sure we don't redraw too often during downloads
                 if self.client.downloads.has_changed.swap(false, Ordering::Relaxed) {
                     self.download_view.write().await.refresh().await;
                     needs_redraw = true;

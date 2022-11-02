@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             panic!("Setting generation is not implemented.");
             // ask apikey
             // ask game
-            // show user dialog to configure game, set rest to default
+            // show dialog to configure game, set rest to default
         }
     };
 

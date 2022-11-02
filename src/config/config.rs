@@ -9,7 +9,6 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct ConfigBuilder {
     pub apikey: Option<String>,
-    pub cross_game_modding: Option<bool>,
     pub game: Option<String>,
     pub download_dir: Option<String>,
 }
@@ -18,7 +17,6 @@ impl ConfigBuilder {
     pub fn default() -> Self {
         Self {
             apikey: None,
-            cross_game_modding: None,
             game: None,
             download_dir: None,
         }
@@ -47,18 +45,12 @@ impl ConfigBuilder {
 #[derive(Clone)]
 pub struct Config {
     pub apikey: Option<String>,
-    pub cross_game_modding: bool,
     pub game: String,
     pub download_dir: String,
 }
 
 impl Config {
     fn new(config: ConfigBuilder) -> Self {
-        let cross_game_modding = match config.cross_game_modding {
-            Some(true) => true,
-            _ => false,
-        };
-
         let download_dir = match config.download_dir {
             Some(dl_dir) => dl_dir,
             None => {
@@ -81,7 +73,6 @@ impl Config {
         Self {
             apikey: config.apikey,
             game: config.game.unwrap(),
-            cross_game_modding,
             download_dir,
         }
     }

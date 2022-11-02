@@ -12,6 +12,7 @@ pub struct Messages {
 }
 
 impl Messages {
+    // TODO allow optionally logging to file (maybe with log levels?)
     pub async fn push<S: Into<String>>(&self, msg: S) {
         self.messages.write().await.push(format!("{:?}: {}", self.len, msg.into()));
         self.has_changed.store(true, Ordering::Relaxed);
