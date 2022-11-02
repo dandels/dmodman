@@ -2,7 +2,7 @@
 name = "dmodman"
 version = "0.1.0"
 authors = ["dandels <dandels.sh@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
