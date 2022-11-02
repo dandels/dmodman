@@ -41,7 +41,7 @@ impl<'a> UI<'static> {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), msgs.clone());
 
         let top_bar = RwLock::new(TopBar::new()).into();
-        let files_view = Arc::new(RwLock::new(FileTable::new(&cache.file_index)));
+        let files_view = Arc::new(RwLock::new(FileTable::new(cache.file_index.clone())));
         let download_view = RwLock::new(DownloadTable::new(client.downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(msgs.clone())).into();
         let bottom_bar = RwLock::new(BottomBar::new(client.request_counter.clone())).into();
@@ -127,9 +127,9 @@ impl<'a> UI<'static> {
                 if self.cache.file_index.has_changed.swap(false, Ordering::Relaxed) {
                     self.files_view.write().await.refresh().await;
                     needs_redraw = true;
-                    self.msgs.push("redraw files").await;
                 }
                 // TODO make sure we don't redraw too often during downloads
+                // TODO make sure the actual download implementation is not too inefficient.
                 if self.client.downloads.has_changed.swap(false, Ordering::Relaxed) {
                     self.download_view.write().await.refresh().await;
                     needs_redraw = true;
@@ -142,7 +142,6 @@ impl<'a> UI<'static> {
                 if self.client.request_counter.has_changed.swap(false, Ordering::Relaxed) {
                     self.bottom_bar.write().await.refresh().await;
                     needs_redraw = true;
-                    self.msgs.push("redraw counter").await;
                 }
             }
             if needs_redraw {
@@ -199,11 +198,9 @@ impl<'a> UI<'static> {
                         let ftable = self.files_view.read().await;
                         match ftable.state.selected() {
                             Some(i) => {
-                                if let Some((file_id, _fd)) = ftable.files.get_index(i).await {
-                                    let lf = self.cache.local_files.get(file_id).await.unwrap();
-                                    if self.updater.check_file(lf.clone()).await {
-                                        self.msgs.push(format!("{} has an update", lf.file_name)).await;
-                                    }
+                                if let Some((_file_id, mut lf, _fd)) = ftable.files.get_index(i).await {
+                                    self.updater.check_file(&mut lf).await;
+                                    needs_redraw = true;
                                 }
                             }
                             None => {}
@@ -215,14 +212,9 @@ impl<'a> UI<'static> {
                             match ftable.state.selected() {
                                 Some(_i) => {
                                     let updater = self.updater.clone();
-                                    let msgs = self.msgs.clone();
+                                    // TODO redraw somehow
                                     task::spawn(async move {
                                         updater.check_all().await;
-                                        for (_mod_id, localfiles) in updater.updatable.read().await.iter() {
-                                            for lf in localfiles {
-                                                msgs.push(format!("{} has an update", lf.file_name)).await;
-                                            }
-                                        }
                                     });
                                 }
                                 None => {}
@@ -235,7 +227,7 @@ impl<'a> UI<'static> {
                             let ftable = self.files_view.read().await;
                             match ftable.state.selected() {
                                 Some(i) => {
-                                    let (_file_id, _fd) = ftable.files.get_index(i).await.unwrap();
+                                    let (_file_id, _fl, _fd) = ftable.files.get_index(i).await.unwrap();
                                 }
                                 _ => {}
                             }
@@ -244,7 +236,7 @@ impl<'a> UI<'static> {
                     },
                     _ => {
                         // Uncomment to log keypresses
-                        self.msgs.push(format!("{:?}", key)).await;
+                        // self.msgs.push(format!("{:?}", key)).await;
                     }
                 }
             }

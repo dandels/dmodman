@@ -77,7 +77,7 @@ impl Config {
         }
     }
 
-    pub fn game_cache_dir(&self) -> PathBuf {
+    pub fn cache_dir(&self) -> PathBuf {
         let mut path;
         if cfg!(test) {
             path = PathBuf::from(format!("{}/test/data", env!("CARGO_MANIFEST_DIR")));
@@ -85,6 +85,11 @@ impl Config {
             path = dirs::data_local_dir().unwrap();
         }
         path.push(env!("CARGO_CRATE_NAME"));
+        path
+    }
+
+    pub fn game_cache_dir(&self) -> PathBuf {
+        let mut path = self.cache_dir();
         path.push(&self.game);
         path
     }

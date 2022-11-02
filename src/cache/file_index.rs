@@ -1,11 +1,14 @@
 use super::CacheError;
 use super::{FileListCache, LocalFileCache};
 use crate::api::FileDetails;
-use indexmap::IndexMap;
+use crate::cache::LocalFile;
+
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+
+use indexmap::IndexMap;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
 use tokio::task;
@@ -13,7 +16,7 @@ use tokio::task;
 // TODO handle foreign files
 #[derive(Clone)]
 pub struct FileIndex {
-    map: Arc<RwLock<IndexMap<u64, FileDetails>>>,
+    map: Arc<RwLock<IndexMap<u64, (LocalFile, FileDetails)>>>,
     pub has_changed: Arc<AtomicBool>, // used by UI to ask if file table needs to be redrawn
 }
 
@@ -22,12 +25,12 @@ pub struct FileIndex {
  */
 impl FileIndex {
     pub async fn new(local_files: &LocalFileCache, file_lists: &FileListCache) -> Result<Self, CacheError> {
-        let mut map: IndexMap<u64, FileDetails> = IndexMap::new();
+        let mut map: IndexMap<u64, (LocalFile, FileDetails)> = IndexMap::new();
 
         for lf in local_files.items().await {
-            if let Some(file_list) = file_lists.get(&lf.mod_id).await {
+            if let Some(file_list) = file_lists.get((&lf.game, lf.mod_id)).await {
                 if let Some(fd) = file_list.files.iter().find(|fd| fd.file_id == lf.file_id) {
-                    map.insert(lf.file_id, fd.clone());
+                    map.insert(lf.file_id, (lf, fd.to_owned()));
                 }
             }
         }
@@ -38,19 +41,19 @@ impl FileIndex {
         })
     }
 
-    pub async fn insert(&self, key: u64, value: FileDetails) {
+    pub async fn insert(&self, key: u64, value: (LocalFile, FileDetails)) {
         self.map.write().await.insert(key, value);
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
-    pub async fn get(&self, key: &u64) -> Option<FileDetails> {
+    pub async fn get(&self, key: &u64) -> Option<(LocalFile, FileDetails)> {
         match self.map.read().await.get(key) {
-            Some(v) => Some(v.clone()),
+            Some(v) => Some(v.to_owned()),
             None => None,
         }
     }
 
-    pub async fn items(&self) -> Vec<FileDetails> {
+    pub async fn values_cloned(&self) -> Vec<(LocalFile, FileDetails)> {
         self.map.read().await.values().cloned().collect()
     }
 
@@ -61,9 +64,9 @@ impl FileIndex {
         task::block_in_place(move || Handle::current().block_on(async move { self.map.read().await.len() }))
     }
 
-    pub async fn get_index(&self, i: usize) -> Option<(u64, FileDetails)> {
+    pub async fn get_index(&self, i: usize) -> Option<(u64, LocalFile, FileDetails)> {
         match self.map.read().await.get_index(i) {
-            Some((k, v)) => Some((k.clone(), v.clone())),
+            Some((file_id, (lf, fd))) => Some((*file_id, lf.to_owned(), fd.to_owned())),
             None => None,
         }
     }

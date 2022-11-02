@@ -7,6 +7,15 @@ pub struct LocalFile {
     pub file_name: String,
     pub mod_id: u32,
     pub file_id: u64,
+    pub update_status: Option<UpdateStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum UpdateStatus {
+    UpToDate(u64),
+    HasNewFile(u64),
+    OutOfDate,
+    IgnoredUntil(u64),
 }
 
 impl LocalFile {
@@ -16,6 +25,7 @@ impl LocalFile {
             file_name,
             mod_id: nxm.mod_id,
             file_id: nxm.file_id,
+            update_status: Some(UpdateStatus::OutOfDate),
         }
     }
 }

@@ -12,7 +12,7 @@ pub const MOD_INFO: &str = "mod_info";
 pub enum PathType<'a> {
     // API formats
     DownloadLink(&'a u32, &'a u64), // game, mod_id, file_id
-    FileList(&'a u32),              // game, mod_id
+    FileList(&'a str, &'a u32),     // game, mod_id
     GameInfo(),                     // game
     Md5Search(&'a u32, &'a u64),    // game, mod_id, file_id
     ModInfo(&'a u32),               // game, mod_id
@@ -31,9 +31,10 @@ impl Config {
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id.to_string(), file_id.to_string()));
             }
-            PathType::FileList(mod_id) => {
-                path = self.game_cache_dir();
+            PathType::FileList(game, mod_id) => {
+                path = self.cache_dir();
                 path.push(FILE_LISTS);
+                path.push(game);
                 path.push(format!("{}.json", mod_id.to_string()));
             }
             PathType::GameInfo() => {

@@ -1,17 +1,14 @@
 use super::error::DownloadError;
 use super::{Client, FileList, Queriable};
-use crate::cache::{Cache, LocalFile};
+use crate::cache::{Cache, LocalFile, UpdateStatus};
 use crate::config::PathType;
 use crate::Config;
 use crate::Messages;
+
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tokio::task;
 
 #[derive(Clone)]
 pub struct UpdateChecker {
-    pub updatable: Arc<RwLock<HashMap<(String, u32), Vec<LocalFile>>>>, // (game, mod id), Vec<files>
     client: Client,
     cache: Cache,
     config: Config,
@@ -21,7 +18,6 @@ pub struct UpdateChecker {
 impl UpdateChecker {
     pub fn new(cache: Cache, client: Client, config: Config, msgs: Messages) -> Self {
         Self {
-            updatable: Arc::new(RwLock::new(HashMap::new())),
             msgs,
             cache,
             client,
@@ -30,95 +26,59 @@ impl UpdateChecker {
     }
 
     pub async fn check_all(&self) {
-        let mut mods_to_check: HashMap<(String, u32), Vec<LocalFile>> = HashMap::new();
+        // We only need to make one API request per mod, since the response contains info about all files in that mod.
+        let mut games_to_check: HashMap<(String, u32), FileList> = HashMap::new();
+        let localfiles = self.cache.local_files.items().await;
 
-        for lf in self.cache.local_files.items().await.into_iter() {
-            match mods_to_check.get_mut(&(lf.game.clone(), lf.mod_id)) {
-                Some(vec) => vec.push(lf.clone()),
+        for mut lf in localfiles {
+            match games_to_check.get_mut(&(lf.game.to_string(), lf.mod_id)) {
+                Some(file_list) => {
+                    self.refresh_updatestatus(&mut lf, file_list).await;
+                }
                 None => {
-                    let mut vec = Vec::new();
-                    vec.push(lf.clone());
-                    mods_to_check.insert((lf.game, lf.mod_id), vec);
+                    // TODO don't unwrap
+                    let file_list = self.refresh_filelist(&lf.game, lf.mod_id).await.unwrap();
+                    self.refresh_updatestatus(&mut lf, &file_list).await;
+                    games_to_check.insert((lf.game.to_string(), lf.mod_id), file_list);
                 }
-            }
-        }
-
-        let mut handles: Vec<task::JoinHandle<Result<(), DownloadError>>> = Vec::new();
-        for ((game, mod_id), files) in mods_to_check {
-            let me = self.clone();
-            let handle: task::JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
-                let upds = me.check_mod(&game, mod_id, files).await?;
-                me.updatable.write().await.insert((game, mod_id), upds);
-                Ok(())
-            });
-            handles.push(handle);
-        }
-        for h in handles {
-            match h.await {
-                Ok(_) => {}
-                Err(e) => self.msgs.push(e.to_string()).await,
             }
         }
     }
 
-    pub async fn check_file(&self, file: LocalFile) -> bool {
-        match self.check_mod(&file.game.to_string(), file.mod_id, vec![file]).await {
-            Ok(lfs) => lfs.first().is_some(),
-            Err(e) => {
-                self.msgs.push(e.to_string()).await;
-                false
-            }
-        }
+    pub async fn check_file(&self, lf: &mut LocalFile) {
+        // TODO don't unwrap
+        let file_list = self.refresh_filelist(&lf.game, lf.mod_id).await.unwrap();
+        self.refresh_updatestatus(lf, &file_list).await;
     }
 
-    pub async fn check_mod(
-        &self,
-        game: &str,
-        mod_id: u32,
-        files: Vec<LocalFile>,
-    ) -> Result<Vec<LocalFile>, DownloadError> {
-        /* We might be able to tell that a file needs updates using the cached filelist, but it's not certain. First we
-         * check the local version - if it doesn't have updates, we query the API. */
-        let mut to_update = Vec::new();
-        let mut needs_refresh = false;
-        match self.cache.file_lists.get(&mod_id).await {
-            Some(mut fl) => {
-                /* The update algorithm in file_has_update() requires the file list to be sorted.
-                 * It _should_ be sorted by default (I'm waiting for an answer in the Discord). In case of fire,
-                 * uncomment this. */
-                fl.file_updates.sort_by_key(|a| a.uploaded_timestamp);
-                for lf in files.clone() {
-                    if self.file_has_update(&lf, &fl).await {
-                        to_update.push(lf);
-                        needs_refresh = false;
-                    } else {
-                        needs_refresh = true;
-                    }
-                }
-            }
-            None => needs_refresh = true,
-        }
-
-        if needs_refresh {
-            let mut file_list =
-                FileList::request(&self.client, self.msgs.clone(), vec![&game, &mod_id.to_string()]).await?;
-            self.cache.save_file_list(&file_list, &mod_id).await?;
-            file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
-
-            for lf in files {
-                if self.file_has_update(&lf, &file_list).await {
-                    to_update.push(lf);
-                }
-            }
-        }
-        Ok(to_update)
+    async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, DownloadError> {
+        let mut file_list =
+            FileList::request(&self.client, self.msgs.clone(), vec![&game, &mod_id.to_string()]).await?;
+        /* The update algorithm in file_has_update() requires the file list to be sorted.
+         * The NexusMods community manager (who has been Very Helpful!) couldn't guarantee that the API always
+         * keeps them sorted */
+        file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
+        self.cache.save_file_list(&file_list, game, mod_id).await?;
+        Ok(file_list)
     }
 
     /* There might be several versions of a file present. If we're looking at the oldest one, it's not enough to
      * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
      * doesn't exist.
      */
-    async fn file_has_update(&self, local_file: &LocalFile, file_list: &FileList) -> bool {
+    // TODO return status for easier unit testing, change LocalFile on a higher level
+    async fn refresh_updatestatus(&self, local_file: &mut LocalFile, file_list: &FileList) {
+        if file_list.file_updates.len() == 0 {
+            return;
+        }
+        let latest_timestamp: u64 = file_list.file_updates.last().unwrap().uploaded_timestamp;
+
+        if let Some(UpdateStatus::IgnoredUntil(ignoretime)) = local_file.update_status {
+            if latest_timestamp < ignoretime {
+                return;
+            }
+        }
+
         let mut has_update = false;
         let mut current_id = local_file.file_id;
         let mut current_file: &str = &local_file.file_name;
@@ -135,21 +95,28 @@ impl UpdateChecker {
         f.push(current_file);
         match f.try_exists() {
             Ok(true) => {
-                return false;
+                local_file.update_status = Some(UpdateStatus::OutOfDate);
             }
             Ok(false) => {
-                return has_update;
+                if has_update {
+                    local_file.update_status = Some(UpdateStatus::OutOfDate);
+                } else {
+                    if let Some(UpdateStatus::HasNewFile(previous_timestamp)) = local_file.update_status {
+                        local_file.update_status = Some(UpdateStatus::HasNewFile(latest_timestamp));
+                    } else {
+                        local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
+                    }
+                }
             }
             Err(e) => {
                 self.msgs
                     .push(format!(
-                        "Error when checking update for {:?}: {e:?}",
+                        "IO error when checking update for {:?}: {e:?}",
                         local_file.file_name
                     ))
                     .await;
-                return has_update;
             }
-        }
+        };
     }
 }
 
@@ -157,6 +124,7 @@ impl UpdateChecker {
 mod tests {
     use super::{Client, DownloadError, UpdateChecker};
     use crate::cache::Cache;
+    use crate::cache::{LocalFile, UpdateStatus};
     use crate::ConfigBuilder;
     use crate::Messages;
 
@@ -166,8 +134,8 @@ mod tests {
         let game = "morrowind";
         let config = ConfigBuilder::default().game(game).build().unwrap();
 
-        let fair_magicka_regen_id = 39350;
-        let graphic_herbalism_id = 46599;
+        let fair_magicka_regen_file_id = 82041;
+        let graphic_herbalism_file_id = 1000014314;
 
         let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
@@ -175,26 +143,14 @@ mod tests {
 
         let msgs = Messages::default();
 
+        let fmr_lf: LocalFile = cache.local_files.get(fair_magicka_regen_file_id).await.unwrap();
+        let gh_lf: LocalFile = cache.local_files.get(graphic_herbalism_file_id).await.unwrap();
+
         let updater = UpdateChecker::new(cache, client, config, msgs);
         updater.check_all().await;
 
-        let upds = updater.updatable.read().await;
-        assert_eq!(
-            false,
-            upds.get(&(game.to_string(), fair_magicka_regen_id)).unwrap().first().is_some()
-        );
-
-        assert!(upds
-            .get(&(game.to_string(), graphic_herbalism_id))
-            .unwrap()
-            .iter()
-            .any(|fl| fl.file_name == "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z"));
-
-        assert!(upds
-            .get(&(game.to_string(), graphic_herbalism_id))
-            .unwrap()
-            .iter()
-            .any(|fl| fl.file_name == "GH TR - PT Meshes-46599-1-01-1556986716.7z"));
+        assert!(matches!(fmr_lf.update_status.unwrap(), UpdateStatus::OutOfDate));
+        assert!(matches!(gh_lf.update_status.unwrap(), UpdateStatus::OutOfDate));
 
         Ok(())
     }

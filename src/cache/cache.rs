@@ -45,10 +45,10 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn save_file_list(&self, fl: &FileList, mod_id: &u32) -> Result<(), CacheError> {
-        let path = self.config.path_for(PathType::FileList(&mod_id));
+    pub async fn save_file_list(&self, fl: &FileList, game: &str, mod_id: u32) -> Result<(), CacheError> {
+        let path = self.config.path_for(PathType::FileList(game, &mod_id));
         fl.save(path).await?;
-        self.file_lists.insert(*mod_id, fl.clone()).await;
+        self.file_lists.insert((game, mod_id), fl.clone()).await;
         Ok(())
     }
 

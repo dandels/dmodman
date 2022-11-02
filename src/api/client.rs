@@ -243,9 +243,9 @@ impl Client {
             )
             .await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
-                self.cache.file_index.insert(nxm.file_id, fd.clone()).await;
+                self.cache.file_index.insert(nxm.file_id, (lf, fd.to_owned())).await;
             }
-            self.cache.save_file_list(&fl, &nxm.mod_id).await?;
+            self.cache.save_file_list(&fl, &nxm.domain_name, nxm.mod_id).await?;
         }
 
         Ok(path)

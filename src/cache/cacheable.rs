@@ -62,7 +62,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::default().game(game).build().unwrap();
-        let path = config.path_for(PathType::FileList(&mod_id));
+        let path = config.path_for(PathType::FileList(&game, &mod_id));
 
         let fl = FileList::load(path).await?;
         assert_eq!(1000014198, fl.files.first().unwrap().id.0);
