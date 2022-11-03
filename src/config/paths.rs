@@ -29,13 +29,13 @@ impl Config {
             PathType::DownloadLink(mod_id, file_id) => {
                 path = self.game_cache_dir();
                 path.push(DL_LINKS);
-                path.push(format!("{}-{}.json", mod_id.to_string(), file_id.to_string()));
+                path.push(format!("{}-{}.json", mod_id, file_id));
             }
             PathType::FileList(game, mod_id) => {
                 path = self.cache_dir();
                 path.push(FILE_LISTS);
                 path.push(game);
-                path.push(format!("{}.json", mod_id.to_string()));
+                path.push(format!("{}.json", mod_id));
             }
             PathType::GameInfo() => {
                 path = self.game_cache_dir();
@@ -44,12 +44,12 @@ impl Config {
             PathType::Md5Search(mod_id, file_id) => {
                 path = self.game_cache_dir();
                 path.push(MD5_SEARCH);
-                path.push(format!("{}-{}.json", mod_id.to_string(), file_id.to_string()));
+                path.push(format!("{}-{}.json", mod_id, file_id));
             }
             PathType::ModInfo(mod_id) => {
                 path = self.game_cache_dir();
                 path.push(MOD_INFO);
-                path.push(format!("{}.json", mod_id.to_string()));
+                path.push(format!("{}.json", mod_id));
             }
             PathType::LocalFile(lf) => {
                 path = self.download_dir();

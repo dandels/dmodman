@@ -21,8 +21,8 @@ impl Cache {
      * - file_id        -> FileDetails
      */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
-        let file_lists = FileListCache::new(&config).await?;
-        let file_index = FileIndex::new(&config, file_lists.clone()).await?;
+        let file_lists = FileListCache::new(config).await?;
+        let file_index = FileIndex::new(config, file_lists.clone()).await?;
 
         Ok(Self {
             config: config.clone(),

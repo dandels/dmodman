@@ -19,7 +19,7 @@ impl Error for CacheError {
 
 impl fmt::Display for CacheError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &*self {
+        match self {
             CacheError::IOError { source } => source.fmt(f),
             CacheError::DeserializationError { source } => source.fmt(f),
         }

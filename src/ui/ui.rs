@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
-use termion;
 use termion::event::Key;
 use tokio::sync::RwLock;
 use tokio::task;
@@ -38,7 +37,7 @@ impl<'a> UI<'static> {
     pub fn new(cache: Cache, client: Client, config: Config, msgs: Messages) -> Self {
         // TODO use Tokio events?
         let events = Events::new();
-        let updater = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), msgs.clone());
+        let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
 
         let top_bar = RwLock::new(TopBar::new()).into();
         let files_view = Arc::new(RwLock::new(FileTable::new(cache.file_index.clone())));
@@ -197,45 +196,31 @@ impl<'a> UI<'static> {
                     },
                     Key::Char('U') => {
                         let ftable = self.files_view.read().await;
-                        match ftable.state.selected() {
-                            Some(i) => {
-                                let mut map = ftable.files.map.write().await;
-                                let (_file_id, (lf, _fd)) = map.get_index_mut(i).unwrap();
-                                self.updater.update_file(lf).await;
-                                needs_redraw = true;
-                            }
-                            None => {}
+                        if let Some(i) = ftable.state.selected() {
+                            let mut map = ftable.files.map.write().await;
+                            let (_file_id, (lf, _fd)) = map.get_index_mut(i).unwrap();
+                            self.updater.update_file(lf).await;
+                            needs_redraw = true;
                         }
                     }
-                    Key::Char('u') => match self.focused.clone() {
-                        FocusedWidget::FileTable(_fv) => {
+                    Key::Char('u') => {
+                        if let FocusedWidget::FileTable(_fv) = &self.focused {
+                            let updater = self.updater.clone();
+                            // todo prevent freezing main thread
+                            // TODO redraw somehow
+                            task::spawn(async move {
+                                updater.update_all().await;
+                            });
+                        }
+                    }
+                    Key::Delete => {
+                        if let FocusedWidget::FileTable(_ft) = &self.focused {
                             let ftable = self.files_view.read().await;
-                            match ftable.state.selected() {
-                                Some(_i) => {
-                                    let updater = self.updater.clone();
-                                    // todo prevent freezing main thread
-                                    // TODO redraw somehow
-                                    task::spawn(async move {
-                                        updater.update_all().await;
-                                    });
-                                }
-                                None => {}
+                            if let Some(_i) = ftable.state.selected() {
+                                // TODO implement deletion
                             }
                         }
-                        _ => {}
-                    },
-                    Key::Delete => match self.focused.clone() {
-                        FocusedWidget::FileTable(_ft) => {
-                            let ftable = self.files_view.read().await;
-                            match ftable.state.selected() {
-                                Some(_i) => {
-                                    // TODO implement deletion
-                                }
-                                _ => {}
-                            }
-                        }
-                        _ => {}
-                    },
+                    }
                     _ => {
                         // Uncomment to log keypresses
                         // self.msgs.push(format!("{:?}", key)).await;

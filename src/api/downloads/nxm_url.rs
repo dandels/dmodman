@@ -21,7 +21,7 @@ impl FromStr for NxmUrl {
     type Err = DownloadError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let url = Url::parse(&s)?;
+        let url = Url::parse(s)?;
 
         let mut path_segments = url.path_segments().unwrap();
         let game = url.host().unwrap().to_string();

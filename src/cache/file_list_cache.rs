@@ -48,9 +48,6 @@ impl FileListCache {
     }
 
     pub async fn get(&self, (game, mod_id): (&str, u32)) -> Option<FileList> {
-        match self.map.read().await.get(&(game.to_string(), mod_id)) {
-            Some(v) => Some(v.clone()),
-            None => None,
-        }
+        self.map.read().await.get(&(game.to_string(), mod_id)).cloned()
     }
 }

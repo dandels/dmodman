@@ -91,7 +91,7 @@ impl Client {
     }
 
     pub async fn send_api_request(&self, endpoint: &str) -> Result<Response, RequestError> {
-        let builder = self.build_api_request(&endpoint)?;
+        let builder = self.build_api_request(endpoint)?;
         let resp = builder.send().await?;
         /* TODO the response headers contain a count of remaining API request quota and would be useful to track
          * println!("Response headers: {:#?}\n", resp.headers());
@@ -213,7 +213,7 @@ impl Client {
         let file_name = util::file_name_from_url(&url);
         let mut path = self.config.download_dir();
         std::fs::create_dir_all(path.clone().to_str().unwrap())?;
-        path.push(&file_name.to_string());
+        path.push(&file_name);
 
         if path.exists() {
             self.msgs.push(format!("{} already exists and won't be downloaded again.", file_name)).await;
@@ -232,17 +232,13 @@ impl Client {
          * metadata.
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
-        let lf = LocalFile::new(&nxm, file_name);
+        let lf = LocalFile::new(nxm, file_name);
         self.cache.add_local_file(lf.clone()).await?;
 
         let mut file_index = self.cache.file_index.map.write().await;
         if file_index.get(&lf.file_id).is_none() {
-            let fl = FileList::request(
-                &self,
-                self.msgs.clone(),
-                vec![&nxm.domain_name, &nxm.mod_id.to_string()],
-            )
-            .await?;
+            let fl =
+                FileList::request(self, self.msgs.clone(), vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
                 file_index.insert(nxm.file_id, (lf, Some(fd.to_owned())));
             }

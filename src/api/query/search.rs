@@ -70,10 +70,10 @@ impl SearchQuery {
             authors.push_str(&self.blocked_authors[i].to_string());
         }
 
-        return format!(
+        format!(
             "?terms={}&game_id={}&blocked_tags={}&blocked_authors={}&include_adult={}",
             encoded_terms, self.game_id, tags, authors, self.include_adult as u8
-        );
+        )
     }
 }
 

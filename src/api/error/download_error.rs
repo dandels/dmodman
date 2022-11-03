@@ -37,7 +37,7 @@ impl Error for DownloadError {
 
 impl fmt::Display for DownloadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &*self {
+        match self {
             DownloadError::CacheError { source } => source.fmt(f),
             DownloadError::Expired => f.write_str("Download link is expired."),
             DownloadError::IOError { source } => source.fmt(f),

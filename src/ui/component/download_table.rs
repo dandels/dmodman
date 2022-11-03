@@ -23,7 +23,7 @@ impl<'a> DownloadTable<'a> {
 
         Self {
             state: TableState::default(),
-            downloads: downloads.clone(),
+            downloads,
             block,
             headers,
             highlight_style: Style::default(),
@@ -33,7 +33,8 @@ impl<'a> DownloadTable<'a> {
 
     pub async fn refresh<'b>(&mut self)
     where
-        'b: 'a, {
+        'b: 'a,
+    {
         let ds = self.downloads.statuses.read().await;
         let mut stream = tokio_stream::iter(ds.values());
         let mut rows: Vec<Row> = vec![];

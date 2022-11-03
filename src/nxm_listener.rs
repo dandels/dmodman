@@ -36,18 +36,16 @@ async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
     if stream.ready(Interest::READABLE).await?.is_readable() {
         let mut data = vec![0; 1024];
         match stream.try_read(&mut data) {
-            Ok(_bytes) => {
-                match str::from_utf8(&data) {
-                    Ok(s) => return Ok(Some(s.to_string())),
-                    Err(e) => {
-                        println!("Invalid UTF-8 sequence: {}", e);
-                        return Ok(None);
-                    }
-                };
-            }
+            Ok(_bytes) => match str::from_utf8(&data) {
+                Ok(s) => Ok(Some(s.to_string())),
+                Err(e) => {
+                    println!("Invalid UTF-8 sequence: {}", e);
+                    Ok(None)
+                }
+            },
             // This is a false positive
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
-            Err(e) => return Err(e),
+            Err(e) => Err(e),
         }
     // Is this an error case?
     } else {
@@ -112,8 +110,7 @@ pub fn remove_existing() -> Result<(), Error> {
     let uid = users::get_current_uid();
     let s = &format!("/run/user/{}/dmodman.socket", uid);
     let path = std::path::Path::new(s);
-    let _ = std::fs::remove_file(path)?;
-    Ok(())
+    std::fs::remove_file(path)
 }
 
 // Listen to socket for nxm links to download
@@ -136,7 +133,7 @@ pub async fn listen_for_downloads(
                     }
                 }
                 Err(e) => {
-                    println!("{}", e.to_string());
+                    println!("{}", e);
                 }
             }
         }
@@ -164,7 +161,7 @@ pub async fn queue_download_else_bind_to_socket(
                 Ok(stream) => {
                     // If there's an nxm:// argument, queue it and exit
                     if let Some(nxm_str) = nxm_str_opt {
-                        send_msg(&stream, &nxm_str.as_bytes()).await?;
+                        send_msg(&stream, nxm_str.as_bytes()).await?;
                         println!("Added download to already running instance: {}", nxm_str);
                         Ok(None)
                     // otherwise just exit to avoid duplicate instances.
@@ -182,7 +179,7 @@ pub async fn queue_download_else_bind_to_socket(
                  * unlikely.
                  */
                 Err(e) => {
-                    panic!("{}", e.to_string());
+                    panic!("{}", e);
                 }
             }
         }

@@ -47,22 +47,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     /* Check if another instance for the same game is already running. If it is, optionally queue the download, then
-     * exit early.
-     */
-    let nxm_rx;
-    match nxm_listener::queue_download_else_bind_to_socket(nxm_str_opt).await? {
-        Some(v) => nxm_rx = v,
+     * exit early. */
+    let nxm_rx = match nxm_listener::queue_download_else_bind_to_socket(nxm_str_opt).await? {
+        Some(v) => v,
         None => return Ok(()),
-    }
+    };
 
     let msgs = Messages::default();
 
     let initialconfig = match ConfigBuilder::load() {
         Ok(mut ic) => {
-            if let None = ic.apikey {
+            if ic.apikey.is_none() {
                 ic.apikey = gen_apikey(&msgs);
             }
-            if let None = ic.game {
+            if ic.game.is_none() {
                 if game_opt.is_some() {
                     ic.game = game_opt;
                 } else {
@@ -91,7 +89,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx).await;
 
-    Ok(ui::UI::new(cache, client, config, msgs).run().await?)
+    ui::UI::new(cache, client, config, msgs).run().await
 }
 
 fn gen_apikey(_msgs: &Messages) -> Option<String> {
@@ -118,11 +116,12 @@ fn gen_apikey(_msgs: &Messages) -> Option<String> {
             }
         }
     }
+    #[allow(clippy::if_same_then_else)]
     if generate_apikey {
         // TODO begin Single Sign-On flow
         // Some("".to_string())
-        return None;
+        None
     } else {
-        return None;
+        None
     }
 }

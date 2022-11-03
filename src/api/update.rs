@@ -52,8 +52,7 @@ impl UpdateChecker {
     }
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, DownloadError> {
-        let mut file_list =
-            FileList::request(&self.client, self.msgs.clone(), vec![&game, &mod_id.to_string()]).await?;
+        let mut file_list = FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await?;
         /* The update algorithm in file_has_update() requires the file list to be sorted.
          * The NexusMods community manager (who has been Very Helpful!) couldn't guarantee that the API always
          * keeps them sorted */
@@ -70,7 +69,7 @@ impl UpdateChecker {
      * TODO this needs a lot of unit tests.
      */
     async fn check_file(&self, local_file: &mut LocalFile, file_list: &FileList) {
-        if file_list.file_updates.len() == 0 {
+        if file_list.file_updates.is_empty() {
             return;
         }
         let latest_timestamp: u64 = file_list.file_updates.last().unwrap().uploaded_timestamp;
@@ -111,16 +110,14 @@ impl UpdateChecker {
                     } else {
                         local_file.update_status = Some(UpdateStatus::OutOfDate);
                     }
-                } else {
-                    if let Some(UpdateStatus::UpToDate(previous_timestamp)) = local_file.update_status {
-                        if previous_timestamp < latest_timestamp {
-                            local_file.update_status = Some(UpdateStatus::HasNewFile(latest_timestamp));
-                        } else {
-                            local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
-                        }
+                } else if let Some(UpdateStatus::UpToDate(previous_timestamp)) = local_file.update_status {
+                    if previous_timestamp < latest_timestamp {
+                        local_file.update_status = Some(UpdateStatus::HasNewFile(latest_timestamp));
                     } else {
                         local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
                     }
+                } else {
+                    local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
                 }
             }
             Err(e) => {

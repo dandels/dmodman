@@ -4,7 +4,7 @@ use tokio::io;
 
 #[derive(Debug)]
 pub enum ConfigError {
-    GameMissingError,
+    GameMissing,
     IOError { source: io::Error },
     DeserializationError { source: toml::de::Error },
 }
@@ -21,8 +21,8 @@ impl Error for ConfigError {
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &*self {
-            ConfigError::GameMissingError => f.write_str("GameMissingError"),
+        match self {
+            ConfigError::GameMissing => f.write_str("GameMissingError"),
             ConfigError::IOError { source } => source.fmt(f),
             ConfigError::DeserializationError { source } => source.fmt(f),
         }

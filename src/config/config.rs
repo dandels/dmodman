@@ -14,6 +14,8 @@ pub struct ConfigBuilder {
 }
 
 impl ConfigBuilder {
+    // used by unit test
+    #[allow(dead_code)]
     pub fn default() -> Self {
         Self {
             apikey: None,
@@ -29,6 +31,8 @@ impl ConfigBuilder {
         Ok(toml::from_str(&contents)?)
     }
 
+    // used by unit test
+    #[allow(dead_code)]
     pub fn game(mut self, game: &str) -> Self {
         self.game = Some(game.to_string());
         self
@@ -36,7 +40,7 @@ impl ConfigBuilder {
 
     pub fn build(self) -> Result<Config, ConfigError> {
         if self.game.is_none() {
-            return Err(ConfigError::GameMissingError);
+            return Err(ConfigError::GameMissing);
         }
         Ok(Config::new(self))
     }

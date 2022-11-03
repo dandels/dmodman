@@ -67,7 +67,7 @@ impl FileIndex {
     }
 
     // TODO race condition in UI parts relying on this?
-    // TODO is this still necessary?
+    // FIXME
     pub fn len(&self) -> usize {
         /* This is annoying, but the traits for highlighting/selecting UI elements requires this function to not be
          * async */
