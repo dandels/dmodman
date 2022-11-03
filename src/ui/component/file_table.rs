@@ -41,17 +41,14 @@ impl<'a> FileTable<'a> {
         while let Some((local_file, file_details)) = stream.next().await {
             rows.push(Row::new(vec![
                 match file_details {
-                    Some(fd) => fd.file_name.to_string(),
+                    Some(fd) => fd.name.to_string(),
                     None => local_file.file_name.to_string(),
                 },
                 match &local_file.update_status {
-                    Some(status) => match status {
-                        UpdateStatus::OutOfDate => "u".to_string(),
-                        UpdateStatus::UpToDate(_) => "k".to_string(),
-                        UpdateStatus::IgnoredUntil(_) => "i".to_string(),
-                        UpdateStatus::HasNewFile(_) => "n".to_string(),
-                    },
-                    None => "?".to_string(),
+                    UpdateStatus::OutOfDate(_) => "!".to_string(),
+                    UpdateStatus::UpToDate(_) => "".to_string(),
+                    UpdateStatus::IgnoredUntil(_) => "".to_string(),
+                    UpdateStatus::HasNewFile(_) => "?".to_string(),
                 },
                 if let Some(fd) = file_details {
                     if let Some(version) = &fd.version {
@@ -69,9 +66,9 @@ impl<'a> FileTable<'a> {
             .header(self.headers.to_owned())
             .block(self.block.to_owned())
             .widths(&[
-                Constraint::Ratio(5, 7),
-                Constraint::Ratio(1, 7),
-                Constraint::Ratio(1, 7),
+                Constraint::Ratio(7, 10),
+                Constraint::Ratio(1, 10),
+                Constraint::Ratio(2, 10),
             ])
             .highlight_style(self.highlight_style.to_owned());
     }

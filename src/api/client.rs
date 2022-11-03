@@ -1,4 +1,4 @@
-use crate::cache::{Cache, LocalFile};
+use crate::cache::{Cache, LocalFile, UpdateStatus};
 use crate::{config::Config, util, Messages};
 
 use super::downloads::{DownloadStatus, Downloads, NxmUrl};
@@ -8,6 +8,8 @@ use super::request_counter::RequestCounter;
 
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
 use reqwest::{Response, StatusCode};
+use tokio::fs::OpenOptions;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::{task, task::JoinHandle};
 use tokio_stream::StreamExt;
 use url::Url;
@@ -16,8 +18,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::fs::OpenOptions;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use std::time::SystemTime;
 
 /* API reference:
  * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
@@ -232,18 +233,49 @@ impl Client {
          * metadata.
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
-        let lf = LocalFile::new(nxm, file_name);
+        let mut file_index = self.cache.file_index.map.write().await;
+
+        let file_list = match self.cache.file_lists.get((&nxm.domain_name, nxm.mod_id)).await {
+            Some(fl) => Some(fl),
+            None => {
+                match FileList::request(self, self.msgs.clone(), vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await
+                {
+                    Ok(fl) => {
+                        if let Err(e) = self.cache.save_file_list(&fl, &nxm.domain_name, nxm.mod_id).await {
+                            self.msgs
+                                .push(format!(
+                                    "Unable to save file list for {} mod {}: {}",
+                                    nxm.domain_name, nxm.mod_id, e
+                                ))
+                                .await;
+                        }
+                        Some(fl)
+                    }
+                    Err(e) => {
+                        self.msgs
+                            .push(format!(
+                                "Unable to query file list for {} mod {}: {}",
+                                nxm.domain_name, nxm.mod_id, e
+                            ))
+                            .await;
+                        None
+                    }
+                }
+            }
+        };
+
+        let file_details = file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == nxm.file_id).cloned());
+
+        let lf = LocalFile::new(
+            nxm,
+            file_name,
+            UpdateStatus::UpToDate(
+                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
+            ),
+        );
         self.cache.add_local_file(lf.clone()).await?;
 
-        let mut file_index = self.cache.file_index.map.write().await;
-        if file_index.get(&lf.file_id).is_none() {
-            let fl =
-                FileList::request(self, self.msgs.clone(), vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await?;
-            if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
-                file_index.insert(nxm.file_id, (lf, Some(fd.to_owned())));
-            }
-            self.cache.save_file_list(&fl, &nxm.domain_name, nxm.mod_id).await?;
-        }
+        file_index.insert(nxm.file_id, (lf, file_details));
 
         Ok(path)
     }

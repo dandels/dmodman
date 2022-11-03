@@ -1,6 +1,6 @@
 use super::error::DownloadError;
 use super::{Client, FileList, Queriable};
-use crate::cache::{Cache, LocalFile, UpdateStatus};
+use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
 use crate::config::PathType;
 use crate::Config;
 use crate::Messages;
@@ -25,146 +25,165 @@ impl UpdateChecker {
         }
     }
 
-    pub async fn update_all(&self) {
+    pub async fn update_all(&self) -> Result<(), DownloadError> {
         // We only need to make one API request per mod, since the response contains info about all files in that mod.
         let mut games_to_check: HashMap<(String, u32), FileList> = HashMap::new();
         let mut localfiles = self.cache.file_index.map.write().await;
 
         for (lf, _fd) in localfiles.values_mut() {
+            // TODO error handling
             match games_to_check.get_mut(&(lf.game.to_string(), lf.mod_id)) {
                 Some(file_list) => {
-                    self.check_file(lf, file_list).await;
+                    lf.update_status = check_file(lf, file_list).await;
+                    lf.save(self.config.path_for(PathType::LocalFile(lf))).await.unwrap();
                 }
                 None => {
-                    // TODO don't unwrap
                     let file_list = self.refresh_filelist(&lf.game, lf.mod_id).await.unwrap();
-                    self.check_file(lf, &file_list).await;
+                    lf.update_status = check_file(lf, &file_list).await;
                     games_to_check.insert((lf.game.to_string(), lf.mod_id), file_list);
+                    lf.save(self.config.path_for(PathType::LocalFile(lf))).await.unwrap();
                 }
             }
         }
+        Ok(())
     }
 
     pub async fn update_file(&self, lf: &mut LocalFile) {
         // TODO don't unwrap
         let file_list = self.refresh_filelist(&lf.game, lf.mod_id).await.unwrap();
-        self.check_file(lf, &file_list).await;
+        check_file(lf, &file_list).await;
     }
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, DownloadError> {
         let mut file_list = FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await?;
-        /* The update algorithm in file_has_update() requires the file list to be sorted.
+        /* The update algorithm in check_file() requires the file list to be sorted.
          * The NexusMods community manager (who has been Very Helpful!) couldn't guarantee that the API always
          * keeps them sorted */
         file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
         self.cache.save_file_list(&file_list, game, mod_id).await?;
         Ok(file_list)
     }
+}
 
-    /* There might be several versions of a file present. If we're looking at the oldest one, it's not enough to
-     * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
-     * doesn't exist.
-     * TODO return status for easier unit testing, change LocalFile outside this function
-     * TODO comment what's going on.
-     * TODO this needs a lot of unit tests.
-     */
-    async fn check_file(&self, local_file: &mut LocalFile, file_list: &FileList) {
-        if file_list.file_updates.is_empty() {
-            return;
+/* There might be several versions of a file present. If we're looking at the oldest one, it's not enough to
+ * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
+ * doesn't exist.
+ * TODO this needs a lot of unit tests.
+ */
+async fn check_file(local_file: &LocalFile, file_list: &FileList) -> UpdateStatus {
+    let status = local_file.update_status.to_owned();
+
+    if file_list.file_updates.is_empty() {
+        return UpdateStatus::UpToDate(status.time());
+    }
+    let latest_file = file_list.file_updates.last().unwrap();
+    let latest_timestamp: u64 = latest_file.uploaded_timestamp;
+
+    if local_file.file_name == latest_file.new_file_name {
+        return UpdateStatus::UpToDate(latest_timestamp);
+    }
+
+    // This is unexpected, let's not do anything
+    if latest_timestamp <= status.time() {
+        return status;
+    }
+
+    let mut has_update = false;
+    let mut current_id = local_file.file_id;
+    let mut current_file: &str = &local_file.file_name;
+
+    file_list.file_updates.iter().for_each(|x| {
+        if x.old_file_id == current_id {
+            current_id = x.new_file_id;
+            current_file = &x.new_file_name;
+            has_update = true;
         }
-        let latest_timestamp: u64 = file_list.file_updates.last().unwrap().uploaded_timestamp;
+    });
 
-        if let Some(UpdateStatus::IgnoredUntil(ignoretime)) = local_file.update_status {
-            if latest_timestamp < ignoretime {
-                return;
-            }
-        }
-
-        let mut has_update = false;
-        let mut current_id = local_file.file_id;
-        let mut current_file: &str = &local_file.file_name;
-
-        file_list.file_updates.iter().for_each(|x| {
-            if x.old_file_id == current_id {
-                current_id = x.new_file_id;
-                current_file = &x.new_file_name;
-                has_update = true;
-            }
-        });
-
-        let mut f = self.config.path_for(PathType::LocalFile(local_file)).parent().unwrap().to_path_buf();
-        f.push(current_file);
-        // TODO does it matter if the file exists? We don't need to check from disk
-        match f.try_exists() {
-            Ok(false) => {
-                local_file.update_status = Some(UpdateStatus::OutOfDate);
-            }
-            Ok(true) => {
-                if has_update {
-                    if let Some(UpdateStatus::IgnoredUntil(t)) = local_file.update_status {
-                        if t < latest_timestamp {
-                            local_file.update_status = Some(UpdateStatus::OutOfDate);
-                        } else {
-                            // do nothing
-                        }
-                    } else {
-                        local_file.update_status = Some(UpdateStatus::OutOfDate);
-                    }
-                } else if let Some(UpdateStatus::UpToDate(previous_timestamp)) = local_file.update_status {
-                    if previous_timestamp < latest_timestamp {
-                        local_file.update_status = Some(UpdateStatus::HasNewFile(latest_timestamp));
-                    } else {
-                        local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
-                    }
-                } else {
-                    local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
-                }
-            }
-            Err(e) => {
-                self.msgs
-                    .push(format!(
-                        "IO error when checking update for {:?}: {e:?}",
-                        local_file.file_name
-                    ))
-                    .await;
-            }
-        };
+    if has_update {
+        UpdateStatus::OutOfDate(latest_timestamp)
+    } else if status.time() < latest_timestamp {
+        UpdateStatus::HasNewFile(latest_timestamp)
+    } else {
+        UpdateStatus::UpToDate(latest_timestamp)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Client, DownloadError, UpdateChecker};
+    use crate::api::update;
+    use crate::api::{Client, DownloadError, UpdateChecker};
     use crate::cache::Cache;
     use crate::cache::UpdateStatus;
     use crate::ConfigBuilder;
     use crate::Messages;
 
-    // TODO this currently fails since it tries to send API request
     #[tokio::test]
-    async fn update() -> Result<(), DownloadError> {
+    #[should_panic]
+    async fn block_test_request() {
         let game = "morrowind";
         let config = ConfigBuilder::default().game(game).build().unwrap();
 
-        let fair_magicka_regen_file_id = 82041;
-        let graphic_herbalism_file_id = 1000014314;
+        let cache = Cache::new(&config).await.unwrap();
 
-        let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
-        let client: Client = Client::new(&cache, &config, &msgs).await?;
+        let client = Client::new(&cache, &config, &msgs).await.unwrap();
 
         let msgs = Messages::default();
         let updater = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        updater.update_all().await;
+        // TODO assert that res is RequestError::IsUnitTest
+        let _res = updater.update_all().await;
+    }
+
+    #[tokio::test]
+    async fn out_of_date() -> Result<(), DownloadError> {
+        let game = "morrowind";
+        let upload_time = 1310405800;
+        let fair_magicka_regen_file_id = 82041;
+
+        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let cache = Cache::new(&config).await?;
+
         let index = cache.file_index.map.read().await;
-        let (fmr_lf, _fd) = index.get(&fair_magicka_regen_file_id).unwrap();
+        let (fmr_lf, _fmr_fd) = index.get(&fair_magicka_regen_file_id).unwrap();
+        let fmr_fl = cache.file_lists.get((&fmr_lf.game, fmr_lf.mod_id)).await;
+        let status = update::check_file(fmr_lf, &fmr_fl.unwrap()).await;
 
-        let (gh_lf, _fd) = index.get(&graphic_herbalism_file_id).unwrap();
+        match status {
+            UpdateStatus::UpToDate(t) => {
+                assert_eq!(t, upload_time)
+            }
+            _ => {
+                panic!("Mod should be up to date: {}", fmr_lf.file_name);
+            }
+        }
+        Ok(())
+    }
 
-        assert!(matches!(fmr_lf.clone().update_status.unwrap(), UpdateStatus::OutOfDate));
-        assert!(matches!(gh_lf.clone().update_status.unwrap(), UpdateStatus::OutOfDate));
+    #[tokio::test]
+    async fn up_to_date() -> Result<(), DownloadError> {
+        let game = "morrowind";
+        let graphic_herbalism_file_id = 1000014314;
+        let newest_file_update = 1558643755;
 
+        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let cache = Cache::new(&config).await?;
+
+        let index = cache.file_index.map.read().await;
+
+        let (gh_lf, _gh_fd) = index.get(&graphic_herbalism_file_id).unwrap();
+        let gh_fl = cache.file_lists.get((&gh_lf.game, gh_lf.mod_id)).await;
+
+        let status = update::check_file(gh_lf, &gh_fl.unwrap()).await;
+        match status {
+            UpdateStatus::OutOfDate(t) => {
+                assert_eq!(t, newest_file_update);
+            }
+            _ => {
+                panic!("Mod should be out of date: {}", gh_lf.file_name);
+            }
+        };
         Ok(())
     }
 }
