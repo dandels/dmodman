@@ -31,10 +31,11 @@ impl Config {
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id, file_id));
             }
+            // The game needs to be specified to support cross-game modding, reading the config doesn't work.
             PathType::FileList(game, mod_id) => {
                 path = self.cache_dir();
-                path.push(FILE_LISTS);
                 path.push(game);
+                path.push(FILE_LISTS);
                 path.push(format!("{}.json", mod_id));
             }
             PathType::GameInfo() => {

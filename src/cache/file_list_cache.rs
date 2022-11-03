@@ -17,20 +17,20 @@ impl FileListCache {
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
         let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
 
-        let mut fl_dir: PathBuf = config.cache_dir();
-        fl_dir.push(paths::FILE_LISTS);
-
         // Iterates over the entries in cache_dir/file_lists/<game>/<mod_id>.json and deserializes them into FileLists
-        let mut stream = fs::read_dir(&fl_dir).await?;
-        while let Some(subdir) = stream.next_entry().await? {
-            let game_name = subdir.file_name();
-            let mut inner_stream = fs::read_dir(subdir.path()).await?;
-            while let Some(f) = inner_stream.next_entry().await? {
-                if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("json") {
-                    if let Some(filename) = f.path().file_stem() {
-                        if let Ok(mod_id) = str::parse::<u32>(&filename.to_string_lossy()) {
-                            if let Ok(fl) = FileList::load(f.path()).await {
-                                file_lists.insert((game_name.to_string_lossy().into_owned(), mod_id), fl);
+        let mut stream = fs::read_dir(config.cache_dir()).await?;
+        while let Some(game_dir) = stream.next_entry().await? {
+            let game_name = game_dir.file_name();
+            let mut fl_path: PathBuf = game_dir.path();
+            fl_path.push(paths::FILE_LISTS);
+            if let Ok(mut inner_stream) = fs::read_dir(fl_path).await {
+                while let Some(f) = inner_stream.next_entry().await? {
+                    if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("json") {
+                        if let Some(filename) = f.path().file_stem() {
+                            if let Ok(mod_id) = str::parse::<u32>(&filename.to_string_lossy()) {
+                                if let Ok(fl) = FileList::load(f.path()).await {
+                                    file_lists.insert((game_name.to_string_lossy().into_owned(), mod_id), fl);
+                                }
                             }
                         }
                     }
