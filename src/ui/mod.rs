@@ -1,8 +1,8 @@
 mod component;
 mod event;
-mod ui;
+mod main_ui;
 
-pub use ui::UI;
+pub use main_ui::MainUI;
 
 //use self::event::{Event, Events};
 use std::error::Error;

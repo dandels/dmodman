@@ -19,7 +19,7 @@ use tokio::sync::RwLock;
 use tokio::task;
 use tui::layout::{Constraint, Direction, Layout, Rect};
 
-pub struct UI<'a> {
+pub struct MainUI<'a> {
     focused: FocusedWidget<'a>,
     download_view: Arc<RwLock<DownloadTable<'a>>>,
     files_view: Arc<RwLock<FileTable<'a>>>,
@@ -33,7 +33,7 @@ pub struct UI<'a> {
     msgs: Messages,
 }
 
-impl<'a> UI<'static> {
+impl<'a> MainUI<'static> {
     pub fn new(cache: Cache, client: Client, config: Config, msgs: Messages) -> Self {
         // TODO use Tokio events?
         let events = Events::new();
