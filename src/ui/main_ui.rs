@@ -68,7 +68,7 @@ impl<'a> MainUI<'static> {
          * redraw when something has changed.
          * We set this to true so that all widgets are rendered in the first loop. */
         let got_sigwinch = Arc::new(AtomicBool::new(true));
-        let signals = Signals::new(&[SIGWINCH])?;
+        let signals = Signals::new([SIGWINCH])?;
         let handle = signals.handle();
         let _sigwinch_task = task::spawn(handle_sigwinch(signals, got_sigwinch.clone()));
 
@@ -83,7 +83,7 @@ impl<'a> MainUI<'static> {
 
         let tables_layout: Layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]);
+            .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)]);
 
         let main_vertical_layout: Layout = Layout::default()
             .direction(Direction::Vertical)
@@ -209,7 +209,7 @@ impl<'a> MainUI<'static> {
                             // todo prevent freezing main thread
                             // TODO redraw somehow
                             task::spawn(async move {
-                                updater.update_all().await;
+                                let _res = updater.update_all().await;
                             });
                         }
                     }

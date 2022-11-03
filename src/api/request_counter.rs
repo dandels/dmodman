@@ -27,10 +27,10 @@ impl RequestCounter {
     pub async fn push(&mut self, headers: &HeaderMap) {
         let mut counter = self.counter.write().await;
         if let Some(value) = headers.get("x-rl-daily-remaining") {
-            (*counter).daily_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());
+            counter.daily_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());
         }
         if let Some(value) = headers.get("x-rl-hourly-remaining") {
-            (*counter).hourly_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());
+            counter.hourly_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());
         }
         self.has_changed.store(true, Ordering::Relaxed);
     }

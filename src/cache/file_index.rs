@@ -18,6 +18,7 @@ use tokio::task;
 // TODO handle foreign files
 #[derive(Clone)]
 pub struct FileIndex {
+    #[allow(clippy::type_complexity)]
     pub map: Arc<RwLock<IndexMap<u64, (LocalFile, Option<FileDetails>)>>>,
     pub has_changed: Arc<AtomicBool>, // used by UI to ask if file table needs to be redrawn
     file_lists: FileListCache,
