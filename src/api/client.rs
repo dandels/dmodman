@@ -235,7 +235,8 @@ impl Client {
         let lf = LocalFile::new(&nxm, file_name);
         self.cache.add_local_file(lf.clone()).await?;
 
-        if self.cache.file_index.get(&lf.file_id).await.is_none() {
+        let mut file_index = self.cache.file_index.map.write().await;
+        if file_index.get(&lf.file_id).is_none() {
             let fl = FileList::request(
                 &self,
                 self.msgs.clone(),
@@ -243,7 +244,7 @@ impl Client {
             )
             .await?;
             if let Some(fd) = fl.files.iter().find(|fd| fd.file_id == nxm.file_id) {
-                self.cache.file_index.insert(nxm.file_id, (lf, fd.to_owned())).await;
+                file_index.insert(nxm.file_id, (lf, Some(fd.to_owned())));
             }
             self.cache.save_file_list(&fl, &nxm.domain_name, nxm.mod_id).await?;
         }

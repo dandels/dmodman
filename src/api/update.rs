@@ -25,30 +25,30 @@ impl UpdateChecker {
         }
     }
 
-    pub async fn check_all(&self) {
+    pub async fn update_all(&self) {
         // We only need to make one API request per mod, since the response contains info about all files in that mod.
         let mut games_to_check: HashMap<(String, u32), FileList> = HashMap::new();
-        let localfiles = self.cache.local_files.items().await;
+        let mut localfiles = self.cache.file_index.map.write().await;
 
-        for mut lf in localfiles {
+        for (lf, _fd) in localfiles.values_mut() {
             match games_to_check.get_mut(&(lf.game.to_string(), lf.mod_id)) {
                 Some(file_list) => {
-                    self.refresh_updatestatus(&mut lf, file_list).await;
+                    self.check_file(lf, file_list).await;
                 }
                 None => {
                     // TODO don't unwrap
                     let file_list = self.refresh_filelist(&lf.game, lf.mod_id).await.unwrap();
-                    self.refresh_updatestatus(&mut lf, &file_list).await;
+                    self.check_file(lf, &file_list).await;
                     games_to_check.insert((lf.game.to_string(), lf.mod_id), file_list);
                 }
             }
         }
     }
 
-    pub async fn check_file(&self, lf: &mut LocalFile) {
+    pub async fn update_file(&self, lf: &mut LocalFile) {
         // TODO don't unwrap
         let file_list = self.refresh_filelist(&lf.game, lf.mod_id).await.unwrap();
-        self.refresh_updatestatus(lf, &file_list).await;
+        self.check_file(lf, &file_list).await;
     }
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, DownloadError> {
@@ -65,9 +65,11 @@ impl UpdateChecker {
     /* There might be several versions of a file present. If we're looking at the oldest one, it's not enough to
      * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
      * doesn't exist.
+     * TODO return status for easier unit testing, change LocalFile outside this function
+     * TODO comment what's going on.
+     * TODO this needs a lot of unit tests.
      */
-    // TODO return status for easier unit testing, change LocalFile on a higher level
-    async fn refresh_updatestatus(&self, local_file: &mut LocalFile, file_list: &FileList) {
+    async fn check_file(&self, local_file: &mut LocalFile, file_list: &FileList) {
         if file_list.file_updates.len() == 0 {
             return;
         }
@@ -93,16 +95,29 @@ impl UpdateChecker {
 
         let mut f = self.config.path_for(PathType::LocalFile(local_file)).parent().unwrap().to_path_buf();
         f.push(current_file);
+        // TODO does it matter if the file exists? We don't need to check from disk
         match f.try_exists() {
-            Ok(true) => {
+            Ok(false) => {
                 local_file.update_status = Some(UpdateStatus::OutOfDate);
             }
-            Ok(false) => {
+            Ok(true) => {
                 if has_update {
-                    local_file.update_status = Some(UpdateStatus::OutOfDate);
+                    if let Some(UpdateStatus::IgnoredUntil(t)) = local_file.update_status {
+                        if t < latest_timestamp {
+                            local_file.update_status = Some(UpdateStatus::OutOfDate);
+                        } else {
+                            // do nothing
+                        }
+                    } else {
+                        local_file.update_status = Some(UpdateStatus::OutOfDate);
+                    }
                 } else {
-                    if let Some(UpdateStatus::HasNewFile(previous_timestamp)) = local_file.update_status {
-                        local_file.update_status = Some(UpdateStatus::HasNewFile(latest_timestamp));
+                    if let Some(UpdateStatus::UpToDate(previous_timestamp)) = local_file.update_status {
+                        if previous_timestamp < latest_timestamp {
+                            local_file.update_status = Some(UpdateStatus::HasNewFile(latest_timestamp));
+                        } else {
+                            local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
+                        }
                     } else {
                         local_file.update_status = Some(UpdateStatus::UpToDate(latest_timestamp));
                     }
@@ -124,7 +139,7 @@ impl UpdateChecker {
 mod tests {
     use super::{Client, DownloadError, UpdateChecker};
     use crate::cache::Cache;
-    use crate::cache::{LocalFile, UpdateStatus};
+    use crate::cache::UpdateStatus;
     use crate::ConfigBuilder;
     use crate::Messages;
 
@@ -142,15 +157,16 @@ mod tests {
         let client: Client = Client::new(&cache, &config, &msgs).await?;
 
         let msgs = Messages::default();
+        let updater = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        let fmr_lf: LocalFile = cache.local_files.get(fair_magicka_regen_file_id).await.unwrap();
-        let gh_lf: LocalFile = cache.local_files.get(graphic_herbalism_file_id).await.unwrap();
+        updater.update_all().await;
+        let index = cache.file_index.map.read().await;
+        let (fmr_lf, _fd) = index.get(&fair_magicka_regen_file_id).unwrap();
 
-        let updater = UpdateChecker::new(cache, client, config, msgs);
-        updater.check_all().await;
+        let (gh_lf, _fd) = index.get(&graphic_herbalism_file_id).unwrap();
 
-        assert!(matches!(fmr_lf.update_status.unwrap(), UpdateStatus::OutOfDate));
-        assert!(matches!(gh_lf.update_status.unwrap(), UpdateStatus::OutOfDate));
+        assert!(matches!(fmr_lf.clone().update_status.unwrap(), UpdateStatus::OutOfDate));
+        assert!(matches!(gh_lf.clone().update_status.unwrap(), UpdateStatus::OutOfDate));
 
         Ok(())
     }

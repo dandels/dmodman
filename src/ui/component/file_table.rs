@@ -1,4 +1,3 @@
-use crate::api::UpdateChecker;
 use crate::cache::{FileIndex, UpdateStatus};
 
 use tokio_stream::StreamExt;
@@ -36,21 +35,33 @@ impl<'a> FileTable<'a> {
     where
         'b: 'a,
     {
-        let files = self.files.values_cloned().await;
-        let mut stream = tokio_stream::iter(files);
+        let files = self.files.map.read().await;
+        let mut stream = tokio_stream::iter(files.values());
         let mut rows: Vec<Row> = vec![];
         while let Some((local_file, file_details)) = stream.next().await {
             rows.push(Row::new(vec![
-                file_details.name.clone(),
-                match local_file.update_status {
+                match file_details {
+                    Some(fd) => fd.file_name.to_string(),
+                    None => local_file.file_name.to_string(),
+                },
+                match &local_file.update_status {
                     Some(status) => match status {
-                        UpdateStatus::OutOfDate => "U".to_string(),
-                        UpdateStatus::UpToDate(_) | UpdateStatus::IgnoredUntil(_) => "K".to_string(),
+                        UpdateStatus::OutOfDate => "u".to_string(),
+                        UpdateStatus::UpToDate(_) => "k".to_string(),
+                        UpdateStatus::IgnoredUntil(_) => "i".to_string(),
                         UpdateStatus::HasNewFile(_) => "n".to_string(),
                     },
                     None => "?".to_string(),
                 },
-                file_details.version.as_ref().unwrap_or(&"".to_string()).to_string(),
+                if let Some(fd) = file_details {
+                    if let Some(version) = &fd.version {
+                        version.to_string()
+                    } else {
+                        "".to_string()
+                    }
+                } else {
+                    "".to_string()
+                },
             ]))
         }
 

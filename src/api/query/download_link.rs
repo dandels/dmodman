@@ -24,7 +24,7 @@ impl Queriable for DownloadLink {
 #[cfg(test)]
 mod tests {
     use super::DownloadLink;
-    use crate::cache::Cache;
+
     use crate::cache::Cacheable;
     use crate::config::ConfigBuilder;
     use crate::config::PathType;

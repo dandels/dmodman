@@ -1,4 +1,4 @@
-use super::{CacheError, Cacheable, FileIndex, FileListCache, LocalFile, LocalFileCache};
+use super::{CacheError, Cacheable, FileIndex, FileListCache, LocalFile};
 use crate::api::{DownloadLink, FileList};
 use crate::config::{Config, PathType};
 
@@ -6,7 +6,6 @@ use tokio::io;
 
 #[derive(Clone)]
 pub struct Cache {
-    pub local_files: LocalFileCache,
     pub file_lists: FileListCache,
     pub file_index: FileIndex,
     config: Config,
@@ -23,12 +22,10 @@ impl Cache {
      */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
         let file_lists = FileListCache::new(&config).await?;
-        let local_files = LocalFileCache::new(&config).await?;
-        let file_index = FileIndex::new(&local_files, &file_lists).await?;
+        let file_index = FileIndex::new(&config, file_lists.clone()).await?;
 
         Ok(Self {
             config: config.clone(),
-            local_files,
             file_lists,
             file_index,
         })
@@ -54,7 +51,7 @@ impl Cache {
 
     pub async fn add_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
         lf.save(self.config.path_for(PathType::LocalFile(&lf))).await?;
-        self.local_files.push(lf).await;
+        self.file_index.add(lf).await;
         Ok(())
     }
 }
@@ -71,7 +68,7 @@ mod test {
         let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
 
-        let _fd = cache.file_index.get(&82041).await.unwrap();
+        let (_lf, _fd) = cache.file_index.map.read().await.get(&82041).unwrap();
         Ok(())
     }
 }

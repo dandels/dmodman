@@ -144,6 +144,7 @@ impl<'a> UI<'static> {
                     needs_redraw = true;
                 }
             }
+            // TODO use a blocking thread for this
             if needs_redraw {
                 needs_redraw = false;
                 let mut files = self.files_view.write().await;
@@ -198,10 +199,10 @@ impl<'a> UI<'static> {
                         let ftable = self.files_view.read().await;
                         match ftable.state.selected() {
                             Some(i) => {
-                                if let Some((_file_id, mut lf, _fd)) = ftable.files.get_index(i).await {
-                                    self.updater.check_file(&mut lf).await;
-                                    needs_redraw = true;
-                                }
+                                let mut map = ftable.files.map.write().await;
+                                let (_file_id, (lf, _fd)) = map.get_index_mut(i).unwrap();
+                                self.updater.update_file(lf).await;
+                                needs_redraw = true;
                             }
                             None => {}
                         }
@@ -212,9 +213,10 @@ impl<'a> UI<'static> {
                             match ftable.state.selected() {
                                 Some(_i) => {
                                     let updater = self.updater.clone();
+                                    // todo prevent freezing main thread
                                     // TODO redraw somehow
                                     task::spawn(async move {
-                                        updater.check_all().await;
+                                        updater.update_all().await;
                                     });
                                 }
                                 None => {}
@@ -226,8 +228,8 @@ impl<'a> UI<'static> {
                         FocusedWidget::FileTable(_ft) => {
                             let ftable = self.files_view.read().await;
                             match ftable.state.selected() {
-                                Some(i) => {
-                                    let (_file_id, _fl, _fd) = ftable.files.get_index(i).await.unwrap();
+                                Some(_i) => {
+                                    // TODO implement deletion
                                 }
                                 _ => {}
                             }
