@@ -8,6 +8,7 @@ use super::request_counter::RequestCounter;
 
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
 use reqwest::{Response, StatusCode};
+use tokio::fs;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::{task, task::JoinHandle};
@@ -120,7 +121,7 @@ impl Client {
                 ],
             )
             .await?;
-            me.cache.save_download_links(&dls, &nxm.mod_id, &nxm.file_id).await?;
+            me.cache.save_download_links(&dls, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
             /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
              * global CDN, unless the user has selected a preferred download location.
              * For small files the download URL is the same regardless of location choice.
@@ -213,16 +214,13 @@ impl Client {
     pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
         let file_name = util::file_name_from_url(&url);
         let mut path = self.config.download_dir();
-        std::fs::create_dir_all(path.clone().to_str().unwrap())?;
+        fs::create_dir_all(&path).await?;
         path.push(&file_name);
 
         if path.exists() {
             self.msgs.push(format!("{} already exists and won't be downloaded again.", file_name)).await;
             return Ok(path);
-        }
-
-        // check whether download is already in progress
-        if self.downloads.get(&nxm.file_id).await.is_some() {
+        } else if self.downloads.get(&nxm.file_id).await.is_some() {
             self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
             return Ok(path);
         }
@@ -233,8 +231,6 @@ impl Client {
          * metadata.
          * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
          */
-        let mut file_index = self.cache.file_index.map.write().await;
-
         let file_list = match self.cache.file_lists.get((&nxm.domain_name, nxm.mod_id)).await {
             Some(fl) => Some(fl),
             None => {
@@ -273,9 +269,8 @@ impl Client {
                 SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
             ),
         );
-        self.cache.add_local_file(lf.clone()).await?;
 
-        file_index.insert(nxm.file_id, (lf, file_details));
+        self.cache.add_local_file(lf).await?;
 
         Ok(path)
     }

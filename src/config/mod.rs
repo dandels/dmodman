@@ -36,10 +36,13 @@ impl ConfigBuilder {
         Ok(toml::from_str(&contents)?)
     }
 
-    // used by unit test
-    #[allow(dead_code)]
-    pub fn game(mut self, game: &str) -> Self {
-        self.game = Some(game.to_string());
+    pub fn apikey<S: Into<String>>(mut self, apikey: S) -> Self {
+        self.apikey = Some(apikey.into());
+        self
+    }
+
+    pub fn game<S: Into<String>>(mut self, game: S) -> Self {
+        self.game = Some(game.into());
         self
     }
 

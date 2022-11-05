@@ -40,7 +40,7 @@ impl<'a> MainUI<'static> {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
 
         let top_bar = RwLock::new(TopBar::new()).into();
-        let files_view = Arc::new(RwLock::new(FileTable::new(cache.file_index.clone())));
+        let files_view = Arc::new(RwLock::new(FileTable::new(cache.files.clone())));
         let download_view = RwLock::new(DownloadTable::new(client.downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(msgs.clone())).into();
         let bottom_bar = RwLock::new(BottomBar::new(client.request_counter.clone())).into();
@@ -102,7 +102,7 @@ impl<'a> MainUI<'static> {
         let mut rect_main = tables_layout.split(rect_topbar[1]);
         let mut rect_botbar = botbar_layout.split(rect_root[1]);
 
-        let mut needs_redraw = false;
+        let needs_redraw = Arc::new(AtomicBool::new(true));
         loop {
             if got_sigwinch.swap(false, Ordering::Relaxed) {
                 self.msgs.push("redraw everything").await;
@@ -121,31 +121,30 @@ impl<'a> MainUI<'static> {
                 rect_topbar = topbar_layout.split(rect_root[0]);
                 rect_main = tables_layout.split(rect_topbar[1]);
                 rect_botbar = botbar_layout.split(rect_root[1]);
-                needs_redraw = true;
+                needs_redraw.store(true, Ordering::Relaxed);
             } else {
-                if self.cache.file_index.has_changed.swap(false, Ordering::Relaxed) {
+                if self.cache.files.has_changed.swap(false, Ordering::Relaxed) {
                     self.files_view.write().await.refresh().await;
-                    needs_redraw = true;
+                    needs_redraw.store(true, Ordering::Relaxed);
                 }
                 // TODO make sure we don't redraw too often during downloads
                 // TODO make sure the actual download implementation is not too inefficient.
                 if self.client.downloads.has_changed.swap(false, Ordering::Relaxed) {
                     self.download_view.write().await.refresh().await;
-                    needs_redraw = true;
+                    needs_redraw.store(true, Ordering::Relaxed);
                     self.msgs.push("redraw downloads").await;
                 }
                 if self.msgs.has_changed.swap(false, Ordering::Relaxed) {
                     self.msg_view.write().await.refresh().await;
-                    needs_redraw = true;
+                    needs_redraw.store(true, Ordering::Relaxed);
                 }
                 if self.client.request_counter.has_changed.swap(false, Ordering::Relaxed) {
                     self.bottom_bar.write().await.refresh().await;
-                    needs_redraw = true;
+                    needs_redraw.store(true, Ordering::Relaxed);
                 }
             }
             // TODO use a blocking thread for this
-            if needs_redraw {
-                needs_redraw = false;
+            if needs_redraw.swap(false, Ordering::Relaxed) {
                 let mut files = self.files_view.write().await;
                 let mut downloads = self.download_view.write().await;
                 let mut msgs = self.msg_view.write().await;
@@ -160,72 +159,74 @@ impl<'a> MainUI<'static> {
                 })?;
             }
 
-            if let Event::Input(key) = self.events.next()? {
-                match key {
-                    Key::Char('q') | Key::Ctrl('c') => {
-                        handle.close();
-                        return Ok(());
-                    }
-                    Key::Down | Key::Char('j') => {
-                        self.focused.next().await;
-                        needs_redraw = true;
-                    }
-                    Key::Up | Key::Char('k') => {
-                        self.focused.previous().await;
-                        needs_redraw = true;
-                    }
-                    Key::Left | Key::Char('h') => match self.focused {
-                        FocusedWidget::MessageList(_) | FocusedWidget::DownloadTable(_) => {
-                            self.focused.change_to(FocusedWidget::FileTable(self.files_view.clone())).await;
-                            needs_redraw = true;
-                        }
-                        FocusedWidget::FileTable(_) => {
-                            self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
-                            needs_redraw = true;
-                        }
-                    },
-                    Key::Right | Key::Char('l') => match self.focused {
-                        FocusedWidget::MessageList(_) | FocusedWidget::FileTable(_) => {
-                            self.focused.change_to(FocusedWidget::DownloadTable(self.download_view.clone())).await;
-                            needs_redraw = true;
-                        }
-                        FocusedWidget::DownloadTable(_) => {
-                            self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
-                            needs_redraw = true;
-                        }
-                    },
-                    Key::Char('U') => {
-                        let ftable = self.files_view.read().await;
-                        if let Some(i) = ftable.state.selected() {
-                            let mut map = ftable.files.map.write().await;
-                            let (_file_id, (lf, _fd)) = map.get_index_mut(i).unwrap();
-                            self.updater.update_file(lf).await;
-                            needs_redraw = true;
-                        }
-                    }
-                    Key::Char('u') => {
-                        if let FocusedWidget::FileTable(_fv) = &self.focused {
-                            let updater = self.updater.clone();
-                            // todo prevent freezing main thread
-                            // TODO redraw somehow
-                            task::spawn(async move {
-                                let _res = updater.update_all().await;
-                            });
-                        }
-                    }
-                    Key::Delete => {
-                        if let FocusedWidget::FileTable(_ft) = &self.focused {
-                            let ftable = self.files_view.read().await;
-                            if let Some(_i) = ftable.state.selected() {
-                                // TODO implement deletion
-                            }
-                        }
-                    }
-                    _ => {
-                        // Uncomment to log keypresses
-                        // self.msgs.push(format!("{:?}", key)).await;
+            if let Some(Event::Input(key)) = self.events.next().await {
+                if let Key::Char('q') | Key::Ctrl('c') = key {
+                    handle.close();
+                    return Ok(());
+                } else {
+                    self.handle_keypress(key).await;
+                }
+            }
+        }
+    }
+
+    async fn handle_keypress(&mut self, key: Key) {
+        match key {
+            Key::Char('q') | Key::Ctrl('c') => {
+                //handle.close();
+                //return Ok(());
+            }
+            Key::Down | Key::Char('j') => {
+                self.focused.next().await;
+            }
+            Key::Up | Key::Char('k') => {
+                self.focused.previous().await;
+            }
+            Key::Left | Key::Char('h') => match self.focused {
+                FocusedWidget::MessageList(_) | FocusedWidget::DownloadTable(_) => {
+                    self.focused.change_to(FocusedWidget::FileTable(self.files_view.clone())).await;
+                }
+                FocusedWidget::FileTable(_) => {
+                    self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
+                }
+            },
+            Key::Right | Key::Char('l') => match self.focused {
+                FocusedWidget::MessageList(_) | FocusedWidget::FileTable(_) => {
+                    self.focused.change_to(FocusedWidget::DownloadTable(self.download_view.clone())).await;
+                }
+                FocusedWidget::DownloadTable(_) => {
+                    self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
+                }
+            },
+            Key::Char('U') => {
+                let ftable = self.files_view.read().await;
+                if let Some(i) = ftable.state.selected() {
+                    let mut files = ftable.files.file_index.write().await;
+                    let (_file_id, fdata) = files.get_index_mut(i).unwrap();
+                    self.updater.update_file(&mut *fdata.local_file.write().await).await;
+                }
+            }
+            Key::Char('u') => {
+                if let FocusedWidget::FileTable(_fv) = &self.focused {
+                    let updater = self.updater.clone();
+                    // todo prevent freezing main thread
+                    // TODO redraw somehow
+                    task::spawn(async move {
+                        let _res = updater.update_all().await;
+                    });
+                }
+            }
+            Key::Delete => {
+                if let FocusedWidget::FileTable(_ft) = &self.focused {
+                    let ftable = self.files_view.read().await;
+                    if let Some(_i) = ftable.state.selected() {
+                        // TODO implement deletion
                     }
                 }
+            }
+            _ => {
+                // Uncomment to log keypresses
+                // self.msgs.push(format!("{:?}", key)).await;
             }
         }
     }

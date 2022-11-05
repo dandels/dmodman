@@ -58,11 +58,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let initialconfig = match ConfigBuilder::load() {
         Ok(mut ic) => {
             if ic.apikey.is_none() {
-                ic.apikey = gen_apikey(&msgs);
+                if let Some(apikey) = gen_apikey(&msgs) {
+                    ic.apikey(apikey);
+                }
             }
             if ic.game.is_none() {
-                if game_opt.is_some() {
-                    ic.game = game_opt;
+                if let Some(game) = game_opt {
+                    ic.game(game);
                 } else {
                     panic!("TODO ask game");
                 }
@@ -71,9 +73,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Err(_e) => {
             panic!("Setting generation is not implemented.");
-            // ask apikey
-            // ask game
-            // show dialog to configure game, set rest to default
+            // get apikey through SSO
+            // show dialog to configure game
+            // set rest to default
         }
     };
 

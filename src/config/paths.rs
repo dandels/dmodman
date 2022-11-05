@@ -11,11 +11,11 @@ pub const MOD_INFO: &str = "mod_info";
 #[allow(dead_code)]
 pub enum PathType<'a> {
     // API formats
-    DownloadLink(&'a u32, &'a u64), // game, mod_id, file_id
-    FileList(&'a str, &'a u32),     // game, mod_id
-    GameInfo(),                     // game
-    Md5Search(&'a u32, &'a u64),    // game, mod_id, file_id
-    ModInfo(&'a u32),               // game, mod_id
+    DownloadLink(&'a str, &'a u32, &'a u64), // game, mod_id, file_id
+    FileList(&'a str, &'a u32),              // game, mod_id
+    GameInfo(&'a str),                       // game
+    Md5Search(&'a str, &'a u32, &'a u64),    // game, mod_id, file_id
+    ModInfo(&'a str, &'a u32),               // game, mod_id
 
     // Local formats
     LocalFile(&'a LocalFile),
@@ -26,8 +26,9 @@ impl Config {
         let mut path;
 
         match path_type {
-            PathType::DownloadLink(mod_id, file_id) => {
-                path = self.game_cache_dir();
+            PathType::DownloadLink(game, mod_id, file_id) => {
+                path = self.cache_dir();
+                path.push(game);
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id, file_id));
             }
@@ -38,17 +39,19 @@ impl Config {
                 path.push(FILE_LISTS);
                 path.push(format!("{}.json", mod_id));
             }
-            PathType::GameInfo() => {
-                path = self.game_cache_dir();
+            PathType::GameInfo(game) => {
+                path = self.cache_dir();
                 path.push(format!("{}.json", self.game));
             }
-            PathType::Md5Search(mod_id, file_id) => {
-                path = self.game_cache_dir();
+            PathType::Md5Search(game, mod_id, file_id) => {
+                path = self.cache_dir();
+                path.push(game);
                 path.push(MD5_SEARCH);
                 path.push(format!("{}-{}.json", mod_id, file_id));
             }
-            PathType::ModInfo(mod_id) => {
-                path = self.game_cache_dir();
+            PathType::ModInfo(game, mod_id) => {
+                path = self.cache_dir();
+                path.push(game);
                 path.push(MOD_INFO);
                 path.push(format!("{}.json", mod_id));
             }
