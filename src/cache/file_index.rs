@@ -1,46 +1,62 @@
-use super::FileListCache;
-use super::{CacheError, Cacheable, LocalFile};
+use super::{CacheError, Cacheable, FileData, FileListCache, LocalFile};
 use crate::api::FileDetails;
 use crate::config::Config;
 
+use std::collections::BinaryHeap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use tokio::fs;
-use tokio::runtime::Handle;
 use tokio::sync::RwLock;
-use tokio::task;
 
-// TODO handle foreign files
+// TODO handle foreign (without associated LocalData) files somehow
 #[derive(Clone)]
-pub struct FileIndex {
-    #[allow(clippy::type_complexity)]
-    pub map: Arc<RwLock<IndexMap<u64, (LocalFile, Option<FileDetails>)>>>,
-    pub has_changed: Arc<AtomicBool>, // used by UI to ask if file table needs to be redrawn
+pub struct Files {
+    // This is the list of downloaded mods.
+    pub file_index: Arc<RwLock<IndexMap<u64, Arc<FileData>>>>,
+    /* Maps (game, mod_id) to files in that mod.
+     * It uses a binary heap that keeps the mods sorted by timestamp */
+    pub mod_files: Arc<RwLock<HashMap<(String, u32), BinaryHeap<Arc<FileData>>>>>,
+    pub has_changed: Arc<AtomicBool>,
+    // TODO read file lists from disk into memory only for games where it's needed
     file_lists: FileListCache,
 }
 
-impl FileIndex {
+impl Files {
+    /* This iterates through all files in the download directory for the current game. For each file, if the
+     * corresponding json file exists, it deserializes the json file into a LocalFile.
+     * It then checks in the FileList cache if there exists a corresponding FileDetails for that file.
+     * The result is a pair of LocalFile, FileDetails, stored in the FileData struct.
+     * Also creates a mapping of mod_id -> FileDatas, so that iterating through files in a mod doesn't require multiple
+     * table lookups. */
     pub async fn new(config: &Config, file_lists: FileListCache) -> Result<Self, CacheError> {
-        // is it even possible for FileDetails to be missing?
-        let mut map: IndexMap<u64, (LocalFile, Option<FileDetails>)> = IndexMap::new();
+        // It's unexpected but possible that FileDetails is missing
+        let mut file_index: IndexMap<u64, Arc<FileData>> = IndexMap::new();
+        let mut mod_files: HashMap<(String, u32), BinaryHeap<Arc<FileData>>> = HashMap::new();
 
-        /* This iterates through all files in the download directory for the current game. It serializes all json files
-         * into LocalFiles, then checks in the FileList cache if there exists a corresponding FileDetails for that
-         * LocalFile.
-         */
         if let Ok(mut file_stream) = fs::read_dir(config.download_dir()).await {
             while let Some(f) = file_stream.next_entry().await? {
-                // TODO don't assume file exists because json file exists
-                if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("json") {
-                    if let Ok(lf) = LocalFile::load(f.path()).await {
+                if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) != Some("json") {
+                    let json_file = f.path().with_extension("json");
+                    if let Ok(lf) = LocalFile::load(json_file).await {
                         if let Some(file_list) = file_lists.get((&lf.game, lf.mod_id)).await {
-                            let fd = file_list.files.iter().find(|fd| fd.file_id == lf.file_id);
-                            map.insert(lf.file_id, (lf, fd.cloned()));
+                            let file_details = file_list.files.iter().find(|fd| fd.file_id == lf.file_id);
+                            let file_data = Arc::new(FileData::new(lf.clone(), file_details.cloned()));
+                            file_index.insert(lf.file_id, file_data.clone());
+                            match mod_files.get_mut(&(lf.game, lf.mod_id)) {
+                                Some(heap) => {
+                                    heap.push(file_data.into());
+                                }
+                                None => {
+                                    let mut vec = vec![];
+                                    vec.push(file_data);
+                                }
+                            }
                         }
                     }
                 }
@@ -48,30 +64,20 @@ impl FileIndex {
         }
 
         Ok(Self {
-            map: Arc::new(RwLock::new(map)),
+            file_index: Arc::new(RwLock::new(file_index)),
+            mod_files: Arc::new(RwLock::new(mod_files)),
             has_changed: Arc::new(AtomicBool::new(false)),
             file_lists,
         })
     }
 
-    async fn get_filedetails(&self, local_file: &LocalFile) -> Option<FileDetails> {
-        self.file_lists
-            .get((&local_file.game, local_file.mod_id))
-            .await
-            .and_then(|list| list.files.iter().cloned().find(|fd| fd.file_id == local_file.file_id))
-    }
-
-    pub async fn add(&self, local_file: LocalFile) {
-        let fd = self.get_filedetails(&local_file).await;
-        self.map.write().await.insert(local_file.file_id, (local_file, fd));
+    pub async fn add(&self, lf: LocalFile) {
+        let file_details = self.file_lists.filedetails_for(&lf).await;
+        let fdata: Arc<FileData> = FileData::new(lf.clone(), file_details).into();
+        self.file_index.write().await.insert(lf.file_id, fdata.clone());
+        if let Some(heap) = self.mod_files.write().await.get_mut(&(lf.game, lf.mod_id)) {
+            heap.push(fdata);
+        }
         self.has_changed.store(true, Ordering::Relaxed);
-    }
-
-    // TODO race condition in UI parts relying on this?
-    // FIXME
-    pub fn len(&self) -> usize {
-        /* This is annoying, but the traits for highlighting/selecting UI elements requires this function to not be
-         * async */
-        task::block_in_place(move || Handle::current().block_on(async move { self.map.read().await.len() }))
     }
 }

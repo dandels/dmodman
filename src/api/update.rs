@@ -1,11 +1,15 @@
 use super::error::DownloadError;
-use super::{Client, FileList, Queriable};
-use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
+use super::{Client, FileList, Queriable, FileUpdate};
+use crate::cache::{Cache, Cacheable, FileData, LocalFile, UpdateStatus};
 use crate::config::PathType;
 use crate::Config;
 use crate::Messages;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, BinaryHeap};
+use std::sync::Arc;
+
+use tokio_stream::StreamExt;
+use indexmap::IndexSet;
 
 #[derive(Clone)]
 pub struct UpdateChecker {
@@ -23,6 +27,15 @@ impl UpdateChecker {
             client,
             config,
         }
+    }
+
+    pub async fn new_update_all(&self) -> Result<(), DownloadError> {
+        let lock = &self.cache.files.mod_files;
+        for mod_files in lock.read().await.iter() {
+            // TODO
+            // check mod
+        }
+        Ok(())
     }
 
     pub async fn update_all(&self) -> Result<(), DownloadError> {
@@ -65,11 +78,21 @@ impl UpdateChecker {
 }
 
 /* There might be several versions of a file present. If we're looking at the oldest one, it's not enough to
- * check if a newer version exists. Instead we go through the file's versions, and return true if the newest one
- * doesn't exist.
+ * check if a newer version exists. Instead we go through the file's versions, and check if a newer version of the file
+ * is available & not present.
  * TODO this needs a lot of unit tests.
+ *
+ * TODO accurately figuring out updates is very complicated.
+ * 1) Updating several times in a row shouldn't affect the UpdateStatus.
+ * 2) Even if a newer file than this exists, we might have it downloaded
+ *      -> When downloading a mod file, we need to update the status of other mods from that file.
+ *      -> maybe update checking should be simultaneously done for all files in that mod
  */
-async fn check_file(local_file: &LocalFile, file_list: &FileList) -> UpdateStatus {
+async fn check_mod(files: &BinaryHeap<Arc<FileData>>, file_list: &FileList) -> UpdateStatus {
+    /* The unwrap is a sanity check, because the heap should never be empty here.
+     * The heap keeps the FileData sorted by timestamp. */
+    let latest_fd = files.peek().unwrap().file_details;
+
     let status = local_file.update_status.to_owned();
 
     if file_list.file_updates.is_empty() {
@@ -79,11 +102,11 @@ async fn check_file(local_file: &LocalFile, file_list: &FileList) -> UpdateStatu
     let latest_timestamp: u64 = latest_file.uploaded_timestamp;
 
     if local_file.file_name == latest_file.new_file_name {
-        return UpdateStatus::UpToDate(latest_timestamp);
+        return UpdateStatus::UpToDate(latest_new_file);
     }
 
     // This is unexpected, let's not do anything
-    if latest_timestamp <= status.time() {
+    if latest_new_file <= status.time() {
         return status;
     }
 
@@ -91,21 +114,50 @@ async fn check_file(local_file: &LocalFile, file_list: &FileList) -> UpdateStatu
     let mut current_id = local_file.file_id;
     let mut current_file: &str = &local_file.file_name;
 
+    let hs: HashSet<FileData> = HashSet::new();
+    // Follow the update chain to find the newest version of this file.
     file_list.file_updates.iter().for_each(|x| {
         if x.old_file_id == current_id {
             current_id = x.new_file_id;
             current_file = &x.new_file_name;
+            if x.uploaded_timestamp < 
             has_update = true;
         }
     });
-
     if has_update {
-        UpdateStatus::OutOfDate(latest_timestamp)
-    } else if status.time() < latest_timestamp {
-        UpdateStatus::HasNewFile(latest_timestamp)
-    } else {
-        UpdateStatus::UpToDate(latest_timestamp)
+        return UpdateStatus::OutOfDate(latest_new_file);
     }
+
+    if status.time() < latest_new_file {
+        UpdateStatus::HasNewFile(latest_new_file)
+    } else {
+        UpdateStatus::UpToDate(latest_new_file)
+    }
+}
+
+async fn foo_func(files: BinaryHeap<Arc<FileData>>, updates: BinaryHeap<FileUpdate>) -> BinaryHeap<FileUpdate> {
+    //let earliest = files.get(0).unwrap().file_details.unwrap();
+    //let mut i = 0;
+    //for u in updates {
+    //    if u.uploaded_timestamp < earliest.uploaded_timestamp {
+    //        i+=1;
+    //    } else {
+    //        break;
+    //    }
+    //}
+    //let filtered = updates.split_off(i);
+    if updates.peek().is_none() {
+        return updates;
+    }
+
+        //if x.old_file_id == current_id {
+        //    current_id = x.new_file_id;
+        //    current_file = &x.new_file_name;
+        //    if x.uploaded_timestamp < 
+        //    has_update = true;
+        //}
+
+    BinaryHeap::new()
 }
 
 #[cfg(test)]

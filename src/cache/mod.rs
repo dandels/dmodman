@@ -1,10 +1,12 @@
 mod cache_error;
 mod cacheable;
+mod file_data;
 mod file_index;
 mod file_list_cache;
 mod local_file;
 pub use cache_error::*;
 pub use cacheable::*;
+pub use file_data::FileData;
 pub use file_index::*;
 pub use file_list_cache::*;
 pub use local_file::*;
@@ -18,7 +20,7 @@ use tokio::io;
 #[derive(Clone)]
 pub struct Cache {
     pub file_lists: FileListCache,
-    pub file_index: FileIndex,
+    pub files: Files,
     config: Config,
 }
 
@@ -33,7 +35,7 @@ impl Cache {
      */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
         let file_lists = FileListCache::new(config).await?;
-        let file_index = FileIndex::new(config, file_lists.clone()).await?;
+        let file_index = Files::new(config, file_lists.clone()).await?;
 
         Ok(Self {
             config: config.clone(),
@@ -47,8 +49,14 @@ impl Cache {
      * - Send request for FileList if not present(?)
      * - Add the FileDetails to FileDetailsCache
      */
-    pub async fn save_download_links(&self, dl: &DownloadLink, mod_id: &u32, file_id: &u64) -> Result<(), CacheError> {
-        let path = self.config.path_for(PathType::DownloadLink(mod_id, file_id));
+    pub async fn save_download_links(
+        &self,
+        dl: &DownloadLink,
+        game: &str,
+        mod_id: &u32,
+        file_id: &u64,
+    ) -> Result<(), CacheError> {
+        let path = self.config.path_for(PathType::DownloadLink(game, mod_id, file_id));
         dl.save(path).await?;
         Ok(())
     }
@@ -79,7 +87,8 @@ mod test {
         let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
 
-        let (_lf, _fd) = cache.file_index.map.read().await.get(&82041).unwrap();
+        let data = cache.file_index.file_data.read().await.get(&82041).unwrap();
+        assert_eq!(data.local_file.game, game);
         Ok(())
     }
 }

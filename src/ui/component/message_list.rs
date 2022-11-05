@@ -1,5 +1,8 @@
 use crate::Messages;
 
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
 use tokio_stream::StreamExt;
 use tui::style::Style;
 use tui::text::Spans;
@@ -11,6 +14,7 @@ pub struct MessageList<'a> {
     pub state: ListState,
     pub highlight_style: Style,
     pub widget: List<'a>,
+    pub needs_redraw: Arc<AtomicBool>,
 }
 
 impl<'a> MessageList<'a> {
@@ -23,13 +27,15 @@ impl<'a> MessageList<'a> {
             state: ListState::default(),
             highlight_style,
             widget: List::new(vec![]),
+            needs_redraw: msgs.has_changed.clone(),
         }
     }
 
     // If the list gets long, it might be a good idea to create only the visible parts of the list
     pub async fn refresh<'b>(&mut self)
     where
-        'b: 'a, {
+        'b: 'a,
+    {
         let mut items: Vec<ListItem<'b>> = vec![];
         let msgs = self.msgs.messages.read().await;
         let mut stream = tokio_stream::iter(msgs.iter());

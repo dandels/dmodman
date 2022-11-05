@@ -1,5 +1,5 @@
-use super::{CacheError, Cacheable};
-use crate::api::FileList;
+use super::{CacheError, Cacheable, LocalFile};
+use crate::api::{FileDetails, FileList};
 use crate::config::{paths, Config};
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -47,7 +47,17 @@ impl FileListCache {
         self.map.write().await.insert((game.into(), mod_id), value);
     }
 
+    /* TODO could the FileLists and FileDetails be wrapped in Arcs? Then the FileDetails wouldn't be cloned for every
+     * file */
     pub async fn get(&self, (game, mod_id): (&str, u32)) -> Option<FileList> {
         self.map.read().await.get(&(game.to_string(), mod_id)).cloned()
+    }
+
+    pub async fn filedetails_for(&self, local_file: &LocalFile) -> Option<FileDetails> {
+        self.map
+            .read()
+            .await
+            .get(&(local_file.game.to_string(), local_file.mod_id))
+            .and_then(|list| list.files.iter().find(|fd| fd.file_id == local_file.file_id).cloned())
     }
 }

@@ -1,4 +1,6 @@
 use crate::api::Downloads;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tokio_stream::StreamExt;
 use tui::layout::Constraint;
 use tui::style::{Color, Style};
@@ -11,6 +13,7 @@ pub struct DownloadTable<'a> {
     headers: Row<'a>,
     pub highlight_style: Style,
     pub widget: Table<'a>,
+    pub needs_redraw: Arc<AtomicBool>,
 }
 
 impl<'a> DownloadTable<'a> {
@@ -28,6 +31,7 @@ impl<'a> DownloadTable<'a> {
             headers,
             highlight_style: Style::default(),
             widget: Table::new(vec![]),
+            needs_redraw: downloads.has_changed.clone(),
         }
     }
 
