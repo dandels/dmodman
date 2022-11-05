@@ -65,11 +65,15 @@ mod tests {
         let path = config.path_for(PathType::FileList(&game, &mod_id));
 
         let fl = FileList::load(path).await?;
+        let mut upds = fl.file_updates.clone();
+        while let Some(upd) = upds.pop() {
+            println!("current : {}", upd.uploaded_timestamp);
+        }
         assert_eq!(1000014198, fl.files.first().unwrap().id.0);
         assert_eq!(fl.files.first().unwrap().name, "Graphic Herbalism MWSE");
         assert_eq!(
-            fl.file_updates.first().unwrap().old_file_name,
-            "Graphic Herbalism MWSE-46599-1-01-1556688167.7z"
+            fl.file_updates.peek().unwrap().old_file_name,
+            "GH TR - PT Meshes-46599-1-01-1556986716.7z"
         );
         Ok(())
     }

@@ -24,10 +24,10 @@ impl LocalFile {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum UpdateStatus {
-    UpToDate(u64),
-    HasNewFile(u64),
-    OutOfDate(u64),
-    IgnoredUntil(u64),
+    UpToDate(u64),     // time of your newest file,
+    HasNewFile(u64),   // time of your newest file
+    OutOfDate(u64),    // time of your newest file
+    IgnoredUntil(u64), // time of latest file in update list
 }
 
 impl UpdateStatus {

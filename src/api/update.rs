@@ -55,11 +55,10 @@ impl UpdateChecker {
     }
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, DownloadError> {
-        let mut file_list = FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await?;
+        let file_list = FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await?;
         /* The update algorithm in check_file() requires the file list to be sorted.
          * The NexusMods community manager (who has been Very Helpful!) couldn't guarantee that the API always
          * keeps them sorted */
-        file_list.file_updates.sort_by_key(|a| a.uploaded_timestamp);
         self.cache.save_file_list(&file_list, game, mod_id).await?;
         Ok(file_list)
     }
@@ -76,7 +75,7 @@ async fn check_file(local_file: &LocalFile, file_list: &FileList) -> UpdateStatu
     if file_list.file_updates.is_empty() {
         return UpdateStatus::UpToDate(status.time());
     }
-    let latest_file = file_list.file_updates.last().unwrap();
+    let latest_file = file_list.file_updates.peek().unwrap();
     let latest_timestamp: u64 = latest_file.uploaded_timestamp;
 
     if local_file.file_name == latest_file.new_file_name {
