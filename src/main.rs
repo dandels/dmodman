@@ -59,12 +59,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Ok(mut ic) => {
             if ic.apikey.is_none() {
                 if let Some(apikey) = gen_apikey(&msgs) {
-                    ic.apikey(apikey);
+                    ic = ic.apikey(apikey);
                 }
             }
             if ic.game.is_none() {
                 if let Some(game) = game_opt {
-                    ic.game(game);
+                    ic = ic.game(game);
                 } else {
                     panic!("TODO ask game");
                 }
@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = initialconfig.build()?;
 
     let cache = Cache::new(&config).await?;
-    let client = Client::new(&cache, &config, &msgs).await?;
+    let client = Client::new(&cache, &config, &msgs).await;
 
     if let Some(nxm_str) = nxm_str_opt {
         client.queue_download(nxm_str.to_string()).await;

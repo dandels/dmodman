@@ -100,12 +100,6 @@ impl Config {
         path
     }
 
-    pub fn game_cache_dir(&self) -> PathBuf {
-        let mut path = self.cache_dir();
-        path.push(&self.game);
-        path
-    }
-
     pub fn download_dir(&self) -> PathBuf {
         let mut path = PathBuf::from(&self.download_dir);
         path.push(&self.game);
