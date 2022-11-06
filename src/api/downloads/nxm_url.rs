@@ -1,6 +1,6 @@
 // The NXM link format is not part of the API specification. It was found through trial and error.
 
-use crate::api::error::DownloadError;
+use crate::api::error::RequestError;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use url::Url;
@@ -18,7 +18,7 @@ pub struct NxmUrl {
 }
 
 impl FromStr for NxmUrl {
-    type Err = DownloadError;
+    type Err = RequestError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let url = Url::parse(s)?;
@@ -65,11 +65,11 @@ fn check_game_special_case(game: String) -> String {
     }
 }
 
-fn check_expiration(expires: &u64) -> Result<(), DownloadError> {
+fn check_expiration(expires: &u64) -> Result<(), RequestError> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     match expires > &now {
         true => Ok(()),
-        false => Err(DownloadError::Expired),
+        false => Err(RequestError::Expired),
     }
 }
 
@@ -80,10 +80,10 @@ mod tests {
     use std::str::FromStr;
 
     #[test]
-    fn expired_nxm() -> Result<(), DownloadError> {
+    fn expired_nxm() -> Result<(), RequestError> {
         let nxm_str =
             "nxm://SkyrimSE/mods/8850/files/27772?key=XnbXtdAspojLzUAn7x-Grw&expires=1583065790&user_id=1234321";
-        if let Err(DownloadError::Expired) = NxmUrl::from_str(&nxm_str) {
+        if let Err(RequestError::Expired) = NxmUrl::from_str(&nxm_str) {
             return Ok(());
         }
         panic!("Nxm link should have expired");

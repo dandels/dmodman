@@ -21,6 +21,7 @@ pub struct FileDetails {
     pub changelog_html: Option<String>,
 }
 
+// This is no longer used
 impl Ord for FileDetails {
     fn cmp(&self, other: &FileDetails) -> Ordering {
         if self.category_name == Some("MAIN".to_string()) {

@@ -2,7 +2,7 @@ use crate::cache::{Cache, LocalFile, UpdateStatus};
 use crate::{config::Config, util, Messages};
 
 use super::downloads::{DownloadStatus, Downloads, NxmUrl};
-use super::error::{DownloadError, RequestError};
+use super::error::RequestError;
 use super::query::{DownloadLink, FileList, Queriable, Search};
 use super::request_counter::RequestCounter;
 
@@ -41,7 +41,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn new(cache: &Cache, config: &Config, msgs: &Messages) -> Result<Self, RequestError> {
+    pub async fn new(cache: &Cache, config: &Config, msgs: &Messages) -> Self {
         let version = String::from(env!("CARGO_CRATE_NAME")) + " " + env!("CARGO_PKG_VERSION");
 
         let mut headers = HeaderMap::new();
@@ -60,7 +60,7 @@ impl Client {
             }
         };
 
-        Ok(Self {
+        Self {
             client: reqwest::Client::new(),
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
@@ -69,7 +69,7 @@ impl Client {
             config: config.clone(),
             downloads: Downloads::default(),
             request_counter: RequestCounter::new(),
-        })
+        }
     }
 
     fn build_request(&self, url: Url) -> Result<reqwest::RequestBuilder, RequestError> {
@@ -108,7 +108,7 @@ impl Client {
 
     pub async fn queue_download(&self, nxm_str: String) {
         let me = self.clone();
-        let _handle: JoinHandle<Result<(), DownloadError>> = task::spawn(async move {
+        let _handle: JoinHandle<Result<(), RequestError>> = task::spawn(async move {
             let nxm = NxmUrl::from_str(&nxm_str)?;
             let dls = DownloadLink::request(
                 &me,
@@ -142,7 +142,7 @@ impl Client {
         path: &PathBuf,
         file_name: &str,
         file_id: u64,
-    ) -> Result<(), DownloadError> {
+    ) -> Result<(), RequestError> {
         self.msgs.push(format!("Downloading to {:?}.", path)).await;
         let mut part_path = path.clone();
         part_path.pop();
@@ -179,7 +179,7 @@ impl Client {
                         e.status().unwrap()
                     ))
                     .await;
-                return Err(DownloadError::from(e));
+                return Err(RequestError::from(e));
             }
         }
         let mut status = DownloadStatus::new(file_name.to_string(), file_id, bytes_read, resp.content_length());
@@ -200,7 +200,7 @@ impl Client {
                      * continue it at some later point.
                      */
                     bufwriter.flush().await?;
-                    return Err(DownloadError::from(e));
+                    return Err(RequestError::from(e));
                 }
             }
         }
@@ -211,7 +211,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, DownloadError> {
+    pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, RequestError> {
         let file_name = util::file_name_from_url(&url);
         let mut path = self.config.download_dir();
         fs::create_dir_all(&path).await?;

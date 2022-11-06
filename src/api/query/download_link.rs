@@ -32,10 +32,11 @@ mod tests {
 
     #[tokio::test]
     async fn deserialize_link_array() -> Result<(), Box<dyn Error>> {
-        let config = ConfigBuilder::default().game("skyrimspecialedition").build().unwrap();
+        let game = "skyrimspecialedition";
+        let config = ConfigBuilder::default().game(game).build().unwrap();
         let mod_id: u32 = 74484;
         let file_id: u64 = 1662417060;
-        let path = config.path_for(PathType::DownloadLink(&mod_id, &file_id));
+        let path = config.path_for(PathType::DownloadLink(&game, &mod_id, &file_id));
         let links = DownloadLink::load(path).await.unwrap();
         assert_eq!(links.locations.get(1).unwrap().short_name, "Amsterdam");
 
@@ -44,10 +45,11 @@ mod tests {
 
     #[tokio::test]
     async fn deserialize_single_link() -> Result<(), Box<dyn Error>> {
-        let config = ConfigBuilder::default().game("dragonage").build().unwrap();
+        let game = "dragonage";
+        let config = ConfigBuilder::default().game(game).build().unwrap();
         let mod_id: u32 = 343;
         let file_id: u64 = 5801;
-        let path = config.path_for(PathType::DownloadLink(&mod_id, &file_id));
+        let path = config.path_for(PathType::DownloadLink(&game, &mod_id, &file_id));
         let links = DownloadLink::load(path).await.unwrap();
         assert_eq!(links.locations.first().unwrap().short_name, "Nexus CDN");
 
