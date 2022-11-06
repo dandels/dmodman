@@ -3,10 +3,6 @@ use super::{DownloadTable, FileTable, MessageList};
 macro_rules! impl_stateful {
     ($T:ty, $collection:ident) => {
         impl Select for $T {
-            fn len(&self) -> usize {
-                self.$collection.len()
-            }
-
             fn select(&mut self, index: Option<usize>) {
                 self.state.select(index)
             }
@@ -27,19 +23,17 @@ pub trait Select: Send {
 
     fn selected(&self) -> Option<usize>;
 
-    fn len(&self) -> usize;
-
     fn deselect(&mut self) {
         self.select(None);
     }
 
-    fn next(&mut self) {
-        if self.len() == 0 {
+    fn next(&mut self, len: usize) {
+        if len == 0 {
             return;
         }
         let i = match self.selected() {
             Some(i) => {
-                if i >= self.len() - 1 {
+                if i >= len - 1 {
                     0
                 } else {
                     i + 1
@@ -50,14 +44,14 @@ pub trait Select: Send {
         self.select(Some(i));
     }
 
-    fn previous(&mut self) {
-        if self.len() == 0 {
+    fn previous(&mut self, len: usize) {
+        if len == 0 {
             return;
         }
         let i = match self.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.len() - 1
+                    len - 1
                 } else {
                     i - 1
                 }

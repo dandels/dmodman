@@ -1,6 +1,7 @@
 use super::*;
 use super::{Highlight, Select};
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -37,16 +38,52 @@ impl<'a> FocusedWidget<'a> {
 
     pub async fn next(&mut self) {
         match self {
-            Self::DownloadTable(x) => x.write().await.next(),
-            Self::FileTable(x) => x.write().await.next(),
-            Self::MessageList(x) => x.write().await.next(),
+            Self::DownloadTable(dt) => {
+                let mut table_lock = dt.write().await;
+                let dls = table_lock.downloads.clone();
+                let status_lock = dls.statuses.read().await;
+                table_lock.next(status_lock.len());
+                table_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
+            Self::FileTable(ft) => {
+                let mut table_lock = ft.write().await;
+                let files = table_lock.files.clone();
+                let files_lock = files.file_index.read().await;
+                table_lock.next(files_lock.len());
+                table_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
+            Self::MessageList(ml) => {
+                let mut list_lock = ml.write().await;
+                let msgs = list_lock.msgs.clone();
+                let msgs_lock = msgs.messages.read().await;
+                list_lock.next(msgs_lock.len());
+                list_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
         }
     }
     pub async fn previous(&mut self) {
         match self {
-            Self::DownloadTable(x) => x.write().await.previous(),
-            Self::FileTable(x) => x.write().await.previous(),
-            Self::MessageList(x) => x.write().await.previous(),
+            Self::DownloadTable(dt) => {
+                let mut table_lock = dt.write().await;
+                let dls = table_lock.downloads.clone();
+                let status_lock = dls.statuses.read().await;
+                table_lock.previous(status_lock.len());
+                table_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
+            Self::FileTable(ft) => {
+                let mut table_lock = ft.write().await;
+                let files = table_lock.files.clone();
+                let files_lock = files.file_index.read().await;
+                table_lock.previous(files_lock.len());
+                table_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
+            Self::MessageList(ml) => {
+                let mut list_lock = ml.write().await;
+                let msgs = list_lock.msgs.clone();
+                let msgs_lock = msgs.messages.read().await;
+                list_lock.previous(msgs_lock.len());
+                list_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
         }
     }
 

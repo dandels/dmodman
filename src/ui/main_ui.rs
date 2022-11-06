@@ -26,6 +26,7 @@ pub struct MainUI<'a> {
     msg_view: Arc<RwLock<MessageList<'a>>>,
     top_bar: Arc<RwLock<TopBar<'a>>>,
     bottom_bar: Arc<RwLock<BottomBar<'a>>>,
+    redraw_terminal: Arc<AtomicBool>,
     events: Events,
     updater: UpdateChecker,
     cache: Cache,
@@ -40,10 +41,16 @@ impl<'a> MainUI<'static> {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
 
         let top_bar = RwLock::new(TopBar::new()).into();
-        let files_view = Arc::new(RwLock::new(FileTable::new(cache.files.clone())));
-        let download_view = RwLock::new(DownloadTable::new(client.downloads.clone())).into();
-        let msg_view = RwLock::new(MessageList::new(msgs.clone())).into();
-        let bottom_bar = RwLock::new(BottomBar::new(client.request_counter.clone())).into();
+
+        let redraw_terminal = Arc::new(AtomicBool::new(true));
+
+        let files_view = Arc::new(RwLock::new(FileTable::new(
+            redraw_terminal.clone(),
+            cache.files.clone(),
+        )));
+        let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), client.downloads.clone())).into();
+        let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
+        let bottom_bar = RwLock::new(BottomBar::new(redraw_terminal.clone(), client.request_counter.clone())).into();
 
         let focused = FocusedWidget::FileTable(files_view.clone());
 
@@ -59,6 +66,7 @@ impl<'a> MainUI<'static> {
             client,
             msgs,
             events,
+            redraw_terminal,
         }
     }
 
@@ -102,10 +110,9 @@ impl<'a> MainUI<'static> {
         let mut rect_main = tables_layout.split(rect_topbar[1]);
         let mut rect_botbar = botbar_layout.split(rect_root[1]);
 
-        let needs_redraw = Arc::new(AtomicBool::new(true));
         loop {
             if got_sigwinch.swap(false, Ordering::Relaxed) {
-                self.msgs.push("redraw everything").await;
+                //self.msgs.push("redraw everything").await;
                 self.files_view.write().await.refresh().await;
                 self.download_view.write().await.refresh().await;
                 self.msg_view.write().await.refresh().await;
@@ -121,30 +128,17 @@ impl<'a> MainUI<'static> {
                 rect_topbar = topbar_layout.split(rect_root[0]);
                 rect_main = tables_layout.split(rect_topbar[1]);
                 rect_botbar = botbar_layout.split(rect_root[1]);
-                needs_redraw.store(true, Ordering::Relaxed);
             } else {
-                if self.cache.files.has_changed.swap(false, Ordering::Relaxed) {
-                    self.files_view.write().await.refresh().await;
-                    needs_redraw.store(true, Ordering::Relaxed);
-                }
+                self.files_view.write().await.refresh().await;
                 // TODO make sure we don't redraw too often during downloads
                 // TODO make sure the actual download implementation is not too inefficient.
-                if self.client.downloads.has_changed.swap(false, Ordering::Relaxed) {
-                    self.download_view.write().await.refresh().await;
-                    needs_redraw.store(true, Ordering::Relaxed);
-                    self.msgs.push("redraw downloads").await;
-                }
-                if self.msgs.has_changed.swap(false, Ordering::Relaxed) {
-                    self.msg_view.write().await.refresh().await;
-                    needs_redraw.store(true, Ordering::Relaxed);
-                }
-                if self.client.request_counter.has_changed.swap(false, Ordering::Relaxed) {
-                    self.bottom_bar.write().await.refresh().await;
-                    needs_redraw.store(true, Ordering::Relaxed);
-                }
+                self.download_view.write().await.refresh().await;
+                //self.msgs.push("redraw downloads").await;
+                self.msg_view.write().await.refresh().await;
+                self.bottom_bar.write().await.refresh().await;
             }
             // TODO use a blocking thread for this
-            if needs_redraw.swap(false, Ordering::Relaxed) {
+            if self.redraw_terminal.swap(false, Ordering::Relaxed) {
                 let mut files = self.files_view.write().await;
                 let mut downloads = self.download_view.write().await;
                 let mut msgs = self.msg_view.write().await;
@@ -159,7 +153,7 @@ impl<'a> MainUI<'static> {
                 })?;
             }
 
-            if let Some(Event::Input(key)) = self.events.next().await {
+            if let Ok(Event::Input(key)) = self.events.next() {
                 if let Key::Char('q') | Key::Ctrl('c') = key {
                     handle.close();
                     return Ok(());
@@ -199,18 +193,17 @@ impl<'a> MainUI<'static> {
                 }
             },
             Key::Char('U') => {
-                let ftable = self.files_view.read().await;
-                if let Some(i) = ftable.state.selected() {
-                    let mut files = ftable.files.file_index.write().await;
-                    let (_file_id, fdata) = files.get_index_mut(i).unwrap();
-                    self.updater.update_file(&mut *fdata.local_file.write().await).await;
-                }
+                // TODO implement single mod updating
+                //let ftable = self.files_view.read().await;
+                //if let Some(i) = ftable.state.selected() {
+                //    let mut files = ftable.files.file_index.write().await;
+                //    let (_file_id, fdata) = files.get_index_mut(i).unwrap();
+                //    self.updater.update_file(&mut *fdata.local_file.write().await).await;
+                //}
             }
             Key::Char('u') => {
                 if let FocusedWidget::FileTable(_fv) = &self.focused {
                     let updater = self.updater.clone();
-                    // todo prevent freezing main thread
-                    // TODO redraw somehow
                     task::spawn(async move {
                         let _res = updater.update_all().await;
                     });
@@ -226,7 +219,7 @@ impl<'a> MainUI<'static> {
             }
             _ => {
                 // Uncomment to log keypresses
-                // self.msgs.push(format!("{:?}", key)).await;
+                self.msgs.push(format!("{:?}", key)).await;
             }
         }
     }

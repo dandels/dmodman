@@ -7,8 +7,8 @@ macro_rules! impl_highlight {
     ($T:ty) => {
         #[async_trait]
         impl Highlight for $T {
-            fn highlight_block(&mut self, block_style: Style) {
-                self.block.border_style(block_style);
+            async fn highlight_block(&mut self, block_style: Style) {
+                self.block = self.block.clone().border_style(block_style);
             }
 
             async fn highlight_item(&mut self, highlight_style: Style) {
@@ -25,16 +25,16 @@ impl_highlight!(MessageList<'_>);
 
 #[async_trait]
 pub trait Highlight: Select + Send {
-    fn highlight_block(&mut self, block_style: Style);
+    async fn highlight_block(&mut self, block_style: Style);
     async fn highlight_item(&mut self, highlight_style: Style);
 
     async fn focus(&mut self) {
-        self.highlight_block(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+        self.highlight_block(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)).await;
         self.highlight_item(Style::default().fg(Color::Black).bg(Color::White)).await;
     }
 
     async fn unfocus(&mut self) {
-        self.highlight_block(Style::reset());
+        self.highlight_block(Style::reset()).await;
         self.highlight_item(Style::reset()).await;
     }
 }

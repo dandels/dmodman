@@ -1,8 +1,8 @@
 use std::io;
+use std::sync::mpsc;
 use std::thread;
 use termion::event::Key;
 use termion::input::TermRead;
-use tokio::sync::mpsc;
 
 use std::time::Duration;
 
@@ -12,7 +12,7 @@ pub enum Event<I> {
 }
 
 pub struct Events {
-    rx: mpsc::UnboundedReceiver<Event<Key>>,
+    rx: mpsc::Receiver<Event<Key>>,
 }
 
 // TODO should either the sender or receiver use tokio's version?
@@ -20,8 +20,9 @@ impl Events {
     pub fn new() -> Events {
         let tick_rate = Duration::from_millis(250);
 
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel();
         let _input_handle = {
+            let tx = tx.clone();
             thread::spawn(move || {
                 let stdin = io::stdin();
                 for key in stdin.keys().into_iter().flatten() {
@@ -33,8 +34,8 @@ impl Events {
         };
         let _tick_handle = {
             thread::spawn(move || {
-                let tx = tx.clone();
                 loop {
+                    // TODO receive ticks
                     if tx.send(Event::Tick).is_err() {
                         break;
                     }
@@ -45,7 +46,7 @@ impl Events {
         Events { rx }
     }
 
-    pub async fn next(&mut self) -> Option<Event<Key>> {
-        self.rx.recv().await
+    pub fn next(&self) -> Result<Event<Key>, mpsc::RecvError> {
+        self.rx.recv()
     }
 }
