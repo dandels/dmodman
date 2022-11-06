@@ -48,7 +48,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::load().unwrap().game(game).build().unwrap();
-        let path = config.path_for(PathType::ModInfo(&mod_id));
+        let path = config.path_for(PathType::ModInfo(&game, &mod_id));
         println!("{:?}", path);
 
         let mi: ModInfo = ModInfo::load(path).await?;

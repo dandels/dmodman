@@ -35,12 +35,12 @@ impl Cache {
      */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
         let file_lists = FileListCache::new(config).await?;
-        let file_index = Files::new(config, file_lists.clone()).await?;
+        let files = Files::new(config, file_lists.clone()).await?;
 
         Ok(Self {
             config: config.clone(),
             file_lists,
-            file_index,
+            files,
         })
     }
 
@@ -70,7 +70,7 @@ impl Cache {
 
     pub async fn add_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
         lf.save(self.config.path_for(PathType::LocalFile(&lf))).await?;
-        self.file_index.add(lf).await;
+        self.files.add(lf).await;
         Ok(())
     }
 }
@@ -87,8 +87,10 @@ mod test {
         let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
 
-        let data = cache.file_index.file_data.read().await.get(&82041).unwrap();
-        assert_eq!(data.local_file.game, game);
+        let lock = cache.files.file_index.read().await;
+        let fdata = lock.get(&82041).unwrap();
+        println!("{:?}", fdata);
+        assert_eq!(fdata.local_file.read().await.game, game);
         Ok(())
     }
 }

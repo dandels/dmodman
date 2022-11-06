@@ -1,16 +1,15 @@
 use super::{CacheError, Cacheable, FileData, FileListCache, LocalFile};
-use crate::api::FileDetails;
 use crate::config::Config;
 
 use std::collections::BinaryHeap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use tokio::fs;
 use tokio::sync::RwLock;
 
@@ -42,19 +41,20 @@ impl Files {
         if let Ok(mut file_stream) = fs::read_dir(config.download_dir()).await {
             while let Some(f) = file_stream.next_entry().await? {
                 if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) != Some("json") {
-                    let json_file = f.path().with_extension("json");
+                    let json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
                     if let Ok(lf) = LocalFile::load(json_file).await {
                         if let Some(file_list) = file_lists.get((&lf.game, lf.mod_id)).await {
-                            let file_details = file_list.files.iter().find(|fd| fd.file_id == lf.file_id);
-                            let file_data = Arc::new(FileData::new(lf.clone(), file_details.cloned()));
+                            let file_details = file_list.files.iter().find(|fd| fd.file_id == lf.file_id).unwrap();
+                            let file_data = Arc::new(FileData::new(lf.clone(), file_details.clone()));
                             file_index.insert(lf.file_id, file_data.clone());
-                            match mod_files.get_mut(&(lf.game, lf.mod_id)) {
+                            match mod_files.get_mut(&(lf.game.to_string(), lf.mod_id)) {
                                 Some(heap) => {
-                                    heap.push(file_data.into());
+                                    heap.push(file_data);
                                 }
                                 None => {
-                                    let mut vec = vec![];
-                                    vec.push(file_data);
+                                    let mut heap = BinaryHeap::new();
+                                    heap.push(file_data);
+                                    mod_files.insert((lf.game.to_string(), lf.mod_id), heap);
                                 }
                             }
                         }
@@ -72,7 +72,8 @@ impl Files {
     }
 
     pub async fn add(&self, lf: LocalFile) {
-        let file_details = self.file_lists.filedetails_for(&lf).await;
+        // TODO sort out this whole missing FileDetails thing
+        let file_details = self.file_lists.filedetails_for(&lf).await.unwrap();
         let fdata: Arc<FileData> = FileData::new(lf.clone(), file_details).into();
         self.file_index.write().await.insert(lf.file_id, fdata.clone());
         if let Some(heap) = self.mod_files.write().await.get_mut(&(lf.game, lf.mod_id)) {

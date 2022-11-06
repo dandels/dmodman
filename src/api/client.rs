@@ -19,7 +19,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::SystemTime;
 
 /* API reference:
  * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
@@ -260,15 +259,11 @@ impl Client {
             }
         };
 
-        let file_details = file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == nxm.file_id).cloned());
+        // TODO if the FileDetails isn't found handle this as a foreign file, however they're dealt with. Currently crashes.
+        let file_details =
+            file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == nxm.file_id).cloned()).unwrap();
 
-        let lf = LocalFile::new(
-            nxm,
-            file_name,
-            UpdateStatus::UpToDate(
-                SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs(),
-            ),
-        );
+        let lf = LocalFile::new(nxm, file_name, UpdateStatus::UpToDate(file_details.uploaded_timestamp));
 
         self.cache.add_local_file(lf).await?;
 
