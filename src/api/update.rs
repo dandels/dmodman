@@ -70,13 +70,38 @@ impl UpdateChecker {
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, RequestError> {
         let file_list = FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await?;
-        /* The update algorithm in check_file() requires the file list to be sorted.
-         * The NexusMods community manager (who has been Very Helpful!) couldn't guarantee that the API always
-         * keeps them sorted */
         self.cache.save_file_list(&file_list, game, mod_id).await?;
         Ok(file_list)
     }
 
+    /* This is complicated and maybe buggy.
+     *
+     * There are several ways in which a mod can have updates.
+     * 1) The FileList response for a mod contains a file_updates array, which we can iterate over the update chain for
+     *    a specific file id. The updates need to be sorted by timestamp or the time complexity of this is O(n²) per
+     *    file.
+     *    However, The NexusMods community manager, who has been very helpful, couldn't guarantee that the API keeps them
+     *    sorted.
+     *    To reduce the amount of time spent iterating over file lists, the file updates are put into a binary heap with
+     *    a custom ordering based on timestamp, which is done immediately in the deserialization stage.
+     *
+     *    (Testing suggests that Serde seems to understand BinaryHeap, and deserializes the JSON into heap order rather than
+     *    messing up the sorting. The documentation on this was lacking, though.)
+     *
+     *    The file list for the mod is kept in another binary heap, also based on timestamp.
+     *    We then iterate backwards over both lists at once by calling pop()/peek(). This allows us to skip iterating over
+     *    any update that is older than our files. The popped updates are kept in a list, which contains only the
+     *    updates newer than the currently inspected file.
+     *
+     * 2) A file can also have updates without there being anything in the update list. In such cases the category of
+     *    the file might be changed to OLD_VERSION or ARCHIVED.
+     *
+     * 3) Even when neither of these are true, there might be some other new file in the mod. This could be an optional
+     *    file, a patch for the main mod or between the mod and some other mod, a new version that doesn't fit in the
+     *    previous two categories, etc. Since figuring out these cases is infeasible, we set timestamps on each file's
+     *    UpdateStatus (setting it on the latest one isn't enough, as the user could delete it).
+     *    If none of the other update conditions are true, we set the file's update status to either HasNewFile or
+     *    UpToDate, depending on the timestamp. */
     async fn check_mod(
         &self,
         to_check: &BinaryHeap<Arc<FileData>>,
@@ -100,6 +125,7 @@ impl UpdateChecker {
         let mut updates = file_list.file_updates.clone();
         let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
         let latest_local_time = to_check.peek().unwrap().file_details.uploaded_timestamp;
+        // Here we assume that the last file in the file list is actually the latest, which is probably true.
         let latest_remote_time = file_list.files.last().unwrap().uploaded_timestamp;
 
         let mut newer_files: Vec<FileUpdate> = vec![];
