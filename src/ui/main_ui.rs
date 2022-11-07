@@ -1,5 +1,6 @@
 use super::component::*;
 use super::event::{Event, Events};
+use crate::ui::rectangles::Rectangles;
 
 use crate::api::Client;
 use crate::api::UpdateChecker;
@@ -17,20 +18,18 @@ use signal_hook_tokio::Signals;
 use termion::event::Key;
 use tokio::sync::RwLock;
 use tokio::task;
-use tui::layout::{Constraint, Direction, Layout, Rect};
 
 pub struct MainUI<'a> {
+    events: Events,
+    rectangles: Rectangles,
     focused: FocusedWidget<'a>,
-    download_view: Arc<RwLock<DownloadTable<'a>>>,
-    files_view: Arc<RwLock<FileTable<'a>>>,
-    msg_view: Arc<RwLock<MessageList<'a>>>,
     top_bar: Arc<RwLock<TopBar<'a>>>,
+    files_view: Arc<RwLock<FileTable<'a>>>,
+    download_view: Arc<RwLock<DownloadTable<'a>>>,
+    msg_view: Arc<RwLock<MessageList<'a>>>,
     bottom_bar: Arc<RwLock<BottomBar<'a>>>,
     redraw_terminal: Arc<AtomicBool>,
-    events: Events,
     updater: UpdateChecker,
-    cache: Cache,
-    client: Client,
     msgs: Messages,
 }
 
@@ -55,18 +54,17 @@ impl<'a> MainUI<'static> {
         let focused = FocusedWidget::FileTable(files_view.clone());
 
         Self {
+            events,
+            rectangles: Rectangles::new(),
             focused,
+            top_bar,
             files_view,
             download_view,
             msg_view,
             bottom_bar,
-            top_bar,
-            updater,
-            cache,
-            client,
-            msgs,
-            events,
             redraw_terminal,
+            updater,
+            msgs,
         }
     }
 
@@ -79,77 +77,35 @@ impl<'a> MainUI<'static> {
         let signals = Signals::new([SIGWINCH])?;
         let handle = signals.handle();
         let _sigwinch_task = task::spawn(handle_sigwinch(signals, got_sigwinch.clone()));
-
-        // TODO learn to use the constraints
-        let topbar_layout: Layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Percentage(99)]);
-
-        let botbar_layout: Layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(99), Constraint::Min(1)]);
-
-        let tables_layout: Layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)]);
-
-        let main_vertical_layout: Layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)]);
-
         let mut terminal = term_setup().unwrap();
-
-        let (width, height) = termion::terminal_size()?;
-        let mut rect_root = main_vertical_layout.split(Rect {
-            x: 0,
-            y: 0,
-            height,
-            width,
-        });
-        let mut rect_topbar = topbar_layout.split(rect_root[0]);
-        let mut rect_main = tables_layout.split(rect_topbar[1]);
-        let mut rect_botbar = botbar_layout.split(rect_root[1]);
 
         loop {
             if got_sigwinch.swap(false, Ordering::Relaxed) {
-                //self.msgs.push("redraw everything").await;
-                self.files_view.write().await.refresh().await;
-                self.download_view.write().await.refresh().await;
-                self.msg_view.write().await.refresh().await;
-                self.top_bar.write().await.refresh().await;
-                self.bottom_bar.write().await.refresh().await;
-                let (width, height) = termion::terminal_size()?;
-                rect_root = main_vertical_layout.split(Rect {
-                    x: 0,
-                    y: 0,
-                    height,
-                    width,
-                });
-                rect_topbar = topbar_layout.split(rect_root[0]);
-                rect_main = tables_layout.split(rect_topbar[1]);
-                rect_botbar = botbar_layout.split(rect_root[1]);
-            } else {
-                self.files_view.write().await.refresh().await;
-                // TODO make sure we don't redraw too often during downloads
-                // TODO make sure the actual download implementation is not too inefficient.
-                self.download_view.write().await.refresh().await;
-                //self.msgs.push("redraw downloads").await;
-                self.msg_view.write().await.refresh().await;
-                self.bottom_bar.write().await.refresh().await;
+                self.rectangles.recalculate();
+                self.redraw_terminal.store(true, Ordering::Relaxed);
             }
-            // TODO use a blocking thread for this
+            self.files_view.write().await.refresh().await;
+            // TODO make sure we don't redraw too often during downloads
+            self.download_view.write().await.refresh().await;
+            self.msg_view.write().await.refresh().await;
+            self.bottom_bar.write().await.refresh().await;
             if self.redraw_terminal.swap(false, Ordering::Relaxed) {
                 let mut files = self.files_view.write().await;
                 let mut downloads = self.download_view.write().await;
                 let mut msgs = self.msg_view.write().await;
                 let topbar = self.top_bar.read().await;
                 let botbar = self.bottom_bar.read().await;
+                // TODO use a blocking thread for this or figure out how to run it in async
                 terminal.draw(|f| {
-                    f.render_stateful_widget(files.widget.clone(), rect_main[0], &mut files.state);
-                    f.render_stateful_widget(downloads.widget.clone(), rect_main[1], &mut downloads.state);
-                    f.render_stateful_widget(msgs.widget.clone(), rect_root[1], &mut msgs.state);
-                    f.render_widget(topbar.widget.clone(), rect_topbar[0]);
-                    f.render_widget(botbar.widget.clone(), rect_botbar[1]);
+                    f.render_stateful_widget(files.widget.clone(), self.rectangles.rect_main[0], &mut files.state);
+                    f.render_stateful_widget(
+                        downloads.widget.clone(),
+                        self.rectangles.rect_main[1],
+                        &mut downloads.state,
+                    );
+                    f.render_stateful_widget(msgs.widget.clone(), self.rectangles.rect_root[1], &mut msgs.state);
+                    f.render_widget(topbar.widget.clone(), self.rectangles.rect_topbar[0]);
+                    f.render_widget(botbar.widget.clone(), self.rectangles.rect_botbar[1]);
                 })?;
             }
 

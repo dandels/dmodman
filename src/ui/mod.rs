@@ -1,6 +1,7 @@
 mod component;
 mod event;
 mod main_ui;
+mod rectangles;
 
 pub use main_ui::MainUI;
 

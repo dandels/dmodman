@@ -18,8 +18,4 @@ impl Messages {
         self.has_changed.store(true, Ordering::Relaxed);
         self.len.fetch_add(1, Ordering::Relaxed);
     }
-
-    pub fn len(&self) -> usize {
-        self.len.load(Ordering::Relaxed)
-    }
 }
