@@ -68,6 +68,9 @@ impl<'a> MainUI<'static> {
         }
     }
 
+    /* This is the main UI loop.
+     * Redrawing the terminal is quite CPU intensive, so we use a bunch of locks and atomics to make sure it only
+     * happens when necessary. */
     pub async fn run(&mut self) -> Result<(), Box<dyn Error>> {
         self.files_view.write().await.focus().await;
         /* X11 (and maybe Wayland?) sends SIGWINCH when the window is resized, so we can listen to that. Otherwise we
@@ -88,6 +91,7 @@ impl<'a> MainUI<'static> {
             // TODO make sure we don't redraw too often during downloads
             self.download_view.write().await.refresh().await;
             self.msg_view.write().await.refresh().await;
+            self.top_bar.write().await.refresh().await;
             self.bottom_bar.write().await.refresh().await;
             if self.redraw_terminal.swap(false, Ordering::Relaxed) {
                 let mut files = self.files_view.write().await;
