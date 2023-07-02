@@ -4,9 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use tokio_stream::StreamExt;
-use tui::style::Style;
-use tui::text::Spans;
-use tui::widgets::{Block, Borders, List, ListItem, ListState};
+use ratatui::style::Style;
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 
 pub struct MessageList<'a> {
     pub block: Block<'a>,
@@ -50,7 +50,7 @@ impl<'a> MessageList<'a> {
 
             // TODO we could easily append new items to the list instead of constantly recreating it
             while let Some(val) = stream.next().await {
-                let lines = vec![Spans::from(val.to_string())];
+                let lines = vec![Line::from(val.to_string())];
                 items.push(ListItem::new(lines))
             }
 

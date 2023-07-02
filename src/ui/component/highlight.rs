@@ -1,7 +1,7 @@
 use crate::ui::component::{DownloadTable, FileTable, MessageList, Select};
 use async_trait::async_trait;
 use std::sync::atomic::Ordering;
-use tui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 macro_rules! impl_highlight {
     ($T:ty) => {

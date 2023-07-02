@@ -4,9 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use tokio_stream::StreamExt;
-use tui::layout::Constraint;
-use tui::style::{Color, Style};
-use tui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::layout::Constraint;
+use ratatui::style::{Color, Style};
+use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 
 pub struct FileTable<'a> {
     pub files: Files,

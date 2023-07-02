@@ -1,14 +1,15 @@
-use tui::layout::{Constraint, Direction, Layout, Rect};
+use std::rc::Rc;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 pub struct Rectangles {
     topbar_layout: Layout,
     botbar_layout: Layout,
     tables_layout: Layout,
     main_vertical_layout: Layout,
-    pub rect_root: Vec<Rect>,
-    pub rect_topbar: Vec<Rect>,
-    pub rect_main: Vec<Rect>,
-    pub rect_botbar: Vec<Rect>,
+    pub rect_root: Rc<[Rect]>,
+    pub rect_topbar: Rc<[Rect]>,
+    pub rect_main: Rc<[Rect]>,
+    pub rect_botbar: Rc<[Rect]>,
 }
 impl Rectangles {
     pub fn new() -> Self {

@@ -16,10 +16,10 @@ use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
 use tokio_stream::StreamExt;
-//use tui::layout::{Constraint, Direction, Layout};
+//use ratatui::layout::{Constraint, Direction, Layout};
 
-use tui::backend::{Backend, TermionBackend};
-use tui::Terminal;
+use ratatui::backend::{Backend, TermionBackend};
+use ratatui::Terminal;
 
 pub fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
     let stdout = std::io::stdout().into_raw_mode()?;

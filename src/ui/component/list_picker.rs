@@ -1,6 +1,6 @@
-use tui::style::Style;
-use tui::text::Spans;
-use tui::widgets::{Block, Borders, List, ListItem, ListState};
+use ratatui::style::Style;
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 
 pub struct ListPicker<'a> {
     pub widget: List<'a>,
@@ -31,7 +31,7 @@ impl<'a> ListPicker<'a> {
         let list_items: Vec<ListItem> = list
             .iter()
             .map(|i| {
-                let lines = vec![Spans::from(i.to_string())];
+                let lines = vec![Line::from(i.to_string())];
                 ListItem::new(lines)
             })
             .collect();

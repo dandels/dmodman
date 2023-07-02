@@ -125,7 +125,7 @@ impl Client {
              * global CDN, unless the user has selected a preferred download location.
              * For small files the download URL is the same regardless of location choice.
              * Free-tier users only get one location choice.
-             * Either way, we can just pick the first location.
+             * Anyway, we can just pick the first location.
              */
             let location = &dls.locations.first().unwrap();
             let url: Url = Url::parse(&location.URI)?;
@@ -259,7 +259,9 @@ impl Client {
             }
         };
 
-        // TODO if the FileDetails isn't found handle this as a foreign file, however they're dealt with. Currently crashes.
+        /* TODO if the FileDetails isn't found handle this as a foreign file, however they're going to be dealt with.
+         * This currently crashes.
+         */
         let file_details =
             file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == nxm.file_id).cloned()).unwrap();
 
