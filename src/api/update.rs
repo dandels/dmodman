@@ -30,7 +30,6 @@ impl UpdateChecker {
     pub async fn update_all(&self) {
         // TODO reconsider at which point(s) of the type hierarchy the rwlock needs to be
         for ((game, mod_id), files) in self.cache.files.mod_files.read().await.iter() {
-            self.msgs.push(format!("{game}, {mod_id}")).await;
             let mut needs_refresh = false;
             let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
             if let Some(fl) = self.cache.file_lists.get((game, *mod_id)).await {
@@ -57,7 +56,7 @@ impl UpdateChecker {
                 }
             }
             for (file, new_status) in checked {
-                self.msgs.push(format!("setting {} status to {:?}", file.file_details.name, new_status)).await;
+                self.msgs.push(format!("Setting {} status to {:?}", file.file_details.name, new_status)).await;
                 let mut lf = file.local_file.write().await;
                 if lf.update_status != new_status {
                     lf.update_status = new_status;
@@ -77,24 +76,23 @@ impl UpdateChecker {
     /* This is complicated and maybe buggy.
      *
      * There are several ways in which a mod can have updates.
-     * 1) The FileList response for a mod contains a file_updates array, which we can iterate over the update chain for
-     *    a specific file id. The updates need to be sorted by timestamp or the time complexity of this is O(n²) per
+     * 1) The FileList response for a mod contains a file_updates array, with which we can iterate over the update chain
+     *    for a specific file id. The updates need to be sorted by timestamp or the time complexity of this is O(n²) per
      *    file.
      *    However, The NexusMods community manager, who has been very helpful, couldn't guarantee that the API keeps them
      *    sorted.
      *    To reduce the amount of time spent iterating over file lists, the file updates are put into a binary heap with
      *    a custom ordering based on timestamp, which is done immediately in the deserialization stage.
-     *
      *    (Testing suggests that Serde seems to understand BinaryHeap, and deserializes the JSON into heap order rather than
      *    messing up the sorting. The documentation on this was lacking, though.)
      *
      *    The file list for the mod is kept in another binary heap, also based on timestamp.
      *    We then iterate backwards over both lists at once by calling pop()/peek(). This allows us to skip iterating over
-     *    any update that is older than our files. The popped updates are kept in a list, which contains only the
+     *    any update that is older than our files. The popped updates are then kept in a list, which contains only the
      *    updates newer than the currently inspected file.
      *
-     * 2) A file can also have updates without there being anything in the update list. In such cases the category of
-     *    the file might be changed to OLD_VERSION or ARCHIVED.
+     * 2) The category of the file might have changed to OLD_VERSION or ARCHIVED without the update list containing new
+     *    versions of that file.
      *
      * 3) Even when neither of these are true, there might be some other new file in the mod. This could be an optional
      *    file, a patch for the main mod or between the mod and some other mod, a new version that doesn't fit in the
@@ -110,15 +108,6 @@ impl UpdateChecker {
         if to_check.peek().is_none() {
             self.msgs.push("Tried to check updates for nonexistent files. This shouldn't happen.").await;
             return vec![];
-        }
-
-        {
-            self.msgs
-                .push(format!(
-                    "Checking: {}",
-                    to_check.peek().unwrap().local_file.read().await.game
-                ))
-                .await;
         }
 
         let mut files = to_check.clone();
@@ -261,39 +250,40 @@ mod tests {
         }
     }
 
+    // TODO this test shouldn't be hard to fix
     #[tokio::test]
     async fn out_of_date() -> Result<(), RequestError> {
-        panic!("todo");
-        //let game = "morrowind";
-        //let mod_id = 46599;
-        //let graphic_herbalism_file_id = 1000014314;
-        //let newest_file_update = 1558643755;
+        let game = "morrowind";
+        let mod_id = 46599;
+        let _graphic_herbalism_file_id = 1000014314;
+        let newest_file_update = 1558643755;
 
-        //let config = ConfigBuilder::default().game(game).build().unwrap();
-        //let cache = Cache::new(&config).await?;
-        //let msgs = Messages::default();
-        //let client = Client::new(&cache, &config, &msgs).await;
-        //let update = UpdateChecker::new(cache.clone(), client, config, msgs);
+        let latest_local_time = 1558643754;
+        let latest_remote_time = 1558643755;
 
-        ////let index = cache.files.file_index.read().await;
+        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let cache = Cache::new(&config).await?;
+        let msgs = Messages::default();
+        let client = Client::new(&cache, &config, &msgs).await;
+        let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        ////let (gh_lf, _gh_fd) = index.get(&graphic_herbalism_file_id).unwrap();
-        ////let gh_fl = cache.file_lists.get((&gh_lf.game, gh_lf.mod_id)).await;
+        let lock = cache.files.mod_files.read().await;
+        let files = lock.get(&(game.to_string(), mod_id)).unwrap();
+        let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
+        let checked = update.check_mod(files, &file_list).await;
 
-        ////let status = update::check_file(gh_lf, &gh_fl.unwrap()).await;
-
-        //let lock = cache.files.mod_files.read().await;
-        //let files = lock.get(&(game.to_string(), mod_id)).unwrap();
-        //let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
-        //let checked = update.check_mod(files, &file_list).await;
-        //match status {
-        //    UpdateStatus::OutOfDate(t) => {
-        //        assert_eq!(t, newest_file_update);
-        //    }
-        //    _ => {
-        //        panic!("Mod should be out of date: {}", gh_lf.file_name);
-        //    }
-        //};
-        //Ok(())
+        for f in checked {
+            //println!("{}, {}", f.0.file_details.name, f.1.time());
+            match f {
+                (_, UpdateStatus::OutOfDate(t)) => {
+                    assert_eq!(t, latest_local_time);
+                    assert_eq!(newest_file_update, latest_remote_time);
+                }
+                (file, _) => {
+                    panic!("UpdateStatus should be OutOfDate: {}", file.file_details.name);
+                }
+            }
+        }
+        Ok(())
     }
 }
