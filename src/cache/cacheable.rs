@@ -36,14 +36,13 @@ impl Cacheable for ModInfo {}
 
 #[cfg(test)]
 mod tests {
-    use crate::api::error::*;
-    use crate::api::{FileList, ModInfo};
+    use crate::api::{ApiError, FileList, ModInfo};
     use crate::cache::cacheable::Cacheable;
     use crate::config::ConfigBuilder;
     use crate::config::PathType;
 
     #[tokio::test]
-    async fn read_cached_mod_info() -> Result<(), RequestError> {
+    async fn read_cached_mod_info() -> Result<(), ApiError> {
         let game = "morrowind";
         let mod_id = 46599;
 
@@ -57,7 +56,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_cached_file_list() -> Result<(), RequestError> {
+    async fn read_cached_file_list() -> Result<(), ApiError> {
         let game = "morrowind";
         let mod_id = 46599;
 

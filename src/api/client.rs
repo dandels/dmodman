@@ -2,9 +2,9 @@ use crate::cache::{Cache, LocalFile, UpdateStatus};
 use crate::{config::Config, util, Messages};
 
 use super::downloads::{DownloadStatus, Downloads, NxmUrl};
-use super::error::RequestError;
 use super::query::{DownloadLink, FileList, Queriable, Search};
 use super::request_counter::RequestCounter;
+use super::ApiError;
 
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
 use reqwest::{Response, StatusCode};
@@ -71,27 +71,27 @@ impl Client {
         }
     }
 
-    fn build_request(&self, url: Url) -> Result<reqwest::RequestBuilder, RequestError> {
+    fn build_request(&self, url: Url) -> Result<reqwest::RequestBuilder, ApiError> {
         if cfg!(test) {
-            return Err(RequestError::IsUnitTest);
+            return Err(ApiError::IsUnitTest);
         }
         Ok(self.client.get(url).headers((*self.headers).clone()))
     }
 
-    fn build_api_request(&self, endpoint: &str) -> Result<reqwest::RequestBuilder, RequestError> {
+    fn build_api_request(&self, endpoint: &str) -> Result<reqwest::RequestBuilder, ApiError> {
         if cfg!(test) {
-            return Err(RequestError::IsUnitTest);
+            return Err(ApiError::IsUnitTest);
         }
         let url: Url = Url::parse(&(String::from(API_URL) + endpoint)).unwrap();
         let api_headers = match &*self.api_headers {
             Some(v) => Ok(v.clone()),
-            None => Err(RequestError::ApiKeyMissing),
+            None => Err(ApiError::ApiKeyMissing),
         }?;
 
         Ok(self.client.get(url).headers(api_headers))
     }
 
-    pub async fn send_api_request(&self, endpoint: &str) -> Result<Response, RequestError> {
+    pub async fn send_api_request(&self, endpoint: &str) -> Result<Response, ApiError> {
         let builder = self.build_api_request(endpoint)?;
         let resp = builder.send().await?;
         /* TODO the response headers contain a count of remaining API request quota and would be useful to track
@@ -107,7 +107,7 @@ impl Client {
 
     pub async fn queue_download(&self, nxm_str: String) {
         let me = self.clone();
-        let _handle: JoinHandle<Result<(), RequestError>> = task::spawn(async move {
+        let _handle: JoinHandle<Result<(), ApiError>> = task::spawn(async move {
             let nxm = NxmUrl::from_str(&nxm_str)?;
             let dls = DownloadLink::request(
                 &me,
@@ -135,13 +135,7 @@ impl Client {
     }
 
     // TODO look into the threading here, we want downloads to continue when the main thread is blocked
-    async fn download_buffered(
-        &self,
-        url: Url,
-        path: &PathBuf,
-        file_name: &str,
-        file_id: u64,
-    ) -> Result<(), RequestError> {
+    async fn download_buffered(&self, url: Url, path: &PathBuf, file_name: &str, file_id: u64) -> Result<(), ApiError> {
         self.msgs.push(format!("Downloading to {:?}.", path)).await;
         let mut part_path = path.clone();
         part_path.pop();
@@ -178,7 +172,7 @@ impl Client {
                         e.status().unwrap()
                     ))
                     .await;
-                return Err(RequestError::from(e));
+                return Err(ApiError::from(e));
             }
         }
         let mut status = DownloadStatus::new(file_name.to_string(), file_id, bytes_read, resp.content_length());
@@ -199,7 +193,7 @@ impl Client {
                      * continue it at some later point.
                      */
                     bufwriter.flush().await?;
-                    return Err(RequestError::from(e));
+                    return Err(ApiError::from(e));
                 }
             }
         }
@@ -210,7 +204,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, RequestError> {
+    pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, ApiError> {
         let file_name = util::file_name_from_url(&url);
         let mut path = self.config.download_dir();
         fs::create_dir_all(&path).await?;
@@ -274,7 +268,7 @@ impl Client {
 
     // TODO test this
     #[allow(dead_code)]
-    pub async fn mod_search(&self, query: String) -> Result<Search, RequestError> {
+    pub async fn mod_search(&self, query: String) -> Result<Search, ApiError> {
         let base: Url = Url::parse(SEARCH_URL).unwrap();
         let url = base.join(&query).unwrap();
         let builder = self.build_request(url)?;

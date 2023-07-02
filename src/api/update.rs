@@ -1,4 +1,4 @@
-use super::error::RequestError;
+use super::ApiError;
 use super::{Client, FileList, FileUpdate, Queriable};
 use crate::cache::{Cache, Cacheable, FileData, UpdateStatus};
 use crate::config::PathType;
@@ -67,7 +67,7 @@ impl UpdateChecker {
         }
     }
 
-    async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, RequestError> {
+    async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, ApiError> {
         let file_list = FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await?;
         self.cache.save_file_list(&file_list, game, mod_id).await?;
         Ok(file_list)
@@ -189,14 +189,14 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{Client, RequestError, UpdateChecker};
+    use crate::api::{Client, ApiError, UpdateChecker};
     use crate::cache::Cache;
     use crate::cache::UpdateStatus;
     use crate::ConfigBuilder;
     use crate::Messages;
 
     #[tokio::test]
-    async fn block_test_request() -> Result<(), RequestError> {
+    async fn block_test_request() -> Result<(), ApiError> {
         let game = "morrowind";
         let mod_id = 46599;
         let config = ConfigBuilder::default().game(game).build().unwrap();
@@ -210,16 +210,16 @@ mod tests {
         match updater.refresh_filelist(game, mod_id).await {
             Ok(_fl) => panic!("Refresh should have failed"),
             Err(e) => match e {
-                RequestError::IsUnitTest => Ok(()),
+                ApiError::IsUnitTest => Ok(()),
                 _ => {
-                    panic!("Refresh should return RequestError::IsUnitTest");
+                    panic!("Refresh should return ApiError::IsUnitTest");
                 }
             },
         }
     }
 
     #[tokio::test]
-    async fn up_to_date() -> Result<(), RequestError> {
+    async fn up_to_date() -> Result<(), ApiError> {
         let game = "morrowind";
         let upload_time = 1310405800;
         let mod_id = 39350;
@@ -252,7 +252,7 @@ mod tests {
 
     // TODO this test shouldn't be hard to fix
     #[tokio::test]
-    async fn out_of_date() -> Result<(), RequestError> {
+    async fn out_of_date() -> Result<(), ApiError> {
         let game = "morrowind";
         let mod_id = 46599;
         let _graphic_herbalism_file_id = 1000014314;
