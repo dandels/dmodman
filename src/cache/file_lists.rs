@@ -9,11 +9,11 @@ use tokio::fs;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
-pub struct FileListCache {
+pub struct FileLists {
     map: Arc<RwLock<HashMap<(String, u32), FileList>>>,
 }
 
-impl FileListCache {
+impl FileLists {
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
         let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
 

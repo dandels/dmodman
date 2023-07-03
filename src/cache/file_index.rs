@@ -1,4 +1,4 @@
-use super::{CacheError, Cacheable, FileData, FileListCache, LocalFile};
+use super::{CacheError, Cacheable, FileData, FileLists, LocalFile};
 use crate::config::Config;
 
 use std::collections::BinaryHeap;
@@ -15,25 +15,25 @@ use tokio::sync::RwLock;
 
 // TODO handle foreign (without associated LocalData) files somehow
 #[derive(Clone)]
-pub struct Files {
+pub struct FileIndex {
     // This is the list of downloaded mods.
-    pub file_index: Arc<RwLock<IndexMap<u64, Arc<FileData>>>>,
+    pub files: Arc<RwLock<IndexMap<u64, Arc<FileData>>>>,
     /* Maps (game, mod_id) to files in that mod.
      * It uses a binary heap that keeps the mods sorted by timestamp */
-    pub mod_files: Arc<RwLock<HashMap<(String, u32), BinaryHeap<Arc<FileData>>>>>,
+    pub mod_file_mapping: Arc<RwLock<HashMap<(String, u32), BinaryHeap<Arc<FileData>>>>>,
     pub has_changed: Arc<AtomicBool>,
     // TODO read file lists from disk into memory only for games where it's needed
-    file_lists: FileListCache,
+    file_lists: FileLists,
 }
 
-impl Files {
+impl FileIndex {
     /* This iterates through all files in the download directory for the current game. For each file, if the
      * corresponding json file exists, it deserializes the json file into a LocalFile.
      * It then checks in the FileList cache if there exists a corresponding FileDetails for that file.
-     * The result is a pair of LocalFile, FileDetails, stored in the FileData struct.
-     * Also creates a mapping of mod_id -> FileDatas, so that iterating through files in a mod doesn't require multiple
+     * The result is a pair of LocalFile, FileDetails, stored in the FileMapping struct.
+     * Also creates a mapping of mod_id -> FileMappings, so that iterating through files in a mod doesn't require multiple
      * table lookups. */
-    pub async fn new(config: &Config, file_lists: FileListCache) -> Result<Self, CacheError> {
+    pub async fn new(config: &Config, file_lists: FileLists) -> Result<Self, CacheError> {
         // It's unexpected but possible that FileDetails is missing
         let mut file_index: IndexMap<u64, Arc<FileData>> = IndexMap::new();
         let mut mod_files: HashMap<(String, u32), BinaryHeap<Arc<FileData>>> = HashMap::new();
@@ -64,8 +64,8 @@ impl Files {
         }
 
         Ok(Self {
-            file_index: Arc::new(RwLock::new(file_index)),
-            mod_files: Arc::new(RwLock::new(mod_files)),
+            files: Arc::new(RwLock::new(file_index)),
+            mod_file_mapping: Arc::new(RwLock::new(mod_files)),
             has_changed: Arc::new(AtomicBool::new(false)),
             file_lists,
         })
@@ -75,8 +75,8 @@ impl Files {
         // TODO sort out this whole missing FileDetails thing
         let file_details = self.file_lists.filedetails_for(&lf).await.unwrap();
         let fdata: Arc<FileData> = FileData::new(lf.clone(), file_details).into();
-        self.file_index.write().await.insert(lf.file_id, fdata.clone());
-        if let Some(heap) = self.mod_files.write().await.get_mut(&(lf.game, lf.mod_id)) {
+        self.files.write().await.insert(lf.file_id, fdata.clone());
+        if let Some(heap) = self.mod_file_mapping.write().await.get_mut(&(lf.game, lf.mod_id)) {
             heap.push(fdata);
         }
         self.has_changed.store(true, Ordering::Relaxed);

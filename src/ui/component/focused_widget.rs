@@ -47,8 +47,8 @@ impl<'a> FocusedWidget<'a> {
             }
             Self::FileTable(ft) => {
                 let mut table_lock = ft.write().await;
-                let files = table_lock.files.clone();
-                let files_lock = files.file_index.read().await;
+                let file_index = table_lock.file_index.clone();
+                let files_lock = file_index.files.read().await;
                 table_lock.next(files_lock.len());
                 table_lock.needs_redraw.store(true, Ordering::Relaxed);
             }
@@ -72,8 +72,8 @@ impl<'a> FocusedWidget<'a> {
             }
             Self::FileTable(ft) => {
                 let mut table_lock = ft.write().await;
-                let files = table_lock.files.clone();
-                let files_lock = files.file_index.read().await;
+                let file_index = table_lock.file_index.clone();
+                let files_lock = file_index.files.read().await;
                 table_lock.previous(files_lock.len());
                 table_lock.needs_redraw.store(true, Ordering::Relaxed);
             }

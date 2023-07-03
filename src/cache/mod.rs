@@ -2,13 +2,13 @@ mod cache_error;
 mod cacheable;
 mod file_data;
 mod file_index;
-mod file_list_cache;
+mod file_lists;
 mod local_file;
 pub use cache_error::*;
 pub use cacheable::*;
 pub use file_data::FileData;
 pub use file_index::*;
-pub use file_list_cache::*;
+pub use file_lists::*;
 pub use local_file::*;
 
 //use self::{CacheError, Cacheable, FileIndex, FileListCache, LocalFile};
@@ -19,8 +19,8 @@ use tokio::io;
 
 #[derive(Clone)]
 pub struct Cache {
-    pub file_lists: FileListCache,
-    pub files: Files,
+    pub file_lists: FileLists,
+    pub file_index: FileIndex,
     config: Config,
 }
 
@@ -34,13 +34,13 @@ impl Cache {
      * - file_id        -> FileDetails
      */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
-        let file_lists = FileListCache::new(config).await?;
-        let files = Files::new(config, file_lists.clone()).await?;
+        let file_lists = FileLists::new(config).await?;
+        let file_index = FileIndex::new(config, file_lists.clone()).await?;
 
         Ok(Self {
             config: config.clone(),
             file_lists,
-            files,
+            file_index,
         })
     }
 
@@ -70,7 +70,7 @@ impl Cache {
 
     pub async fn add_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
         lf.save(self.config.path_for(PathType::LocalFile(&lf))).await?;
-        self.files.add(lf).await;
+        self.file_index.add(lf).await;
         Ok(())
     }
 }
@@ -87,7 +87,7 @@ mod test {
         let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
 
-        let lock = cache.files.file_index.read().await;
+        let lock = cache.file_index.files.read().await;
         let fdata = lock.get(&82041).unwrap();
         println!("{:?}", fdata);
         assert_eq!(fdata.local_file.read().await.game, game);
