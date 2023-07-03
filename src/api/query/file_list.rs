@@ -31,10 +31,6 @@ impl PartialEq for FileUpdate {
     fn eq(&self, other: &Self) -> bool {
         self.uploaded_timestamp == other.uploaded_timestamp && self.new_file_id == other.new_file_id
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.uploaded_timestamp != other.uploaded_timestamp && self.new_file_id != other.new_file_id
-    }
 }
 
 impl Ord for FileUpdate {

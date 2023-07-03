@@ -1,23 +1,16 @@
-use crate::cache::{Cache, LocalFile, UpdateStatus};
-use crate::{config::Config, util, Messages};
+use crate::cache::Cache;
+use crate::{config::Config, Messages};
 
-use super::downloads::{DownloadStatus, Downloads, NxmUrl};
-use super::query::{DownloadLink, FileList, Queriable, Search};
+use super::downloads::{Downloads, NxmUrl};
+use super::query::{DownloadLink, Queriable, Search};
 use super::request_counter::RequestCounter;
 use super::ApiError;
 
-use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
-use reqwest::{Response, StatusCode};
-use tokio::fs;
-use tokio::fs::OpenOptions;
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::{task, task::JoinHandle};
-use tokio_stream::StreamExt;
+use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::Response;
 use url::Url;
 
-use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 /* API reference:
@@ -34,7 +27,6 @@ pub struct Client {
     api_headers: Arc<Option<HeaderMap>>,
     msgs: Messages,
     cache: Cache,
-    config: Config,
     pub downloads: Downloads,
     pub request_counter: RequestCounter,
 }
@@ -65,13 +57,12 @@ impl Client {
             api_headers: Arc::new(api_headers),
             msgs: msgs.clone(),
             cache: cache.clone(),
-            config: config.clone(),
-            downloads: Downloads::default(),
+            downloads: Downloads::new(cache, config, msgs),
             request_counter: RequestCounter::new(),
         }
     }
 
-    fn build_request(&self, url: Url) -> Result<reqwest::RequestBuilder, ApiError> {
+    pub fn build_request(&self, url: Url) -> Result<reqwest::RequestBuilder, ApiError> {
         if cfg!(test) {
             return Err(ApiError::IsUnitTest);
         }
@@ -105,165 +96,30 @@ impl Client {
         Ok(resp)
     }
 
-    pub async fn queue_download(&self, nxm_str: String) {
-        let me = self.clone();
-        let _handle: JoinHandle<Result<(), ApiError>> = task::spawn(async move {
-            let nxm = NxmUrl::from_str(&nxm_str)?;
-            let dls = DownloadLink::request(
-                &me,
-                me.msgs.clone(),
-                vec![
-                    &nxm.domain_name,
-                    &nxm.mod_id.to_string(),
-                    &nxm.file_id.to_string(),
-                    &nxm.query,
-                ],
-            )
-            .await?;
-            me.cache.save_download_links(&dls, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
-            /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
-             * global CDN, unless the user has selected a preferred download location.
-             * For small files the download URL is the same regardless of location choice.
-             * Free-tier users only get one location choice.
-             * Anyway, we can just pick the first location.
-             */
-            let location = &dls.locations.first().unwrap();
-            let url: Url = Url::parse(&location.URI)?;
-            let _file = me.download_mod_file(&nxm, url).await?;
-            Ok(())
-        });
-    }
-
-    // TODO look into the threading here, we want downloads to continue when the main thread is blocked
-    async fn download_buffered(&self, url: Url, path: &PathBuf, file_name: &str, file_id: u64) -> Result<(), ApiError> {
-        self.msgs.push(format!("Downloading to {:?}.", path)).await;
-        let mut part_path = path.clone();
-        part_path.pop();
-        part_path.push(format!("{}.part", file_name));
-
-        let mut builder = self.build_request(url)?;
-
-        /* The HTTP Range header is used to resume downloads.
-         * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
+    pub async fn queue_download(&self, nxm_str: String) -> Result<(), ApiError> {
+        let nxm = NxmUrl::from_str(&nxm_str)?;
+        let dls = DownloadLink::request(
+            &self,
+            self.msgs.clone(),
+            vec![
+                &nxm.domain_name,
+                &nxm.mod_id.to_string(),
+                &nxm.file_id.to_string(),
+                &nxm.query,
+            ],
+        )
+        .await?;
+        self.cache.save_download_links(&dls, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
+        /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
+         * global CDN, unless the user has selected a preferred download location.
+         * For small files the download URL is the same regardless of location choice.
+         * Free-tier users only get one location choice.
+         * Anyway, we can just pick the first location.
          */
-        let bytes_read = Arc::new(AtomicU64::new(0));
-        if part_path.exists() {
-            bytes_read.store(std::fs::metadata(&part_path)?.len(), Ordering::Relaxed);
-            builder = builder.header(RANGE, format!("bytes={:?}-", bytes_read));
-        }
-
-        let resp = builder.send().await?;
-
-        let mut open_opts = OpenOptions::new();
-        let mut file;
-        match resp.error_for_status_ref() {
-            Ok(resp) => {
-                file = match resp.status() {
-                    StatusCode::OK => open_opts.write(true).create(true).open(&part_path).await?,
-                    StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await?,
-                    code => panic!("Download {} got unexpected HTTP response: {}", file_name, code),
-                };
-            }
-            Err(e) => {
-                self.msgs
-                    .push(format!(
-                        "Download {} failed with error: {}",
-                        file_name,
-                        e.status().unwrap()
-                    ))
-                    .await;
-                return Err(ApiError::from(e));
-            }
-        }
-        let mut status = DownloadStatus::new(file_name.to_string(), file_id, bytes_read, resp.content_length());
-        self.downloads.add(status.clone()).await;
-
-        let mut bufwriter = BufWriter::new(&mut file);
-        let mut stream = resp.bytes_stream();
-
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(bytes) => {
-                    bufwriter.write_all(&bytes).await?;
-                    status.update_progress(bytes.len() as u64);
-                    self.downloads.has_changed.store(true, Ordering::Relaxed);
-                }
-                Err(e) => {
-                    /* The download could fail for network-related reasons. Flush the data we got so that we can
-                     * continue it at some later point.
-                     */
-                    bufwriter.flush().await?;
-                    return Err(ApiError::from(e));
-                }
-            }
-        }
-        bufwriter.flush().await?;
-
-        std::fs::rename(part_path, path)?;
-
+        let location = &dls.locations.first().unwrap();
+        let url: Url = Url::parse(&location.URI)?;
+        let _file = self.downloads.add(&self, &nxm, url).await?;
         Ok(())
-    }
-
-    pub async fn download_mod_file(&self, nxm: &NxmUrl, url: Url) -> Result<PathBuf, ApiError> {
-        let file_name = util::file_name_from_url(&url);
-        let mut path = self.config.download_dir();
-        fs::create_dir_all(&path).await?;
-        path.push(&file_name);
-
-        if path.exists() {
-            self.msgs.push(format!("{} already exists and won't be downloaded again.", file_name)).await;
-            return Ok(path);
-        } else if self.downloads.get(&nxm.file_id).await.is_some() {
-            self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
-            return Ok(path);
-        }
-
-        self.download_buffered(url, &path, &file_name, nxm.file_id).await?;
-
-        /* TODO: should we just do an Md5Search instead? It would allows us to validate the file while getting its
-         * metadata.
-         * However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312
-         */
-        let file_list = match self.cache.file_lists.get((&nxm.domain_name, nxm.mod_id)).await {
-            Some(fl) => Some(fl),
-            None => {
-                match FileList::request(self, self.msgs.clone(), vec![&nxm.domain_name, &nxm.mod_id.to_string()]).await
-                {
-                    Ok(fl) => {
-                        if let Err(e) = self.cache.save_file_list(&fl, &nxm.domain_name, nxm.mod_id).await {
-                            self.msgs
-                                .push(format!(
-                                    "Unable to save file list for {} mod {}: {}",
-                                    nxm.domain_name, nxm.mod_id, e
-                                ))
-                                .await;
-                        }
-                        Some(fl)
-                    }
-                    Err(e) => {
-                        self.msgs
-                            .push(format!(
-                                "Unable to query file list for {} mod {}: {}",
-                                nxm.domain_name, nxm.mod_id, e
-                            ))
-                            .await;
-                        None
-                    }
-                }
-            }
-        };
-
-        /* TODO if the FileDetails isn't found handle this as a foreign file, however they're going to be dealt with.
-         * This currently crashes.
-         */
-        let file_details =
-            file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == nxm.file_id).cloned()).unwrap();
-
-        let lf = LocalFile::new(nxm, file_name, UpdateStatus::UpToDate(file_details.uploaded_timestamp));
-
-        self.cache.add_local_file(lf).await?;
-
-        Ok(path)
     }
 
     // TODO test this

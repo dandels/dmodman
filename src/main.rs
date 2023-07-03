@@ -86,7 +86,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::new(&cache, &config, &msgs).await;
 
     if let Some(nxm_str) = nxm_str_opt {
-        client.queue_download(nxm_str.to_string()).await;
+        let _ = client.queue_download(nxm_str.to_string()).await;
     }
 
     nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx).await;

@@ -127,7 +127,7 @@ pub async fn listen_for_downloads(
                 Ok(msg) => {
                     if msg.starts_with("nxm://") {
                         match NxmUrl::from_str(&msg) {
-                            Ok(_) => client.queue_download(msg).await,
+                            Ok(_) => client.queue_download(msg).await.unwrap(),
                             Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")).await,
                         }
                     }
