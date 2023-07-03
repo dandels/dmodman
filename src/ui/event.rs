@@ -25,7 +25,7 @@ impl Events {
             let tx = tx.clone();
             thread::spawn(move || {
                 let stdin = io::stdin();
-                for key in stdin.keys().into_iter().flatten() {
+                for key in stdin.keys().flatten() {
                     if tx.send(Event::Input(key)).is_err() {
                         return;
                     }

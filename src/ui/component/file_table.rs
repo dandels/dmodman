@@ -3,10 +3,10 @@ use crate::cache::{Files, UpdateStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tokio_stream::StreamExt;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use tokio_stream::StreamExt;
 
 pub struct FileTable<'a> {
     pub files: Files,
@@ -40,7 +40,7 @@ impl<'a> FileTable<'a> {
             state: TableState::default(),
             widget: Table::new(vec![]),
             needs_redraw: AtomicBool::new(true),
-            has_data_changed: files.has_changed.clone(),
+            has_data_changed: files.has_changed,
             redraw_terminal,
         }
     }

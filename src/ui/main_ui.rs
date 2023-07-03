@@ -43,13 +43,10 @@ impl<'a> MainUI<'static> {
 
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
-        let files_view = Arc::new(RwLock::new(FileTable::new(
-            redraw_terminal.clone(),
-            cache.files.clone(),
-        )));
+        let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.files)));
         let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), client.downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
-        let bottom_bar = RwLock::new(BottomBar::new(redraw_terminal.clone(), client.request_counter.clone())).into();
+        let bottom_bar = RwLock::new(BottomBar::new(redraw_terminal.clone(), client.request_counter)).into();
 
         let focused = FocusedWidget::FileTable(files_view.clone());
 
@@ -99,7 +96,7 @@ impl<'a> MainUI<'static> {
                 let mut msgs = self.msg_view.write().await;
                 let topbar = self.top_bar.read().await;
                 let botbar = self.bottom_bar.read().await;
-                // TODO use a blocking thread for this or figure out how to run it in async
+                // TODO should this be done in a blocking thread?
                 terminal.draw(|f| {
                     f.render_stateful_widget(files.widget.clone(), self.rectangles.rect_main[0], &mut files.state);
                     f.render_stateful_widget(
