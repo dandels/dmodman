@@ -1,8 +1,6 @@
-use crate::cache::Cache;
 use crate::{config::Config, Messages};
 
-use super::downloads::{Downloads, NxmUrl};
-use super::query::{DownloadLink, Queriable, Search};
+use super::query::Search;
 use super::request_counter::RequestCounter;
 use super::ApiError;
 
@@ -10,7 +8,6 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
 use url::Url;
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 /* API reference:
@@ -25,14 +22,11 @@ pub struct Client {
     client: reqwest::Client,
     headers: Arc<HeaderMap>,
     api_headers: Arc<Option<HeaderMap>>,
-    msgs: Messages,
-    cache: Cache,
-    pub downloads: Downloads,
     pub request_counter: RequestCounter,
 }
 
 impl Client {
-    pub async fn new(cache: &Cache, config: &Config, msgs: &Messages) -> Self {
+    pub async fn new(config: &Config, msgs: &Messages) -> Self {
         let version = String::from(env!("CARGO_CRATE_NAME")) + " " + env!("CARGO_PKG_VERSION");
 
         let mut headers = HeaderMap::new();
@@ -55,9 +49,6 @@ impl Client {
             client: reqwest::Client::new(),
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
-            msgs: msgs.clone(),
-            cache: cache.clone(),
-            downloads: Downloads::new(cache, config, msgs),
             request_counter: RequestCounter::new(),
         }
     }
@@ -94,32 +85,6 @@ impl Client {
          * );
          */
         Ok(resp)
-    }
-
-    pub async fn queue_download(&self, nxm_str: String) -> Result<(), ApiError> {
-        let nxm = NxmUrl::from_str(&nxm_str)?;
-        let dls = DownloadLink::request(
-            &self,
-            self.msgs.clone(),
-            vec![
-                &nxm.domain_name,
-                &nxm.mod_id.to_string(),
-                &nxm.file_id.to_string(),
-                &nxm.query,
-            ],
-        )
-        .await?;
-        self.cache.save_download_links(&dls, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
-        /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
-         * global CDN, unless the user has selected a preferred download location.
-         * For small files the download URL is the same regardless of location choice.
-         * Free-tier users only get one location choice.
-         * Anyway, we can just pick the first location.
-         */
-        let location = &dls.locations.first().unwrap();
-        let url: Url = Url::parse(&location.URI)?;
-        let _file = self.downloads.add(&self, &nxm, url).await?;
-        Ok(())
     }
 
     // TODO test this

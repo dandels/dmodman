@@ -29,7 +29,7 @@ impl UpdateChecker {
 
     pub async fn update_all(&self) {
         // TODO reconsider at which point(s) of the type hierarchy the rwlock needs to be
-        for ((game, mod_id), files) in self.cache.files.mod_files.read().await.iter() {
+        for ((game, mod_id), files) in self.cache.file_index.mod_file_mapping.read().await.iter() {
             let mut needs_refresh = false;
             let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
             if let Some(fl) = self.cache.file_lists.get((game, *mod_id)).await {
@@ -63,7 +63,7 @@ impl UpdateChecker {
                     lf.save(self.config.path_for(PathType::LocalFile(&lf))).await.unwrap();
                 }
             }
-            self.cache.files.has_changed.store(true, Ordering::Relaxed);
+            self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
         }
     }
 
@@ -100,7 +100,7 @@ impl UpdateChecker {
      *    UpdateStatus (setting it on the latest one isn't enough, as the user could delete it).
      *    If none of the other update conditions are true, we set the file's update status to either HasNewFile or
      *    UpToDate, depending on the timestamp. */
-    async fn check_mod(
+    pub async fn check_mod(
         &self,
         to_check: &BinaryHeap<Arc<FileData>>,
         file_list: &FileList,
@@ -189,7 +189,7 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::{Client, ApiError, UpdateChecker};
+    use crate::api::{ApiError, Client, UpdateChecker};
     use crate::cache::Cache;
     use crate::cache::UpdateStatus;
     use crate::ConfigBuilder;
@@ -203,7 +203,7 @@ mod tests {
 
         let cache = Cache::new(&config).await.unwrap();
         let msgs = Messages::default();
-        let client = Client::new(&cache, &config, &msgs).await;
+        let client = Client::new(&config, &msgs).await;
         let msgs = Messages::default();
         let updater = UpdateChecker::new(cache.clone(), client, config, msgs);
 
@@ -228,10 +228,10 @@ mod tests {
         let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
-        let client = Client::new(&cache, &config, &msgs).await;
+        let client = Client::new(&config, &msgs).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        let lock = cache.files.mod_files.read().await;
+        let lock = cache.file_index.mod_file_mapping.read().await;
         let files = lock.get(&(game.to_string(), mod_id)).unwrap();
         let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
@@ -250,7 +250,6 @@ mod tests {
         }
     }
 
-    // TODO this test shouldn't be hard to fix
     #[tokio::test]
     async fn out_of_date() -> Result<(), ApiError> {
         let game = "morrowind";
@@ -264,10 +263,10 @@ mod tests {
         let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
-        let client = Client::new(&cache, &config, &msgs).await;
+        let client = Client::new(&config, &msgs).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        let lock = cache.files.mod_files.read().await;
+        let lock = cache.file_index.mod_file_mapping.read().await;
         let files = lock.get(&(game.to_string(), mod_id)).unwrap();
         let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;

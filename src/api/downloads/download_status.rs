@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct DownloadStatus {
+    pub game: String,
+    pub mod_id: u32,
     pub file_name: String,
     pub file_id: u64,
     bytes_read: Arc<AtomicU64>,
@@ -12,12 +14,21 @@ pub struct DownloadStatus {
 }
 
 impl DownloadStatus {
-    pub fn new(file_name: String, file_id: u64, bytes_read: Arc<AtomicU64>, content_length: Option<u64>) -> Self {
+    pub fn new(
+        game: String,
+        mod_id: u32,
+        file_name: String,
+        file_id: u64,
+        bytes_read: Arc<AtomicU64>,
+        content_length: Option<u64>,
+    ) -> Self {
         let size = match content_length {
             Some(total) => format::human_readable(total),
             None => ("?".to_string(), 3), // fall back to formatting size as mebibytes
         };
         Self {
+            game,
+            mod_id,
             file_name,
             file_id,
             bytes_read,

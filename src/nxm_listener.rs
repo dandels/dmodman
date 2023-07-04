@@ -6,7 +6,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, mpsc::Receiver};
 use tokio::task;
 
-use crate::api::{Client, NxmUrl};
+use crate::api::{Downloads, NxmUrl};
 use crate::Messages;
 
 // Listens for downloads to add
@@ -115,11 +115,11 @@ pub fn remove_existing() -> Result<(), Error> {
 
 // Listen to socket for nxm links to download
 pub async fn listen_for_downloads(
-    client: &Client,
+    downloads: &Downloads,
     msgs: &Messages,
     mut nxm_rx: Receiver<Result<String, std::io::Error>>,
 ) {
-    let client = client.clone();
+    let downloads = downloads.clone();
     let msgs = msgs.clone();
     let _handle = tokio::task::spawn(async move {
         while let Some(socket_msg) = nxm_rx.recv().await {
@@ -127,7 +127,7 @@ pub async fn listen_for_downloads(
                 Ok(msg) => {
                     if msg.starts_with("nxm://") {
                         match NxmUrl::from_str(&msg) {
-                            Ok(_) => client.queue_download(msg).await.unwrap(),
+                            Ok(_) => downloads.queue(msg).await.unwrap(),
                             Err(_e) => msgs.push(format!("Unable to parse string as a valid nxm url: {msg}")).await,
                         }
                     }

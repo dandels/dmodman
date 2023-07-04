@@ -6,7 +6,7 @@ mod nxm_listener;
 mod ui;
 mod util;
 
-use api::Client;
+use api::{Client, Downloads};
 use cache::Cache;
 use config::Config;
 use config::ConfigBuilder;
@@ -83,15 +83,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = initialconfig.build()?;
 
     let cache = Cache::new(&config).await?;
-    let client = Client::new(&cache, &config, &msgs).await;
+    let client = Client::new(&config, &msgs).await;
+    let downloads = Downloads::new(&cache, &client, &config, &msgs);
 
     if let Some(nxm_str) = nxm_str_opt {
-        let _ = client.queue_download(nxm_str.to_string()).await;
+        let _ = downloads.queue(nxm_str.to_string()).await;
     }
 
-    nxm_listener::listen_for_downloads(&client, &msgs, nxm_rx).await;
+    nxm_listener::listen_for_downloads(&downloads, &msgs, nxm_rx).await;
 
-    ui::MainUI::new(cache, client, config, msgs).run().await
+    ui::MainUI::new(cache, client, config, downloads, msgs).run().await
 }
 
 fn gen_apikey(_msgs: &Messages) -> Option<String> {
