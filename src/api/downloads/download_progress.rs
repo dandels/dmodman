@@ -3,6 +3,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+#[derive(Default)]
 pub struct DownloadProgress {
     bytes_read: Arc<AtomicU64>,
     size: String,
@@ -25,11 +26,8 @@ impl DownloadProgress {
 
 impl fmt::Display for DownloadProgress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let print = format!(
-            "{}/{}",
-            format::bytes_as_unit(self.bytes_read.load(Ordering::Relaxed), self.size_unit),
-            self.size
-        );
+        let print =
+            format!("{}/{}", format::bytes_as_unit(self.bytes_read.load(Ordering::Relaxed), self.size_unit), self.size);
         write!(f, "{}", print)
     }
 }
