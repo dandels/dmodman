@@ -1,6 +1,8 @@
-pub mod download_status;
+pub mod download_progress;
+mod download_task;
 pub mod nxm_url;
-pub use self::download_status::*;
+pub use self::download_progress::*;
+use self::download_task::*;
 pub use self::nxm_url::*;
 
 use super::{ApiError, Client};
@@ -18,7 +20,6 @@ use std::sync::{
 use indexmap::IndexMap;
 use reqwest::header::RANGE;
 use reqwest::StatusCode;
-use std::collections::HashMap;
 use tokio::fs;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -29,8 +30,7 @@ use url::Url;
 
 #[derive(Clone)]
 pub struct Downloads {
-    pub statuses: Arc<RwLock<IndexMap<u64, DownloadStatus>>>,
-    task_handles: Arc<RwLock<HashMap<u64, JoinHandle<Result<(), ApiError>>>>>,
+    pub tasks: Arc<RwLock<IndexMap<u64, DownloadTask>>>,
     pub has_changed: Arc<AtomicBool>,
     msgs: Messages,
     cache: Cache,
@@ -41,8 +41,7 @@ pub struct Downloads {
 impl Downloads {
     pub fn new(cache: &Cache, client: &Client, config: &Config, msgs: &Messages) -> Self {
         Self {
-            statuses: Arc::new(RwLock::new(IndexMap::new())),
-            task_handles: Arc::new(RwLock::new(HashMap::new())),
+            tasks: Arc::new(RwLock::new(IndexMap::new())),
             has_changed: Arc::new(AtomicBool::new(false)),
             cache: cache.clone(),
             client: client.clone(),
@@ -51,23 +50,10 @@ impl Downloads {
         }
     }
 
-    pub async fn stop(&self, file_id: &u64) {
-        let lock = self.task_handles.write();
-        lock.await.get(file_id).unwrap().abort();
-    }
-
-    pub async fn get_status(&self, file_id: &u64) -> Option<DownloadStatus> {
-        self.statuses.read().await.get(file_id).cloned()
-    }
-
-    pub async fn get_by_index(&self, i: usize) -> (u64, DownloadStatus) {
-        let lock = self.statuses.read().await;
-        let (k, v) = lock.get_index(i).unwrap();
-        (*k, v.clone())
-    }
-
-    async fn add_status(&self, status: DownloadStatus) {
-        self.statuses.write().await.insert(status.file_id, status);
+    pub async fn toggle_pause_for(&self, i: usize) {
+        let mut lock = self.tasks.write().await;
+        let (_, task) = lock.get_index_mut(i).unwrap();
+        task.toggle_pause().await;
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
@@ -102,9 +88,25 @@ impl Downloads {
         if path.exists() {
             self.msgs.push(format!("{} already exists and won't be downloaded again.", file_name)).await;
             return Ok(());
-        } else if self.get_status(&nxm.file_id).await.is_some() {
-            self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
-            return Ok(());
+        }
+        if let Some(dl) = self.tasks.read().await.get(&nxm.file_id) {
+            match dl.state {
+                DownloadState::Running => {
+                    self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
+                    return Ok(());
+                }
+                DownloadState::Finished => {
+                    self.msgs
+                        .push(format!(
+                            "{} was recently downloaded. Downloading again anyway.",
+                            file_name
+                        ))
+                        .await;
+                }
+                DownloadState::Paused => {
+                    //
+                }
+            }
         }
 
         self.download_buffered(url, path, nxm.domain_name.clone(), nxm.mod_id, &file_name, nxm.file_id).await?;
@@ -122,14 +124,12 @@ impl Downloads {
         file_name: &str,
         file_id: u64,
     ) -> Result<(), ApiError> {
-        let me = self.clone();
-        let client = self.client.clone();
-        me.msgs.push(format!("Downloading to {:?}.", path)).await;
+        self.msgs.push(format!("Downloading to {:?}.", path)).await;
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
 
-        let mut builder = client.build_request(url)?;
+        let mut builder = self.client.build_request(url)?;
 
         /* The HTTP Range header is used to resume downloads.
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range */
@@ -152,7 +152,7 @@ impl Downloads {
                 };
             }
             Err(e) => {
-                me.msgs
+                self.msgs
                     .push(format!(
                         "Download {} failed with error: {}",
                         file_name,
@@ -163,15 +163,8 @@ impl Downloads {
             }
         }
 
-        let mut status = DownloadStatus::new(
-            game,
-            mod_id,
-            file_name.to_string(),
-            file_id,
-            bytes_read,
-            resp.content_length(),
-        );
-        me.add_status(status.clone()).await;
+        let progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
+        let has_changed = self.has_changed.clone();
 
         let handle: JoinHandle<Result<(), ApiError>> = task::spawn(async move {
             let mut bufwriter = BufWriter::new(&mut file);
@@ -181,8 +174,8 @@ impl Downloads {
                 match item {
                     Ok(bytes) => {
                         bufwriter.write_all(&bytes).await?;
-                        status.update_progress(bytes.len() as u64);
-                        me.has_changed.store(true, Ordering::Relaxed);
+                        bytes_read.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                        has_changed.store(true, Ordering::Relaxed);
                     }
                     Err(e) => {
                         /* The download could fail for network-related reasons. Flush the data we got so that we can
@@ -196,7 +189,9 @@ impl Downloads {
             std::fs::rename(part_path, path)?;
             Ok(())
         });
-        self.task_handles.write().await.insert(file_id, handle);
+        let task = DownloadTask::new(game, mod_id, file_id, file_name.to_string(), progress, handle);
+        self.tasks.write().await.insert(file_id, task);
+        self.has_changed.store(true, Ordering::Relaxed);
 
         Ok(())
     }

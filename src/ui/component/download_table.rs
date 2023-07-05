@@ -1,10 +1,10 @@
 use crate::api::Downloads;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use tokio_stream::StreamExt;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio_stream::StreamExt;
 
 pub struct DownloadTable<'a> {
     pub state: TableState,
@@ -14,7 +14,6 @@ pub struct DownloadTable<'a> {
     pub highlight_style: Style,
     pub widget: Table<'a>,
     pub needs_redraw: AtomicBool,
-    has_data_changed: Arc<AtomicBool>,
     redraw_terminal: Arc<AtomicBool>,
 }
 
@@ -30,13 +29,12 @@ impl<'a> DownloadTable<'a> {
 
         Self {
             state: TableState::default(),
-            downloads: downloads.clone(),
+            downloads,
             block,
             headers,
             highlight_style: Style::default(),
             widget: Table::new(vec![]),
             needs_redraw: AtomicBool::new(false),
-            has_data_changed: downloads.has_changed,
             redraw_terminal,
         }
     }
@@ -45,12 +43,12 @@ impl<'a> DownloadTable<'a> {
     where
         'b: 'a,
     {
-        if self.has_data_changed.swap(false, Ordering::Relaxed) {
-            let ds = self.downloads.statuses.read().await;
-            let mut stream = tokio_stream::iter(ds.values());
+        if self.downloads.has_changed.swap(false, Ordering::Relaxed) {
+            let tasks = self.downloads.tasks.read().await;
+            let mut stream = tokio_stream::iter(tasks.values());
             let mut rows: Vec<Row> = vec![];
-            while let Some(val) = stream.next().await {
-                rows.push(Row::new(vec![val.file_name.clone(), val.progress()]))
+            while let Some(task) = stream.next().await {
+                rows.push(Row::new(vec![task.file_name.clone(), task.progress.to_string()]))
             }
 
             self.widget = Table::new(rows)

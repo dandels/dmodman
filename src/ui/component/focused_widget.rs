@@ -41,8 +41,8 @@ impl<'a> FocusedWidget<'a> {
             Self::DownloadTable(dt) => {
                 let mut table_lock = dt.write().await;
                 let dls = table_lock.downloads.clone();
-                let status_lock = dls.statuses.read().await;
-                table_lock.next(status_lock.len());
+                let tasks_lock = dls.tasks.read().await;
+                table_lock.next(tasks_lock.len());
                 table_lock.needs_redraw.store(true, Ordering::Relaxed);
             }
             Self::FileTable(ft) => {
@@ -66,8 +66,8 @@ impl<'a> FocusedWidget<'a> {
             Self::DownloadTable(dt) => {
                 let mut table_lock = dt.write().await;
                 let dls = table_lock.downloads.clone();
-                let status_lock = dls.statuses.read().await;
-                table_lock.previous(status_lock.len());
+                let tasks_lock = dls.tasks.read().await;
+                table_lock.previous(tasks_lock.len());
                 table_lock.needs_redraw.store(true, Ordering::Relaxed);
             }
             Self::FileTable(ft) => {

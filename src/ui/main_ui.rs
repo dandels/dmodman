@@ -2,8 +2,7 @@ use super::component::*;
 use super::event::{Event, Events};
 use crate::ui::rectangles::Rectangles;
 
-use crate::api::Client;
-use crate::api::UpdateChecker;
+use crate::api::{Client, Downloads, UpdateChecker};
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::ui::*;
@@ -20,6 +19,8 @@ use tokio::sync::RwLock;
 use tokio::task;
 
 pub struct MainUI<'a> {
+    cache: Cache,
+    downloads: Downloads,
     events: Events,
     rectangles: Rectangles,
     focused: FocusedWidget<'a>,
@@ -34,7 +35,7 @@ pub struct MainUI<'a> {
 }
 
 impl<'a> MainUI<'static> {
-    pub fn new(cache: Cache, client: Client, config: Config, msgs: Messages) -> Self {
+    pub fn new(cache: Cache, client: Client, config: Config, downloads: Downloads, msgs: Messages) -> Self {
         // TODO use Tokio events?
         let events = Events::new();
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
@@ -43,14 +44,19 @@ impl<'a> MainUI<'static> {
 
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
-        let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.files)));
-        let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), client.downloads.clone())).into();
+        let files_view = Arc::new(RwLock::new(FileTable::new(
+            redraw_terminal.clone(),
+            cache.file_index.clone(),
+        )));
+        let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
         let bottom_bar = RwLock::new(BottomBar::new(redraw_terminal.clone(), client.request_counter)).into();
 
         let focused = FocusedWidget::FileTable(files_view.clone());
 
         Self {
+            cache,
+            downloads,
             events,
             rectangles: Rectangles::new(),
             focused,
@@ -91,20 +97,28 @@ impl<'a> MainUI<'static> {
             self.top_bar.write().await.refresh().await;
             self.bottom_bar.write().await.refresh().await;
             if self.redraw_terminal.swap(false, Ordering::Relaxed) {
-                let mut files = self.files_view.write().await;
-                let mut downloads = self.download_view.write().await;
-                let mut msgs = self.msg_view.write().await;
+                let mut files_view = self.files_view.write().await;
+                let mut downloads_view = self.download_view.write().await;
+                let mut msgs_view = self.msg_view.write().await;
                 let topbar = self.top_bar.read().await;
                 let botbar = self.bottom_bar.read().await;
                 // TODO should this be done in a blocking thread?
                 terminal.draw(|f| {
-                    f.render_stateful_widget(files.widget.clone(), self.rectangles.rect_main[0], &mut files.state);
                     f.render_stateful_widget(
-                        downloads.widget.clone(),
-                        self.rectangles.rect_main[1],
-                        &mut downloads.state,
+                        files_view.widget.clone(),
+                        self.rectangles.rect_main[0],
+                        &mut files_view.state,
                     );
-                    f.render_stateful_widget(msgs.widget.clone(), self.rectangles.rect_root[1], &mut msgs.state);
+                    f.render_stateful_widget(
+                        downloads_view.widget.clone(),
+                        self.rectangles.rect_main[1],
+                        &mut downloads_view.state,
+                    );
+                    f.render_stateful_widget(
+                        msgs_view.widget.clone(),
+                        self.rectangles.rect_root[1],
+                        &mut msgs_view.state,
+                    );
                     f.render_widget(topbar.widget.clone(), self.rectangles.rect_topbar[0]);
                     f.render_widget(botbar.widget.clone(), self.rectangles.rect_botbar[1]);
                 })?;
@@ -149,14 +163,25 @@ impl<'a> MainUI<'static> {
                     self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
                 }
             },
+            Key::Char('p') => {
+                if let FocusedWidget::DownloadTable(_) = &self.focused {
+                    let dls_table = self.download_view.read().await;
+                    if let Some(i) = dls_table.state.selected() {
+                        self.downloads.toggle_pause_for(i).await;
+                    }
+                }
+            }
             Key::Char('U') => {
-                // TODO implement single mod updating
-                //let ftable = self.files_view.read().await;
-                //if let Some(i) = ftable.state.selected() {
-                //    let mut files = ftable.files.file_index.write().await;
-                //    let (_file_id, fdata) = files.get_index_mut(i).unwrap();
-                //    self.updater.update_file(&mut *fdata.local_file.write().await).await;
-                //}
+                let ftable = self.files_view.read().await;
+                if let Some(i) = ftable.state.selected() {
+                    let files = ftable.file_index.files.read().await;
+                    let (_file_id, fdata) = files.get_index(i).unwrap();
+                    let lf_lock = fdata.local_file.read().await;
+                    let file_list = self.cache.file_lists.get((&lf_lock.game, lf_lock.mod_id)).await.unwrap();
+                    let files_by_mod = self.cache.file_index.mod_file_mapping.read().await;
+                    let modfiles = files_by_mod.get(&(lf_lock.game.clone(), lf_lock.mod_id)).unwrap();
+                    self.updater.check_mod(modfiles, &file_list).await;
+                }
             }
             Key::Char('u') => {
                 if let FocusedWidget::FileTable(_fv) = &self.focused {
