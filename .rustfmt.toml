@@ -1,5 +1,9 @@
-edition = "2018"
+edition = "2021"
+comment_width = 120
 max_width = 120
 chain_width = 120
+attr_fn_like_width = 120
+fn_call_width = 120
+function_arguments = "Visual"
 brace_style = "PreferSameLine"
 use_field_init_shorthand = true
