@@ -7,3 +7,6 @@ fn_call_width = 120
 function_arguments = "Visual"
 brace_style = "PreferSameLine"
 use_field_init_shorthand = true
+reorder_impl_items = true
+imports_granularity = "module"
+group_imports = "StdExternalCrate"
