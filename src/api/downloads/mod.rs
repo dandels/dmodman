@@ -1,14 +1,18 @@
 pub mod download_progress;
+pub mod download_state;
 mod download_task;
+pub mod file_info;
 pub mod nxm_url;
-pub use self::download_progress::*;
-use self::download_task::*;
-pub use self::nxm_url::*;
 
-use super::{ApiError, Client};
+pub use self::download_progress::*;
+pub use self::download_state::*;
+pub use self::file_info::*;
+pub use self::nxm_url::*;
 use crate::api::query::{DownloadLink, FileList, Queriable};
+use crate::api::{ApiError, Client};
 use crate::cache::{Cache, LocalFile, UpdateStatus};
 use crate::{config::Config, util, Messages};
+use download_task::*;
 use indexmap::IndexMap;
 use std::str::FromStr;
 use std::sync::{
@@ -40,6 +44,8 @@ impl Downloads {
         }
     }
 
+    fn resume_on_startup(config: &Config) {}
+
     pub async fn toggle_pause_for(&self, i: usize) {
         let mut lock = self.tasks.write().await;
         let (_, task) = lock.get_index_mut(i).unwrap();
@@ -52,12 +58,13 @@ impl Downloads {
         let file_name = util::file_name_from_url(&url);
 
         if let Some(dl) = self.tasks.read().await.get(&nxm.file_id) {
-            match *dl.state.read().await {
+            match download_state::to_enum(dl.dl_info.state.clone()) {
                 DownloadState::Downloading => {
                     self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
                     return Ok(());
                 }
-                // Do nothing in these two cases, the download will be unpaused when the DownloadTask is recreated.
+                /* Do nothing in the rest of the cases.
+                 * The download will be unpaused when the DownloadTask is recreated. */
                 DownloadState::Complete => {
                     self.msgs
                         .push(format!(
@@ -66,19 +73,20 @@ impl Downloads {
                         ))
                         .await;
                 }
-                DownloadState::Paused => {}
+                DownloadState::Paused | DownloadState::Error => {}
             }
         }
 
         // We don't save the LocalFile until after the download, but it's convenient for passing data around.
-        let lf = LocalFile::new(&nxm, file_name.clone(), UpdateStatus::OutOfDate(0));
-        self.download_modfile(url, lf).await
+        let f_info = FileInfo::new(nxm.domain_name, nxm.mod_id, nxm.file_id, file_name);
+        self.add(DownloadInfo::new(f_info, url)).await
     }
 
-    async fn download_modfile(&self, url: Url, lf: LocalFile) -> Result<(), ApiError> {
-        let mut task = DownloadTask::new(&self.client, &self.config, &self.msgs, lf.clone(), url, self.clone());
+    async fn add(&self, dl_info: DownloadInfo) -> Result<(), ApiError> {
+        let id = dl_info.file_info.file_id;
+        let mut task = DownloadTask::new(&self.client, &self.config, &self.msgs, dl_info, self.clone());
         task.start().await?;
-        self.tasks.write().await.insert(lf.file_id, task);
+        self.tasks.write().await.insert(id, task);
         self.has_changed.store(true, Ordering::Relaxed);
         Ok(())
     }
@@ -106,8 +114,8 @@ impl Downloads {
         Ok((nxm, Url::parse(&location.URI)?))
     }
 
-    async fn update_metadata(&self, lf: LocalFile) -> Result<(), ApiError> {
-        let (game, mod_id) = (&lf.game, lf.mod_id);
+    async fn update_metadata(&self, fi: FileInfo) -> Result<(), ApiError> {
+        let (game, mod_id) = (&fi.game, fi.mod_id);
         /* TODO: If the FileList isn't found handle this as a foreign file, however they're going to be dealt with.
          * The unwrap() here should be done away with.
          * TODO: Should we just do an Md5Search instead? It would allows us to validate the file while getting its
@@ -129,11 +137,10 @@ impl Downloads {
         };
 
         let file_details =
-            file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == lf.file_id).cloned()).unwrap();
+            file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == fi.file_id).cloned()).unwrap();
 
         // TODO set UpdateStatus for other files in the mod
-        let mut lf = lf.clone();
-        lf.update_status = UpdateStatus::UpToDate(file_details.uploaded_timestamp);
+        let lf = LocalFile::new(fi, UpdateStatus::UpToDate(file_details.uploaded_timestamp));
         self.cache.add_local_file(lf).await?;
         Ok(())
     }

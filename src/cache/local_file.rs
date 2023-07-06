@@ -1,4 +1,4 @@
-use crate::api::NxmUrl;
+use crate::api::downloads::FileInfo;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -11,12 +11,12 @@ pub struct LocalFile {
 }
 
 impl LocalFile {
-    pub fn new(nxm: &NxmUrl, file_name: String, update_status: UpdateStatus) -> Self {
+    pub fn new(fi: FileInfo, update_status: UpdateStatus) -> Self {
         LocalFile {
-            game: nxm.domain_name.to_owned(),
-            file_name,
-            mod_id: nxm.mod_id,
-            file_id: nxm.file_id,
+            game: fi.game,
+            file_name: fi.file_name,
+            mod_id: fi.mod_id,
+            file_id: fi.file_id,
             update_status,
         }
     }
@@ -28,15 +28,4 @@ pub enum UpdateStatus {
     HasNewFile(u64),   // time of your newest file
     OutOfDate(u64),    // time of your newest file
     IgnoredUntil(u64), // time of latest file in update list
-}
-
-impl UpdateStatus {
-    pub fn time(&self) -> u64 {
-        match *self {
-            UpdateStatus::UpToDate(t)
-            | UpdateStatus::HasNewFile(t)
-            | UpdateStatus::OutOfDate(t)
-            | UpdateStatus::IgnoredUntil(t) => t,
-        }
-    }
 }

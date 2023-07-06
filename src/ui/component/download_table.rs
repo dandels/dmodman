@@ -48,7 +48,7 @@ impl<'a> DownloadTable<'a> {
             let mut stream = tokio_stream::iter(tasks.values());
             let mut rows: Vec<Row> = vec![];
             while let Some(task) = stream.next().await {
-                rows.push(Row::new(vec![task.lf.file_name.clone(), task.progress.to_string()]))
+                rows.push(Row::new(vec![task.dl_info.file_info.file_name.to_owned(), task.progress.to_string()]))
             }
 
             self.widget = Table::new(rows)

@@ -1,99 +1,96 @@
-use super::{ApiError, Client, DownloadProgress, Downloads};
-use crate::cache::LocalFile;
+use super::download_state;
+use super::download_state::*;
+use super::{ApiError, Client, DownloadProgress, Downloads, FileInfo};
 use crate::{config::Config, Messages};
-use reqwest::header::RANGE;
-use reqwest::StatusCode;
+
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU64, AtomicU8, Ordering},
     Arc,
 };
+
+use reqwest::header::RANGE;
+use reqwest::StatusCode;
+use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::sync::RwLock;
 use tokio::{task, task::JoinHandle};
 use tokio_stream::StreamExt;
 use url::Url;
 
-pub enum DownloadState {
-    Complete,
-    Downloading,
-    Paused,
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DownloadInfo {
+    pub file_info: FileInfo,
+    pub url: Url,
+    pub state: Arc<AtomicU8>,
+}
+
+impl DownloadInfo {
+    pub fn new(file_info: FileInfo, url: Url) -> Self {
+        Self {
+            file_info,
+            url,
+            state: Arc::new(DL_STATE_DOWNLOADING.into()),
+        }
+    }
 }
 
 pub struct DownloadTask {
     client: Client,
     config: Config,
     msgs: Messages,
-    url: Url,
     downloads: Downloads,
     join_handle: Option<JoinHandle<Result<(), ApiError>>>,
-    pub lf: LocalFile,
-    pub state: Arc<RwLock<DownloadState>>,
+    pub dl_info: DownloadInfo,
     pub progress: DownloadProgress,
 }
 
 impl DownloadTask {
-    pub fn new(
-        client: &Client,
-        config: &Config,
-        msgs: &Messages,
-        lf: LocalFile,
-        url: Url,
-        downloads: Downloads,
-    ) -> Self {
+    pub fn new(client: &Client, config: &Config, msgs: &Messages, dl_info: DownloadInfo, downloads: Downloads) -> Self {
         Self {
             client: client.clone(),
             config: config.clone(),
             msgs: msgs.clone(),
-            lf,
-            url,
+            dl_info,
             downloads,
             join_handle: None,
-            state: Arc::new(RwLock::new(DownloadState::Downloading)),
             progress: DownloadProgress::default(),
         }
     }
 
     pub async fn toggle_pause(&mut self) {
-        let mut resume = false;
-        // scope to drop the lock so we can borrow &mut self again
-        {
-            let mut lock = self.state.write().await;
-            match *lock {
-                DownloadState::Downloading => {
-                    self.join_handle.as_mut().unwrap().abort();
-                    *lock = DownloadState::Paused;
-                }
-                DownloadState::Paused => {
-                    resume = true;
-                    *lock = DownloadState::Downloading;
-                }
-                DownloadState::Complete => {}
+        match download_state::to_enum(self.dl_info.state.clone()) {
+            DownloadState::Downloading => {
+                self.join_handle.as_mut().unwrap().abort();
+                self.dl_info.state.store(DL_STATE_PAUSED, Ordering::Relaxed);
             }
-        }
-        if resume {
-            // TODO error handling regardless of how download is started
-            self.start().await.unwrap()
+            DownloadState::Paused | DownloadState::Error => {
+                self.dl_info.state.store(DL_STATE_DOWNLOADING, Ordering::Relaxed);
+                // TODO error handling regardless of how download is started
+                self.start().await.unwrap()
+            }
+            DownloadState::Complete => {}
         }
     }
 
     pub async fn start(&mut self) -> Result<(), ApiError> {
+        let file_name = &self.dl_info.file_info.file_name;
+
         let mut path = self.config.download_dir();
         fs::create_dir_all(&path).await?;
-        path.push(&self.lf.file_name);
+        path.push(&self.dl_info.file_info.file_name);
 
         if path.exists() {
-            self.msgs.push(format!("{} already exists and won't be downloaded.", self.lf.file_name)).await;
+            self.msgs.push(format!("{} already exists and won't be downloaded.", file_name)).await;
             return Ok(());
         }
 
         self.msgs.push(format!("Downloading to {:?}.", path)).await;
         let mut part_path = path.clone();
         part_path.pop();
-        part_path.push(format!("{}.part", self.lf.file_name));
+        part_path.push(format!("{}.part", file_name));
 
-        let mut builder = self.client.build_request(self.url.clone())?;
+        let mut builder = self.client.build_request(self.dl_info.url.clone())?;
 
         /* The HTTP Range header is used to resume downloads.
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range */
@@ -115,14 +112,12 @@ impl DownloadTask {
                     // Running into some other non-error status code shouldn't happen.
                     code => panic!(
                         "Download {} got unexpected HTTP response: {}. Please file a bug report.",
-                        self.lf.file_name, code
+                        file_name, code
                     ),
                 };
             }
             Err(e) => {
-                self.msgs
-                    .push(format!("Download {} failed with error: {}", self.lf.file_name, e.status().unwrap()))
-                    .await;
+                self.msgs.push(format!("Download {} failed with error: {}", file_name, e.status().unwrap())).await;
                 return Err(ApiError::from(e));
             }
         }
@@ -130,8 +125,9 @@ impl DownloadTask {
         self.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
 
         let downloads = self.downloads.clone();
-        let state = self.state.clone();
-        let lf = self.lf.clone();
+        //let state = self.state.clone();
+        let fi = self.dl_info.file_info.clone();
+        let state = self.dl_info.state.clone();
         let handle: JoinHandle<Result<(), ApiError>> = task::spawn(async move {
             let mut bufwriter = BufWriter::new(&mut file);
             let mut stream = resp.bytes_stream();
@@ -153,11 +149,9 @@ impl DownloadTask {
             }
             bufwriter.flush().await?;
             std::fs::rename(part_path, path)?;
-            downloads.update_metadata(lf).await?;
+            downloads.update_metadata(fi).await?;
 
-            let mut lock = state.write().await;
-            *lock = DownloadState::Complete;
-
+            state.store(DL_STATE_COMPLETE, Ordering::Relaxed);
             Ok(())
         });
         self.join_handle = Some(handle);
