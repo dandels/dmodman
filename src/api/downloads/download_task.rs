@@ -1,39 +1,22 @@
 use super::download_state;
 use super::download_state::*;
-use super::{ApiError, Client, DownloadProgress, Downloads, FileInfo};
-use crate::{config::Config, Messages};
+use super::{ApiError, Client, DownloadInfo, DownloadProgress, Downloads};
+use crate::cache::{Cache, Cacheable};
+use crate::config::{Config, PathType};
+use crate::Messages;
 
 use std::sync::{
-    atomic::{AtomicU64, AtomicU8, Ordering},
+    atomic::{AtomicU64, Ordering},
     Arc,
 };
 
 use reqwest::header::RANGE;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::{task, task::JoinHandle};
 use tokio_stream::StreamExt;
-use url::Url;
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DownloadInfo {
-    pub file_info: FileInfo,
-    pub url: Url,
-    pub state: Arc<AtomicU8>,
-}
-
-impl DownloadInfo {
-    pub fn new(file_info: FileInfo, url: Url) -> Self {
-        Self {
-            file_info,
-            url,
-            state: Arc::new(DL_STATE_DOWNLOADING.into()),
-        }
-    }
-}
 
 pub struct DownloadTask {
     client: Client,
@@ -66,23 +49,48 @@ impl DownloadTask {
             }
             DownloadState::Paused | DownloadState::Error => {
                 self.dl_info.state.store(DL_STATE_DOWNLOADING, Ordering::Relaxed);
-                // TODO error handling regardless of how download is started
-                self.start().await.unwrap()
+                self.start().await;
+            }
+            DownloadState::Expired => {
+                self.msgs
+                    .push(format!(
+                        "Download link for {} expired, please download again.",
+                        self.dl_info.file_info.file_name
+                    ))
+                    .await;
             }
             DownloadState::Complete => {}
         }
+        match self.dl_info.save(self.config.path_for(PathType::DownloadInfo(&self.dl_info))).await {
+            Ok(()) => {}
+            Err(e) => {
+                self.msgs
+                    .push(format!(
+                        "IO error when saving download state for {}: {}",
+                        self.dl_info.file_info.file_name, e
+                    ))
+                    .await;
+            }
+        }
     }
 
-    pub async fn start(&mut self) -> Result<(), ApiError> {
+    pub async fn start(&mut self) {
         let file_name = &self.dl_info.file_info.file_name;
 
         let mut path = self.config.download_dir();
-        fs::create_dir_all(&path).await?;
+
+        match fs::create_dir_all(&path).await {
+            Ok(()) => {}
+            Err(e) => {
+                self.msgs.push(format!("Error when creating file: {}", e)).await;
+                return;
+            }
+        }
         path.push(&self.dl_info.file_info.file_name);
 
         if path.exists() {
             self.msgs.push(format!("{} already exists and won't be downloaded.", file_name)).await;
-            return Ok(());
+            return;
         }
 
         self.msgs.push(format!("Downloading to {:?}.", path)).await;
@@ -90,37 +98,51 @@ impl DownloadTask {
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
 
-        let mut builder = self.client.build_request(self.dl_info.url.clone())?;
+        let mut builder = self.client.build_request(self.dl_info.url.clone()).unwrap();
 
         /* The HTTP Range header is used to resume downloads.
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range */
         let bytes_read = Arc::new(AtomicU64::new(0));
         if part_path.exists() {
-            bytes_read.store(std::fs::metadata(&part_path)?.len(), Ordering::Relaxed);
+            bytes_read.store(std::fs::metadata(&part_path).unwrap().len(), Ordering::Relaxed);
             builder = builder.header(RANGE, format!("bytes={:?}-", bytes_read));
         }
 
-        let resp = builder.send().await?;
+        let resp = builder.send().await;
+        if resp.is_err() {
+            self.msgs.push("Unable to contact nexus server to start download.").await;
+            return;
+        }
+        let resp = resp.unwrap();
 
         let mut open_opts = OpenOptions::new();
-        let mut file;
+        let open_result;
         match resp.error_for_status_ref() {
             Ok(resp) => {
-                file = match resp.status() {
-                    StatusCode::OK => open_opts.write(true).create(true).open(&part_path).await?,
-                    StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await?,
+                open_result = match resp.status() {
+                    StatusCode::OK => open_opts.write(true).create(true).open(&part_path).await,
+                    StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await,
                     // Running into some other non-error status code shouldn't happen.
-                    code => panic!(
-                        "Download {} got unexpected HTTP response: {}. Please file a bug report.",
-                        file_name, code
-                    ),
+                    code => {
+                        self.msgs
+                            .push(format!(
+                                "Download {file_name} got unexpected HTTP response: {code}. Please file a bug report.",
+                            ))
+                            .await;
+                        return;
+                    }
                 };
             }
             Err(e) => {
-                self.msgs.push(format!("Download {} failed with error: {}", file_name, e.status().unwrap())).await;
-                return Err(ApiError::from(e));
+                self.msgs.push(format!("Download {file_name} failed with error: {}", e.status().unwrap())).await;
+                return;
             }
         }
+        if let Err(e) = open_result {
+            self.msgs.push(format!("Unable to open {file_name} for writing: {}", e)).await;
+            return;
+        }
+        let mut file = open_result.unwrap();
 
         self.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
 
@@ -155,6 +177,5 @@ impl DownloadTask {
             Ok(())
         });
         self.join_handle = Some(handle);
-        Ok(())
     }
 }

@@ -68,7 +68,7 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn add_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
+    pub async fn save_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
         lf.save(self.config.path_for(PathType::LocalFile(&lf))).await?;
         self.file_index.add(lf).await;
         Ok(())

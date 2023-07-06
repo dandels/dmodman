@@ -1,24 +1,32 @@
+pub mod download_info;
 pub mod download_progress;
 pub mod download_state;
 mod download_task;
 pub mod file_info;
 pub mod nxm_url;
 
+pub use self::download_info::*;
 pub use self::download_progress::*;
 pub use self::download_state::*;
+use self::download_task::*;
 pub use self::file_info::*;
 pub use self::nxm_url::*;
+
 use crate::api::query::{DownloadLink, FileList, Queriable};
 use crate::api::{ApiError, Client};
-use crate::cache::{Cache, LocalFile, UpdateStatus};
-use crate::{config::Config, util, Messages};
-use download_task::*;
-use indexmap::IndexMap;
+use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
+use crate::config::{Config, PathType};
+use crate::{util, Messages};
+
+use std::ffi::OsStr;
 use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+
+use indexmap::IndexMap;
+use tokio::fs;
 use tokio::sync::RwLock;
 use url::Url;
 
@@ -33,18 +41,20 @@ pub struct Downloads {
 }
 
 impl Downloads {
-    pub fn new(cache: &Cache, client: &Client, config: &Config, msgs: &Messages) -> Self {
-        Self {
+    pub async fn new(cache: &Cache, client: &Client, config: &Config, msgs: &Messages) -> Self {
+        let downloads = Self {
             tasks: Arc::new(RwLock::new(IndexMap::new())),
-            has_changed: Arc::new(AtomicBool::new(false)),
+            has_changed: Arc::new(AtomicBool::new(true)),
             cache: cache.clone(),
             client: client.clone(),
             config: config.clone(),
             msgs: msgs.clone(),
-        }
-    }
+        };
 
-    fn resume_on_startup(config: &Config) {}
+        self::resume_on_startup(config, downloads.clone()).await;
+
+        downloads
+    }
 
     pub async fn toggle_pause_for(&self, i: usize) {
         let mut lock = self.tasks.write().await;
@@ -53,15 +63,20 @@ impl Downloads {
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
-    pub async fn queue(&self, nxm_str: String) -> Result<(), ApiError> {
-        let (nxm, url) = self.parse_nxm(nxm_str).await?;
+    pub async fn queue(&self, nxm_str: String) {
+        let res = self.parse_nxm(&nxm_str).await;
+        if let Err(e) = res {
+            self.msgs.push(format!("Unable to parse nxm string \"{}\" {}", nxm_str, e)).await;
+            return;
+        }
+        let (nxm, url) = res.unwrap();
         let file_name = util::file_name_from_url(&url);
 
         if let Some(dl) = self.tasks.read().await.get(&nxm.file_id) {
             match download_state::to_enum(dl.dl_info.state.clone()) {
                 DownloadState::Downloading => {
                     self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
-                    return Ok(());
+                    return;
                 }
                 /* Do nothing in the rest of the cases.
                  * The download will be unpaused when the DownloadTask is recreated. */
@@ -73,26 +88,29 @@ impl Downloads {
                         ))
                         .await;
                 }
-                DownloadState::Paused | DownloadState::Error => {}
+                _ => {}
             }
         }
 
         // We don't save the LocalFile until after the download, but it's convenient for passing data around.
         let f_info = FileInfo::new(nxm.domain_name, nxm.mod_id, nxm.file_id, file_name);
-        self.add(DownloadInfo::new(f_info, url)).await
+        self.add(DownloadInfo::new(f_info, url)).await;
     }
 
-    async fn add(&self, dl_info: DownloadInfo) -> Result<(), ApiError> {
-        let id = dl_info.file_info.file_id;
-        let mut task = DownloadTask::new(&self.client, &self.config, &self.msgs, dl_info, self.clone());
-        task.start().await?;
-        self.tasks.write().await.insert(id, task);
+    async fn add(&self, dl_info: DownloadInfo) {
+        let mut task = DownloadTask::new(&self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
+        {
+            task.start().await;
+            if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&dl_info))).await {
+                self.msgs.push(format!("Error when saving download state: {}", e)).await;
+            }
+        }
+        self.tasks.write().await.insert(dl_info.file_info.file_id, task);
         self.has_changed.store(true, Ordering::Relaxed);
-        Ok(())
     }
 
-    async fn parse_nxm(&self, nxm_str: String) -> Result<(NxmUrl, Url), ApiError> {
-        let nxm = NxmUrl::from_str(&nxm_str)?;
+    async fn parse_nxm(&self, nxm_str: &str) -> Result<(NxmUrl, Url), ApiError> {
+        let nxm = NxmUrl::from_str(nxm_str)?;
         let dls = DownloadLink::request(
             &self.client,
             self.msgs.clone(),
@@ -141,7 +159,29 @@ impl Downloads {
 
         // TODO set UpdateStatus for other files in the mod
         let lf = LocalFile::new(fi, UpdateStatus::UpToDate(file_details.uploaded_timestamp));
-        self.cache.add_local_file(lf).await?;
+        self.cache.save_local_file(lf).await?;
         Ok(())
+    }
+}
+
+async fn resume_on_startup(config: &Config, dls: Downloads) {
+    if let Ok(mut file_stream) = fs::read_dir(config.download_dir()).await {
+        while let Some(f) = file_stream.next_entry().await.unwrap() {
+            if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("part") {
+                let part_json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
+                if part_json_file.exists() {
+                    if let Ok(dl_info) = DownloadInfo::load(part_json_file).await {
+                        let mut task = DownloadTask::new(&dls.client, config, &dls.msgs, dl_info.clone(), dls.clone());
+                        match download_state::to_enum(dl_info.state.clone()) {
+                            DownloadState::Paused => {}
+                            _ => {
+                                task.start().await;
+                            }
+                        }
+                        dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
+                    }
+                }
+            }
+        }
     }
 }

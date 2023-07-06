@@ -1,5 +1,6 @@
 use super::Config;
 
+use crate::api::downloads::DownloadInfo;
 use crate::cache::LocalFile;
 use std::path::PathBuf;
 
@@ -19,6 +20,7 @@ pub enum PathType<'a> {
 
     // Local formats
     LocalFile(&'a LocalFile),
+    DownloadInfo(&'a DownloadInfo),
 }
 
 impl Config {
@@ -58,6 +60,10 @@ impl Config {
             PathType::LocalFile(lf) => {
                 path = self.download_dir();
                 path.push(format!("{}.json", lf.file_name));
+            }
+            PathType::DownloadInfo(di) => {
+                path = self.download_dir();
+                path.push(format!("{}.part.json", di.file_info.file_name));
             }
         }
         path

@@ -84,7 +84,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let cache = Cache::new(&config).await?;
     let client = Client::new(&config, &msgs).await;
-    let downloads = Downloads::new(&cache, &client, &config, &msgs);
+    let downloads = Downloads::new(&cache, &client, &config, &msgs).await;
 
     if let Some(nxm_str) = nxm_str_opt {
         let _ = downloads.queue(nxm_str.to_string()).await;

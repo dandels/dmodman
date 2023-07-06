@@ -1,3 +1,4 @@
+use crate::api::downloads::DownloadInfo;
 use crate::api::query::{DownloadLink, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
 use crate::cache::LocalFile;
 use async_trait::async_trait;
@@ -26,6 +27,7 @@ pub trait Cacheable: Serialize + DeserializeOwned {
     }
 }
 
+impl Cacheable for DownloadInfo {}
 impl Cacheable for DownloadLink {}
 impl Cacheable for FileDetails {}
 impl Cacheable for FileList {}
@@ -70,10 +72,7 @@ mod tests {
         }
         assert_eq!(1000014198, fl.files.first().unwrap().id.0);
         assert_eq!(fl.files.first().unwrap().name, "Graphic Herbalism MWSE");
-        assert_eq!(
-            fl.file_updates.peek().unwrap().old_file_name,
-            "GH TR - PT Meshes-46599-1-01-1556986716.7z"
-        );
+        assert_eq!(fl.file_updates.peek().unwrap().old_file_name, "GH TR - PT Meshes-46599-1-01-1556986716.7z");
         Ok(())
     }
 }
