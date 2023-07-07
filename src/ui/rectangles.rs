@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use std::rc::Rc;
 
 pub struct Rectangles {
     topbar_layout: Layout,
@@ -24,7 +24,7 @@ impl Rectangles {
 
         let tables_layout: Layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Ratio(2, 3), Constraint::Ratio(1, 3)]);
+            .constraints([Constraint::Ratio(2, 4), Constraint::Ratio(2, 4)]);
 
         let main_vertical_layout: Layout = Layout::default()
             .direction(Direction::Vertical)
