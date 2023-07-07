@@ -13,13 +13,16 @@ use indexmap::IndexMap;
 use tokio::fs;
 use tokio::sync::RwLock;
 
-// TODO handle foreign (without associated LocalData) files somehow
+// TODO handle foreign (without associated LocalData) files somehow?
 #[derive(Clone)]
 pub struct FileIndex {
-    // This is the list of downloaded mods.
+    /* game: String,
+     * mod_id: u32,
+     * file_id: u64 */
     pub files: Arc<RwLock<IndexMap<u64, Arc<FileData>>>>,
-    /* Maps (game, mod_id) to files in that mod.
-     * It uses a binary heap that keeps the mods sorted by timestamp */
+    /* Maps (game, mod_id) to files in that mod. Use a binary heap that keeps the mods sorted by timestamp.
+     * (This avoids sorting the files every time we check for updates.) */
+    #[allow(clippy::type_complexity)] // maybe clippy has a point, though
     pub mod_file_mapping: Arc<RwLock<HashMap<(String, u32), BinaryHeap<Arc<FileData>>>>>,
     pub has_changed: Arc<AtomicBool>,
     // TODO read file lists from disk into memory only for games where it's needed
@@ -27,17 +30,16 @@ pub struct FileIndex {
 }
 
 impl FileIndex {
-    /* This iterates through all files in the download directory for the current game. For each file, if the
-     * corresponding json file exists, it deserializes the json file into a LocalFile.
-     * It then checks in the FileList cache if there exists a corresponding FileDetails for that file.
-     * The result is a pair of LocalFile, FileDetails, stored in the FileMapping struct.
-     * Also creates a mapping of mod_id -> FileMappings, so that iterating through files in a mod doesn't require multiple
-     * table lookups. */
     pub async fn new(config: &Config, file_lists: FileLists) -> Result<Self, CacheError> {
         // It's unexpected but possible that FileDetails is missing
         let mut file_index: IndexMap<u64, Arc<FileData>> = IndexMap::new();
         let mut mod_files: HashMap<(String, u32), BinaryHeap<Arc<FileData>>> = HashMap::new();
 
+        /* 1. Iterates through all <mod_file>.json files in the download directory for the current game, skipping those
+         *    where the corresponding <mod_file> is missing.
+         * 2. Serialize the json files into LocalFile's.
+         * 3. Use the file id to map each LocalFile to a FileDetails, stored in the FileData struct.
+         * 4. Store the FileData's in a timestamp-sorted binary heap because the update algorithm depends on it. */
         if let Ok(mut file_stream) = fs::read_dir(config.download_dir()).await {
             while let Some(f) = file_stream.next_entry().await? {
                 if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) != Some("json") {
