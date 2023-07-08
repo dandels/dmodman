@@ -97,14 +97,13 @@ impl Downloads {
     async fn add(&self, dl_info: DownloadInfo) {
         let mut task =
             DownloadTask::new(&self.cache, &self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
-        {
-            task.start().await;
-            if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&dl_info))).await {
-                self.msgs.push(format!("Error when saving download state: {}", e)).await;
-            }
+        if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&dl_info))).await {
+            self.msgs.push(format!("Error when saving download state: {}", e)).await;
         }
-        self.tasks.write().await.insert(dl_info.file_info.file_id, task);
-        self.has_changed.store(true, Ordering::Relaxed);
+        if task.try_start().await.is_ok() {
+            self.tasks.write().await.insert(dl_info.file_info.file_id, task);
+            self.has_changed.store(true, Ordering::Relaxed);
+        }
     }
 
     async fn parse_nxm(&self, nxm_str: &str) -> Result<(NxmUrl, Url), ApiError> {
@@ -197,10 +196,15 @@ async fn resume_on_startup(dls: Downloads) {
                         dls.clone(),
                     );
                     match dl_info.get_state() {
-                        DownloadState::Paused => {}
-                        _ => task.start().await,
+                        DownloadState::Paused => {
+                            dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
+                        }
+                        _ => {
+                            if task.try_start().await.is_ok() {
+                                dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
+                            }
+                        }
                     }
-                    dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
                 }
             }
         }

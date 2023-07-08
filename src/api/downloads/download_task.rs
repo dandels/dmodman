@@ -4,6 +4,7 @@ use crate::cache::{Cache, Cacheable};
 use crate::config::{Config, PathType};
 use crate::Messages;
 
+use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
@@ -55,7 +56,7 @@ impl DownloadTask {
             }
             DownloadState::Paused | DownloadState::Error => {
                 self.dl_info.set_state(DownloadState::Downloading);
-                self.start().await;
+                let _ = self.try_start().await;
             }
             // TODO premium users could get a new download link through the API, without having to visit Nexusmods
             DownloadState::Expired => {
@@ -89,7 +90,7 @@ impl DownloadTask {
         self.downloads.has_changed.store(true, Ordering::Relaxed);
     }
 
-    pub async fn start(&mut self) {
+    pub async fn try_start(&mut self) -> Result<(), ()> {
         let file_name = &self.dl_info.file_info.file_name;
 
         let mut path = self.config.download_dir();
@@ -98,21 +99,26 @@ impl DownloadTask {
             Ok(()) => {}
             Err(e) => {
                 self.log_and_set_error(format!("Error when creating download directory: {}", e)).await;
-                return;
+                return Err(());
             }
         }
         path.push(file_name);
 
         if path.exists() {
             if self.cache.file_index.files.read().await.get(&self.dl_info.file_info.file_id).is_none() {
-                self.msgs.push(format!("{} exists but is missing its metadata. Fixing.", file_name)).await;
+                self.msgs.push(format!("{} already exists but was missing its metadata.", file_name)).await;
                 let _ = self.downloads.update_metadata(self.dl_info.file_info.clone()).await;
             } else {
                 self.msgs.push(format!("{} already exists and won't be downloaded.", file_name)).await;
             }
-            return;
+            return Err(());
         }
+        self.start(path).await;
+        Ok(())
+    }
 
+    async fn start(&mut self, path: PathBuf) {
+        let file_name = &self.dl_info.file_info.file_name;
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
