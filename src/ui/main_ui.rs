@@ -44,10 +44,7 @@ impl<'a> MainUI<'static> {
 
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
-        let files_view = Arc::new(RwLock::new(FileTable::new(
-            redraw_terminal.clone(),
-            cache.file_index.clone(),
-        )));
+        let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.file_index.clone())));
         let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
         let bottom_bar = RwLock::new(BottomBar::new(redraw_terminal.clone(), client.request_counter)).into();
@@ -172,23 +169,25 @@ impl<'a> MainUI<'static> {
                 }
             }
             Key::Char('U') => {
-                let ftable = self.files_view.read().await;
-                if let Some(i) = ftable.state.selected() {
-                    let files = ftable.file_index.files.read().await;
-                    let (_file_id, fdata) = files.get_index(i).unwrap();
-                    let lf_lock = fdata.local_file.read().await;
-                    let file_list = self.cache.file_lists.get((&lf_lock.game, lf_lock.mod_id)).await.unwrap();
-                    let files_by_mod = self.cache.file_index.mod_file_mapping.read().await;
-                    let modfiles = files_by_mod.get(&(lf_lock.game.clone(), lf_lock.mod_id)).unwrap();
-                    self.updater.check_mod(modfiles, &file_list).await;
+                let game: String;
+                let mod_id: u32;
+                {
+                    let ftable_lock = self.files_view.read().await;
+                    if let Some(i) = ftable_lock.state.selected() {
+                        let files_lock = ftable_lock.file_index.files.read().await;
+                        let (_file_id, fdata) = files_lock.get_index(i).unwrap();
+                        let lf_lock = fdata.local_file.read().await;
+                        game = lf_lock.game.clone();
+                        mod_id = lf_lock.mod_id;
+                    } else {
+                        return;
+                    }
                 }
+                self.updater.update_mod(game, mod_id).await;
             }
             Key::Char('u') => {
                 if let FocusedWidget::FileTable(_fv) = &self.focused {
-                    let updater = self.updater.clone();
-                    task::spawn(async move {
-                        let _res = updater.update_all().await;
-                    });
+                    self.updater.update_all().await;
                 }
             }
             Key::Delete => {
@@ -201,7 +200,7 @@ impl<'a> MainUI<'static> {
             }
             _ => {
                 // Uncomment to log keypresses
-                self.msgs.push(format!("{:?}", key)).await;
+                // self.msgs.push(format!("{:?}", key)).await;
             }
         }
     }

@@ -9,6 +9,8 @@ use std::collections::BinaryHeap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use tokio::task;
+
 #[derive(Clone)]
 pub struct UpdateChecker {
     cache: Cache,
@@ -28,43 +30,61 @@ impl UpdateChecker {
     }
 
     pub async fn update_all(&self) {
-        // TODO reconsider at which point(s) of the type hierarchy the rwlock needs to be
-        for ((game, mod_id), files) in self.cache.file_index.mod_file_mapping.read().await.iter() {
+        let mods;
+        {
+            let lock = self.cache.file_index.mod_file_mapping.read().await;
+            mods = lock.clone().into_keys();
+        }
+        for (game, mod_id) in mods {
+            self.update_mod(game, mod_id).await;
+        }
+    }
+
+    pub async fn update_mod(&self, game: String, mod_id: u32) {
+        let me = self.clone();
+        task::spawn(async move {
+            let lock = me.cache.file_index.mod_file_mapping.read().await;
+            let files = lock.get(&(game.to_owned(), mod_id)).unwrap();
+
             let mut needs_refresh = false;
             let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
-            if let Some(fl) = self.cache.file_lists.get((game, *mod_id)).await {
-                checked = self.check_mod(files, &fl).await;
+            /* First try to check updates with cached values.
+             * If the UpdateStatus is already OutOfDate or HasNewFile, there's no reason to query the API.
+             * Only query the API if a file is still reported as UpToDate.
+             */
+            if let Some(fl) = me.cache.file_lists.get((&game, mod_id)).await {
+                checked = me.check_mod(files, &fl).await;
                 for (_fdata, status) in &checked {
                     if let UpdateStatus::UpToDate(_) = status {
                         needs_refresh = true;
                     }
                 }
             } else {
-                self.msgs.push(format!("Strange, no file list in cache for {mod_id}. Fetching.")).await;
+                me.msgs.push(format!("Strange, no file list in cache for {mod_id}. Fetching.")).await;
                 needs_refresh = true;
             }
             if needs_refresh {
                 /* We only need to make one API request per mod, since the response contains info about all files in
                  * that mod. */
-                match self.refresh_filelist(game, *mod_id).await {
+                match me.refresh_filelist(&game, mod_id).await {
                     Ok(fl) => {
-                        checked = self.check_mod(files, &fl).await;
+                        checked = me.check_mod(files, &fl).await;
                     }
                     Err(e) => {
-                        self.msgs.push(format!("Error when refresh filelist for {mod_id}: {}", e)).await;
+                        me.msgs.push(format!("Error when refresh filelist for {mod_id}: {}", e)).await;
                     }
                 }
             }
             for (file, new_status) in checked {
                 let mut lf = file.local_file.write().await;
                 if lf.update_status != new_status {
-                    self.msgs.push(format!("Setting {} status to {:?}", file.file_details.name, new_status)).await;
+                    me.msgs.push(format!("Setting {} status to {:?}", file.file_details.name, new_status)).await;
                     lf.update_status = new_status;
-                    lf.save(self.config.path_for(PathType::LocalFile(&lf))).await.unwrap();
+                    lf.save(me.config.path_for(PathType::LocalFile(&lf))).await.unwrap();
                 }
             }
-            self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
-        }
+            me.cache.file_index.has_changed.store(true, Ordering::Relaxed);
+        });
     }
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, ApiError> {
@@ -100,7 +120,7 @@ impl UpdateChecker {
      *    UpdateStatus (setting it on the latest one isn't enough, as the user could delete it).
      *    If none of the other update conditions are true, we set the file's update status to either HasNewFile or
      *    UpToDate, depending on the timestamp. */
-    pub async fn check_mod(
+    async fn check_mod(
         &self,
         to_check: &BinaryHeap<Arc<FileData>>,
         file_list: &FileList,
