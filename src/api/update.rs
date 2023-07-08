@@ -56,9 +56,9 @@ impl UpdateChecker {
                 }
             }
             for (file, new_status) in checked {
-                self.msgs.push(format!("Setting {} status to {:?}", file.file_details.name, new_status)).await;
                 let mut lf = file.local_file.write().await;
                 if lf.update_status != new_status {
+                    self.msgs.push(format!("Setting {} status to {:?}", file.file_details.name, new_status)).await;
                     lf.update_status = new_status;
                     lf.save(self.config.path_for(PathType::LocalFile(&lf))).await.unwrap();
                 }
@@ -113,12 +113,23 @@ impl UpdateChecker {
         let mut files = to_check.clone();
         let mut updates = file_list.file_updates.clone();
         let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
-        let latest_local_time = to_check.peek().unwrap().file_details.uploaded_timestamp;
+        let latest_local_time = { to_check.peek().unwrap().local_file.write().await.update_status.time() };
         // Here we assume that the last file in the file list is actually the latest, which is probably true.
         let latest_remote_time = file_list.files.last().unwrap().uploaded_timestamp;
 
         let mut newer_files: Vec<FileUpdate> = vec![];
         while let Some(file) = files.pop() {
+            let local_file = file.local_file.read().await;
+
+            match local_file.update_status {
+                // No need to check files that are already known to have updates
+                UpdateStatus::OutOfDate(_) | UpdateStatus::HasNewFile(_) => {
+                    checked.push((file.clone(), local_file.update_status.clone()));
+                    continue;
+                }
+                _ => {}
+            }
+
             let mut has_update = false;
 
             // enums used by the API
@@ -131,8 +142,14 @@ impl UpdateChecker {
                  * Files that we iterate on after this one can reuse this same information, since both heaps are sorted by
                  * timestamp. */
                 while let Some(upd) = updates.peek() {
-                    if file.file_details.uploaded_timestamp < upd.uploaded_timestamp {
+                    /* The timestamp in the file updates might be slightly later than the one in the FileList, so we
+                     * also need to compare file_id's. */
+                    if file.file_details.uploaded_timestamp < upd.uploaded_timestamp && file.file_id != upd.new_file_id
+                    {
+                        self.msgs.push(format!("while checking {:?}", file.file_details.file_name)).await;
+                        self.msgs.push(format!("time: {:?}", file.file_details.uploaded_timestamp)).await;
                         self.msgs.push(format!("    newer than us: {:?}", &upd.new_file_name)).await;
+                        self.msgs.push(format!("    time: {:?}", &upd.uploaded_timestamp)).await;
                         newer_files.push(updates.pop().unwrap());
                     } else {
                         break;
@@ -148,15 +165,14 @@ impl UpdateChecker {
                     break;
                 }
             }
-            let local_file = file.local_file.read().await;
-            // Set file out of date unless this update is ignored
             if has_update {
                 match local_file.update_status {
+                    // Set file out of date unless this update is ignored
                     UpdateStatus::IgnoredUntil(t) => {
                         if t < latest_remote_time {
                             checked.push((file.clone(), UpdateStatus::OutOfDate(latest_remote_time)));
+                        // this is still ignored and we don't touch it
                         } else {
-                            // else this is ignored and we return it as it was
                             checked.push((file.clone(), UpdateStatus::IgnoredUntil(t)));
                         }
                     }
@@ -168,10 +184,11 @@ impl UpdateChecker {
             } else if latest_local_time < latest_remote_time {
                 match local_file.update_status {
                     UpdateStatus::IgnoredUntil(t) => {
+                        // another remote file has appeared since updates were ignored
                         if t < latest_remote_time {
                             checked.push((file.clone(), UpdateStatus::HasNewFile(latest_local_time)));
+                        // this is still ignored and we don't touch it
                         } else {
-                            // else this is ignored and we return it as it was
                             checked.push((file.clone(), UpdateStatus::IgnoredUntil(t)));
                         }
                     }

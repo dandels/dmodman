@@ -29,3 +29,11 @@ pub enum UpdateStatus {
     OutOfDate(u64),    // time of your newest file
     IgnoredUntil(u64), // time of latest file in update list
 }
+
+impl UpdateStatus {
+    pub fn time(&self) -> u64 {
+        match self {
+            Self::UpToDate(t) | Self::HasNewFile(t) | Self::OutOfDate(t) | Self::IgnoredUntil(t) => *t,
+        }
+    }
+}
