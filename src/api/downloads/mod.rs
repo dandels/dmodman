@@ -155,8 +155,6 @@ impl Downloads {
             }
         };
 
-        //let file_details =
-        //    file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == fi.file_id).cloned()).unwrap();
         let latest_timestamp = file_list.and_then(|fl| fl.files.iter().last().cloned()).unwrap().uploaded_timestamp;
         {
             if let Some(filedata_heap) =
@@ -166,7 +164,11 @@ impl Downloads {
                     let mut lf = fdata.local_file.write().await;
                     match lf.update_status {
                         UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) => {
-                            lf.update_status = UpdateStatus::UpToDate(latest_timestamp)
+                            lf.update_status = UpdateStatus::UpToDate(latest_timestamp);
+                            let path = self.config.path_for(PathType::LocalFile(&lf));
+                            if let Err(e) = lf.save(path).await {
+                                self.msgs.push(format!("Couldn't set UpdateStatus for {}: {}", lf.file_name, e)).await;
+                            }
                         }
                         // Probably doesn't make sense to do anything in the other cases..?
                         _ => {}
