@@ -22,7 +22,9 @@ impl<'a> DownloadTable<'a> {
         let block = Block::default().borders(Borders::ALL).title("Downloads");
 
         let headers = Row::new(
-            vec!["Filename", "Progress"].iter().map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
+            vec!["Filename", "Progress", "Status"]
+                .iter()
+                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
         );
 
         downloads.has_changed.store(true, Ordering::Relaxed);
@@ -39,6 +41,7 @@ impl<'a> DownloadTable<'a> {
         }
     }
 
+    // TODO would be good to not redraw the whole window, as it changes frequently
     pub async fn refresh<'b>(&mut self)
     where
         'b: 'a,
@@ -48,13 +51,21 @@ impl<'a> DownloadTable<'a> {
             let mut stream = tokio_stream::iter(tasks.values());
             let mut rows: Vec<Row> = vec![];
             while let Some(task) = stream.next().await {
-                rows.push(Row::new(vec![task.dl_info.file_info.file_name.to_owned(), task.progress.to_string()]))
+                rows.push(Row::new(vec![
+                    task.dl_info.file_info.file_name.to_owned(),
+                    task.dl_info.progress.to_string(),
+                    task.dl_info.get_state().to_string(),
+                ]))
             }
 
             self.widget = Table::new(rows)
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())
-                .widths(&[Constraint::Percentage(70), Constraint::Percentage(30)])
+                .widths(&[
+                    Constraint::Percentage(60),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                ])
                 .highlight_style(self.highlight_style);
 
             self.needs_redraw.store(false, Ordering::Relaxed);

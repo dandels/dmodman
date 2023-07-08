@@ -1,13 +1,11 @@
 pub mod download_info;
 pub mod download_progress;
-pub mod download_state;
 mod download_task;
 pub mod file_info;
 pub mod nxm_url;
 
 pub use self::download_info::*;
 pub use self::download_progress::*;
-pub use self::download_state::*;
 use self::download_task::*;
 pub use self::file_info::*;
 pub use self::nxm_url::*;
@@ -73,26 +71,25 @@ impl Downloads {
         let file_name = util::file_name_from_url(&url);
 
         if let Some(dl) = self.tasks.read().await.get(&nxm.file_id) {
-            match download_state::to_enum(dl.dl_info.state.clone()) {
+            match dl.dl_info.get_state() {
                 DownloadState::Downloading => {
                     self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
                     return;
                 }
-                /* Do nothing in the rest of the cases.
-                 * The download will be unpaused when the DownloadTask is recreated. */
-                DownloadState::Complete => {
+                DownloadState::Done => {
                     self.msgs
                         .push(format!(
                             "{} was recently downloaded but no longer exists. Downloading again...",
                             file_name
                         ))
                         .await;
+                    return;
                 }
+                // Implicitly starts the download in all other cases
                 _ => {}
             }
         }
 
-        // We don't save the LocalFile until after the download, but it's convenient for passing data around.
         let f_info = FileInfo::new(nxm.domain_name, nxm.mod_id, nxm.file_id, file_name);
         self.add(DownloadInfo::new(f_info, url)).await;
     }
@@ -138,27 +135,54 @@ impl Downloads {
          * The unwrap() here should be done away with.
          * TODO: Should we just do an Md5Search instead? It would allows us to validate the file while getting its
          * metadata. However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312 */
-        let file_list = match self.cache.file_lists.get((game, mod_id)).await {
-            Some(fl) => Some(fl),
-            None => match FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await {
-                Ok(fl) => {
-                    if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
-                        self.msgs.push(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e)).await;
-                    }
+        let file_list = {
+            if let Some(fl) = self.cache.file_lists.get((game, mod_id)).await {
+                if fl.files.iter().any(|fd| fd.file_id == fi.file_id) {
                     Some(fl)
+                } else {
+                    match FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await {
+                        Ok(fl) => {
+                            if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
+                                self.msgs
+                                    .push(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e))
+                                    .await;
+                            }
+                            Some(fl)
+                        }
+                        Err(e) => {
+                            self.msgs
+                                .push(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e))
+                                .await;
+                            None
+                        }
+                    }
                 }
-                Err(e) => {
-                    self.msgs.push(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e)).await;
-                    None
-                }
-            },
+            } else {
+                None
+            }
         };
 
-        let file_details =
-            file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == fi.file_id).cloned()).unwrap();
+        //let file_details =
+        //    file_list.and_then(|fl| fl.files.iter().find(|fd| fd.file_id == fi.file_id).cloned()).unwrap();
+        let latest_timestamp = file_list.and_then(|fl| fl.files.iter().last().cloned()).unwrap().uploaded_timestamp;
+        {
+            if let Some(filedata_heap) =
+                self.cache.file_index.mod_file_mapping.read().await.get(&(game.to_owned(), mod_id))
+            {
+                for fdata in filedata_heap.iter() {
+                    let mut lf = fdata.local_file.write().await;
+                    match lf.update_status {
+                        UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) => {
+                            lf.update_status = UpdateStatus::UpToDate(latest_timestamp)
+                        }
+                        // Probably doesn't make sense to do anything in the other cases..?
+                        _ => {}
+                    }
+                }
+            }
+        }
 
-        // TODO set UpdateStatus for other files in the mod
-        let lf = LocalFile::new(fi, UpdateStatus::UpToDate(file_details.uploaded_timestamp));
+        let lf = LocalFile::new(fi, UpdateStatus::UpToDate(latest_timestamp));
         self.cache.save_local_file(lf).await?;
         Ok(())
     }
@@ -169,17 +193,13 @@ async fn resume_on_startup(config: &Config, dls: Downloads) {
         while let Some(f) = file_stream.next_entry().await.unwrap() {
             if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("part") {
                 let part_json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
-                if part_json_file.exists() {
-                    if let Ok(dl_info) = DownloadInfo::load(part_json_file).await {
-                        let mut task = DownloadTask::new(&dls.client, config, &dls.msgs, dl_info.clone(), dls.clone());
-                        match download_state::to_enum(dl_info.state.clone()) {
-                            DownloadState::Paused => {}
-                            _ => {
-                                task.start().await;
-                            }
-                        }
-                        dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
+                if let Ok(dl_info) = DownloadInfo::load(part_json_file).await {
+                    let mut task = DownloadTask::new(&dls.client, config, &dls.msgs, dl_info.clone(), dls.clone());
+                    match dl_info.get_state() {
+                        DownloadState::Paused => {}
+                        _ => task.start().await,
                     }
+                    dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
                 }
             }
         }

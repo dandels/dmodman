@@ -1,12 +1,13 @@
 use crate::util::format;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-#[derive(Default)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct DownloadProgress {
-    bytes_read: Arc<AtomicU64>,
-    size: String,
+    pub bytes_read: Arc<AtomicU64>,
+    pub size: String,
     size_unit: usize,
 }
 
@@ -14,7 +15,7 @@ impl DownloadProgress {
     pub fn new(bytes_read: Arc<AtomicU64>, content_length: Option<u64>) -> Self {
         let size = match content_length {
             Some(total) => format::human_readable(total),
-            None => ("?".to_string(), 3), // fall back to formatting size as mebibytes
+            None => ("?".to_string(), 3),
         };
         Self {
             bytes_read,

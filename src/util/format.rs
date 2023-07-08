@@ -46,10 +46,7 @@ mod tests {
         let arg = "games/{}/mods/{}/files.json";
         let params = vec!["morrowind", "46599"];
 
-        assert_eq!(
-            "games/morrowind/mods/46599/files.json",
-            format::vec_with_format_string(&arg, params)
-        );
+        assert_eq!("games/morrowind/mods/46599/files.json", format::vec_with_format_string(&arg, params));
     }
 
     #[test]

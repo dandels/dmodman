@@ -119,9 +119,9 @@ impl UpdateChecker {
 
         let mut newer_files: Vec<FileUpdate> = vec![];
         while let Some(file) = files.pop() {
-            self.msgs.push(format!("popping {:?}", file.file_details.file_name)).await;
             let mut has_update = false;
 
+            // enums used by the API
             const OLD_VERSION: u32 = 4;
             const ARCHIVED: u32 = 7;
             if file.file_details.category_id == OLD_VERSION || file.file_details.category_id == ARCHIVED {

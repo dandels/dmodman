@@ -1,7 +1,6 @@
-use super::download_state;
-use super::download_state::*;
+use super::DownloadState;
 use super::{ApiError, Client, DownloadInfo, DownloadProgress, Downloads};
-use crate::cache::{Cache, Cacheable};
+use crate::cache::Cacheable;
 use crate::config::{Config, PathType};
 use crate::Messages;
 
@@ -25,7 +24,6 @@ pub struct DownloadTask {
     downloads: Downloads,
     join_handle: Option<JoinHandle<Result<(), ApiError>>>,
     pub dl_info: DownloadInfo,
-    pub progress: DownloadProgress,
 }
 
 impl DownloadTask {
@@ -37,21 +35,22 @@ impl DownloadTask {
             dl_info,
             downloads,
             join_handle: None,
-            progress: DownloadProgress::default(),
         }
     }
 
     pub async fn toggle_pause(&mut self) {
-        match download_state::to_enum(self.dl_info.state.clone()) {
+        match self.dl_info.get_state() {
             DownloadState::Downloading => {
                 self.join_handle.as_mut().unwrap().abort();
-                self.dl_info.state.store(DL_STATE_PAUSED, Ordering::Relaxed);
+                self.dl_info.set_state(DownloadState::Paused);
             }
             DownloadState::Paused | DownloadState::Error => {
-                self.dl_info.state.store(DL_STATE_DOWNLOADING, Ordering::Relaxed);
+                self.dl_info.set_state(DownloadState::Downloading);
                 self.start().await;
             }
+            // TODO premium users could get a new download link through the API, without having to visit Nexusmods
             DownloadState::Expired => {
+                self.dl_info.set_state(DownloadState::Expired);
                 self.msgs
                     .push(format!(
                         "Download link for {} expired, please download again.",
@@ -59,7 +58,7 @@ impl DownloadTask {
                     ))
                     .await;
             }
-            DownloadState::Complete => {}
+            DownloadState::Done => {}
         }
         match self.dl_info.save(self.config.path_for(PathType::DownloadInfo(&self.dl_info))).await {
             Ok(()) => {}
@@ -74,6 +73,13 @@ impl DownloadTask {
         }
     }
 
+    // helper function to reduce repetition instart()
+    async fn log_and_set_error<S: Into<String>>(&self, msg: S) {
+        self.msgs.push(msg).await;
+        self.dl_info.set_state(DownloadState::Error);
+        self.downloads.has_changed.store(true, Ordering::Relaxed);
+    }
+
     pub async fn start(&mut self) {
         let file_name = &self.dl_info.file_info.file_name;
 
@@ -82,7 +88,7 @@ impl DownloadTask {
         match fs::create_dir_all(&path).await {
             Ok(()) => {}
             Err(e) => {
-                self.msgs.push(format!("Error when creating file: {}", e)).await;
+                self.log_and_set_error(format!("Error when creating file: {}", e)).await;
                 return;
             }
         }
@@ -93,7 +99,6 @@ impl DownloadTask {
             return;
         }
 
-        self.msgs.push(format!("Downloading to {:?}.", path)).await;
         let mut part_path = path.clone();
         part_path.pop();
         part_path.push(format!("{}.part", file_name));
@@ -104,52 +109,62 @@ impl DownloadTask {
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range */
         let bytes_read = Arc::new(AtomicU64::new(0));
         if part_path.exists() {
-            bytes_read.store(std::fs::metadata(&part_path).unwrap().len(), Ordering::Relaxed);
+            bytes_read.store(fs::metadata(&part_path).await.unwrap().len(), Ordering::Relaxed);
             builder = builder.header(RANGE, format!("bytes={:?}-", bytes_read));
         }
 
         let resp = builder.send().await;
         if resp.is_err() {
-            self.msgs.push("Unable to contact nexus server to start download.").await;
+            self.log_and_set_error("Unable to contact nexus server to start download.").await;
             return;
         }
         let resp = resp.unwrap();
 
         let mut open_opts = OpenOptions::new();
+        #[allow(clippy::needless_late_init)] // false clippy positive methinks
         let open_result;
         match resp.error_for_status_ref() {
             Ok(resp) => {
                 open_result = match resp.status() {
-                    StatusCode::OK => open_opts.write(true).create(true).open(&part_path).await,
-                    StatusCode::PARTIAL_CONTENT => open_opts.append(true).open(&part_path).await,
+                    StatusCode::OK => {
+                        self.dl_info.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
+                        open_opts.write(true).create(true).open(&part_path).await
+                    }
+                    StatusCode::PARTIAL_CONTENT => {
+                        self.dl_info.progress.bytes_read = bytes_read.clone();
+                        open_opts.append(true).open(&part_path).await
+                    }
                     // Running into some other non-error status code shouldn't happen.
                     code => {
-                        self.msgs
-                            .push(format!(
-                                "Download {file_name} got unexpected HTTP response: {code}. Please file a bug report.",
-                            ))
-                            .await;
+                        self.log_and_set_error(format!(
+                            "Download {file_name} got unexpected HTTP response: {code}. Please file a bug report.",
+                        ))
+                        .await;
                         return;
                     }
                 };
             }
             Err(e) => {
-                self.msgs.push(format!("Download {file_name} failed with error: {}", e.status().unwrap())).await;
+                if resp.status() == StatusCode::GONE {
+                    self.dl_info.set_state(DownloadState::Expired);
+                    self.downloads.has_changed.store(true, Ordering::Relaxed);
+                } else {
+                    self.log_and_set_error(format!("Download {file_name} failed with error: {}", e.status().unwrap()))
+                        .await;
+                }
                 return;
             }
         }
         if let Err(e) = open_result {
-            self.msgs.push(format!("Unable to open {file_name} for writing: {}", e)).await;
+            self.log_and_set_error(format!("Unable to open {file_name} for writing: {}", e)).await;
             return;
         }
         let mut file = open_result.unwrap();
 
-        self.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
-
         let downloads = self.downloads.clone();
-        //let state = self.state.clone();
         let fi = self.dl_info.file_info.clone();
-        let state = self.dl_info.state.clone();
+        let dl_info = self.dl_info.clone();
+        let msgs = self.msgs.clone();
         let handle: JoinHandle<Result<(), ApiError>> = task::spawn(async move {
             let mut bufwriter = BufWriter::new(&mut file);
             let mut stream = resp.bytes_stream();
@@ -170,10 +185,23 @@ impl DownloadTask {
                 }
             }
             bufwriter.flush().await?;
-            std::fs::rename(part_path, path)?;
-            downloads.update_metadata(fi).await?;
+            if fs::rename(part_path.clone(), path).await.is_err() {
+                msgs.push(format!(
+                    "Download of {} complete, but unable to remove .part extension.",
+                    dl_info.file_info.file_name
+                ))
+                .await;
+            }
 
-            state.store(DL_STATE_COMPLETE, Ordering::Relaxed);
+            part_path.pop();
+            part_path.push(format!("{}.part.json", fi.file_name));
+            if fs::remove_file(&part_path).await.is_err() {
+                msgs.push(format!("Unable to remove .part.json file after download is complete: {:?}", part_path)).await
+            }
+
+            downloads.update_metadata(fi).await?;
+            dl_info.set_state(DownloadState::Done);
+            downloads.has_changed.store(true, Ordering::Relaxed);
             Ok(())
         });
         self.join_handle = Some(handle);
