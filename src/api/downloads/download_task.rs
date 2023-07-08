@@ -1,6 +1,6 @@
 use super::DownloadState;
 use super::{ApiError, Client, DownloadInfo, DownloadProgress, Downloads};
-use crate::cache::Cacheable;
+use crate::cache::{Cache, Cacheable};
 use crate::config::{Config, PathType};
 use crate::Messages;
 
@@ -18,6 +18,7 @@ use tokio::{task, task::JoinHandle};
 use tokio_stream::StreamExt;
 
 pub struct DownloadTask {
+    cache: Cache,
     client: Client,
     config: Config,
     msgs: Messages,
@@ -27,8 +28,16 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
-    pub fn new(client: &Client, config: &Config, msgs: &Messages, dl_info: DownloadInfo, downloads: Downloads) -> Self {
+    pub fn new(
+        cache: &Cache,
+        client: &Client,
+        config: &Config,
+        msgs: &Messages,
+        dl_info: DownloadInfo,
+        downloads: Downloads,
+    ) -> Self {
         Self {
+            cache: cache.clone(),
             client: client.clone(),
             config: config.clone(),
             msgs: msgs.clone(),
@@ -88,14 +97,19 @@ impl DownloadTask {
         match fs::create_dir_all(&path).await {
             Ok(()) => {}
             Err(e) => {
-                self.log_and_set_error(format!("Error when creating file: {}", e)).await;
+                self.log_and_set_error(format!("Error when creating download directory: {}", e)).await;
                 return;
             }
         }
-        path.push(&self.dl_info.file_info.file_name);
+        path.push(file_name);
 
         if path.exists() {
-            self.msgs.push(format!("{} already exists and won't be downloaded.", file_name)).await;
+            if self.cache.file_index.files.read().await.get(&self.dl_info.file_info.file_id).is_none() {
+                self.msgs.push(format!("{} exists but is missing its metadata. Fixing.", file_name)).await;
+                let _ = self.downloads.update_metadata(self.dl_info.file_info.clone()).await;
+            } else {
+                self.msgs.push(format!("{} already exists and won't be downloaded.", file_name)).await;
+            }
             return;
         }
 

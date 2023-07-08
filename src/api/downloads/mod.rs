@@ -49,7 +49,7 @@ impl Downloads {
             msgs: msgs.clone(),
         };
 
-        self::resume_on_startup(config, downloads.clone()).await;
+        self::resume_on_startup(downloads.clone()).await;
 
         downloads
     }
@@ -95,7 +95,8 @@ impl Downloads {
     }
 
     async fn add(&self, dl_info: DownloadInfo) {
-        let mut task = DownloadTask::new(&self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
+        let mut task =
+            DownloadTask::new(&self.cache, &self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
         {
             task.start().await;
             if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&dl_info))).await {
@@ -135,30 +136,23 @@ impl Downloads {
          * The unwrap() here should be done away with.
          * TODO: Should we just do an Md5Search instead? It would allows us to validate the file while getting its
          * metadata. However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312 */
-        let file_list = {
+        let file_list: Option<FileList> = 'fl: {
             if let Some(fl) = self.cache.file_lists.get((game, mod_id)).await {
                 if fl.files.iter().any(|fd| fd.file_id == fi.file_id) {
-                    Some(fl)
-                } else {
-                    match FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await {
-                        Ok(fl) => {
-                            if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
-                                self.msgs
-                                    .push(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e))
-                                    .await;
-                            }
-                            Some(fl)
-                        }
-                        Err(e) => {
-                            self.msgs
-                                .push(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e))
-                                .await;
-                            None
-                        }
-                    }
+                    break 'fl Some(fl);
                 }
-            } else {
-                None
+            }
+            match FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await {
+                Ok(fl) => {
+                    if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
+                        self.msgs.push(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e)).await;
+                    }
+                    Some(fl)
+                }
+                Err(e) => {
+                    self.msgs.push(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e)).await;
+                    None
+                }
             }
         };
 
@@ -188,13 +182,20 @@ impl Downloads {
     }
 }
 
-async fn resume_on_startup(config: &Config, dls: Downloads) {
-    if let Ok(mut file_stream) = fs::read_dir(config.download_dir()).await {
+async fn resume_on_startup(dls: Downloads) {
+    if let Ok(mut file_stream) = fs::read_dir(&dls.config.download_dir()).await {
         while let Some(f) = file_stream.next_entry().await.unwrap() {
             if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("part") {
                 let part_json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
                 if let Ok(dl_info) = DownloadInfo::load(part_json_file).await {
-                    let mut task = DownloadTask::new(&dls.client, config, &dls.msgs, dl_info.clone(), dls.clone());
+                    let mut task = DownloadTask::new(
+                        &dls.cache,
+                        &dls.client,
+                        &dls.config,
+                        &dls.msgs,
+                        dl_info.clone(),
+                        dls.clone(),
+                    );
                     match dl_info.get_state() {
                         DownloadState::Paused => {}
                         _ => task.start().await,
