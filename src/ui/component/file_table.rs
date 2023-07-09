@@ -50,8 +50,8 @@ impl<'a> FileTable<'a> {
         'b: 'a,
     {
         if self.has_data_changed.swap(false, Ordering::Relaxed) {
-            let file_index = self.file_index.files.read().await;
-            let mut stream = tokio_stream::iter(file_index.values());
+            let files = self.file_index.files_sorted.read().await;
+            let mut stream = tokio_stream::iter(files.iter());
             let mut rows: Vec<Row> = vec![];
             while let Some(fdata) = stream.next().await {
                 let lf = &fdata.local_file.read().await;

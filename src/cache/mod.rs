@@ -78,17 +78,14 @@ impl Cache {
     }
 
     pub async fn delete_by_index(&self, i: usize) -> Result<(), io::Error> {
-        // Unwrap here is intentional, the filedata should always exist when this is called
-        let mut mf_lock = self.file_index.mod_file_mapping.write().await;
-        let mut files_lock = self.file_index.files.write().await;
-        //
-        let (file_id, fd): (u64, std::sync::Arc<FileData>) = {
-            let kv = files_lock.get_index(i).unwrap();
-            (*kv.0, kv.1.clone())
-        };
+        let mut fs_lock = self.file_index.files_sorted.write().await;
+        let mut mf_lock = self.file_index.mod_file_map.write().await;
+        let mut files_lock = self.file_index.file_id_map.write().await;
+        let fd = fs_lock.get(i).unwrap().clone();
         let lf_lock = fd.local_file.write().await;
         mf_lock.remove(&(lf_lock.game.clone(), lf_lock.mod_id));
-        files_lock.remove(&file_id);
+        fs_lock.remove(i);
+        files_lock.remove(&fd.file_id);
         let mut path = self.config.path_for(PathType::LocalFile(&lf_lock));
         fs::remove_file(&path).await?;
         path.pop();

@@ -14,6 +14,7 @@ pub struct FileLists {
 }
 
 impl FileLists {
+    // TODO read file lists from disk only on-demand, so we don't pointlessly deserialize data for other games
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
         let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
 

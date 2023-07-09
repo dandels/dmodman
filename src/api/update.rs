@@ -32,7 +32,7 @@ impl UpdateChecker {
     pub async fn update_all(&self) {
         let mods;
         {
-            let lock = self.cache.file_index.mod_file_mapping.read().await;
+            let lock = self.cache.file_index.mod_file_map.read().await;
             mods = lock.clone().into_keys();
         }
         for (game, mod_id) in mods {
@@ -43,7 +43,7 @@ impl UpdateChecker {
     pub async fn update_mod(&self, game: String, mod_id: u32) {
         let me = self.clone();
         task::spawn(async move {
-            let lock = me.cache.file_index.mod_file_mapping.read().await;
+            let lock = me.cache.file_index.mod_file_map.read().await;
             let files = lock.get(&(game.to_owned(), mod_id)).unwrap();
 
             let mut needs_refresh = false;
@@ -268,7 +268,7 @@ mod tests {
         let client = Client::new(&config, &msgs).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        let lock = cache.file_index.mod_file_mapping.read().await;
+        let lock = cache.file_index.mod_file_map.read().await;
         let files = lock.get(&(game.to_string(), mod_id)).unwrap();
         let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
@@ -303,7 +303,7 @@ mod tests {
         let client = Client::new(&config, &msgs).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        let lock = cache.file_index.mod_file_mapping.read().await;
+        let lock = cache.file_index.mod_file_map.read().await;
         let files = lock.get(&(game.to_string(), mod_id)).unwrap();
         let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;

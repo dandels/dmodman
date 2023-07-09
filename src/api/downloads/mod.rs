@@ -158,7 +158,7 @@ impl Downloads {
         let latest_timestamp = file_list.and_then(|fl| fl.files.iter().last().cloned()).unwrap().uploaded_timestamp;
         {
             if let Some(filedata_heap) =
-                self.cache.file_index.mod_file_mapping.read().await.get(&(game.to_owned(), mod_id))
+                self.cache.file_index.mod_file_map.read().await.get(&(game.to_owned(), mod_id))
             {
                 for fdata in filedata_heap.iter() {
                     let mut lf = fdata.local_file.write().await;
