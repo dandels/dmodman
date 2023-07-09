@@ -193,8 +193,10 @@ impl<'a> MainUI<'static> {
             Key::Delete => {
                 if let FocusedWidget::FileTable(_ft) = &self.focused {
                     let ftable = self.files_view.read().await;
-                    if let Some(_i) = ftable.state.selected() {
-                        // TODO implement deletion
+                    if let Some(i) = ftable.state.selected() {
+                        if let Err(e) = self.cache.delete_by_index(i).await {
+                            self.msgs.push(format!("Unable to delete file: {}", e)).await;
+                        }
                     }
                 }
             }
