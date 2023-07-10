@@ -126,6 +126,8 @@ impl DownloadTask {
     }
 
     async fn start(&mut self, path: PathBuf) {
+        self.dl_info.set_state(DownloadState::Downloading);
+
         let file_name = &self.dl_info.file_info.file_name;
         let mut part_path = path.clone();
         part_path.pop();

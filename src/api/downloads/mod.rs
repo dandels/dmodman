@@ -70,7 +70,7 @@ impl Downloads {
         let (nxm, url) = res.unwrap();
         let file_name = util::file_name_from_url(&url);
 
-        if let Some(dl) = self.tasks.read().await.get(&nxm.file_id) {
+        if let Some(mut dl) = self.tasks.write().await.get_mut(&nxm.file_id) {
             match dl.dl_info.get_state() {
                 DownloadState::Downloading => {
                     self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
@@ -85,11 +85,18 @@ impl Downloads {
                         .await;
                     return;
                 }
-                // Implicitly starts the download in all other cases
-                _ => {}
+                // Restart the download using the new download link.
+                _ => {
+                    dl.dl_info.url = url.clone();
+                    if let Err(e) = dl.dl_info.save(self.config.path_for(PathType::DownloadInfo(&dl.dl_info))).await {
+                        self.msgs.push(format!("Couldn't store new download url for {}: {}", &file_name, e)).await;
+                    }
+                    if let Err(()) = dl.try_start().await {
+                        self.msgs.push(format!("Failed to restart download for {}", &file_name)).await;
+                    }
+                }
             }
-        }
-
+        };
         let f_info = FileInfo::new(nxm.domain_name, nxm.mod_id, nxm.file_id, file_name);
         self.add(DownloadInfo::new(f_info, url)).await;
     }
@@ -187,12 +194,12 @@ impl Downloads {
         task.stop();
         let mut path = self.config.download_dir();
         path.push(format!("{}.part", &task.dl_info.file_info.file_name));
-        if let Err(_) = fs::remove_file(path.clone()).await {
+        if fs::remove_file(path.clone()).await.is_err() {
             self.msgs.push(format!("Unable to delete {:?}.", &path)).await;
         }
         path.pop();
         path.push(format!("{}.part.json", &task.dl_info.file_info.file_name));
-        if let Err(_) = fs::remove_file(path.clone()).await {
+        if fs::remove_file(path.clone()).await.is_err() {
             self.msgs.push(format!("Unable to delete {:?}.", &path)).await;
         }
         self.has_changed.store(true, Ordering::Relaxed);
