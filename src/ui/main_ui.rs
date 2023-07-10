@@ -240,7 +240,7 @@ impl<'a> MainUI<'static> {
             },
             _ => {
                 // Uncomment to log keypresses
-                self.msgs.push(format!("{:?}", key)).await;
+                // self.msgs.push(format!("{:?}", key)).await;
             }
         }
     }
