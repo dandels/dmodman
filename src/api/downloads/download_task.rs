@@ -48,10 +48,18 @@ impl DownloadTask {
         }
     }
 
+    pub fn stop(&mut self) {
+        if let Some(handle) = &self.join_handle {
+            handle.abort();
+        }
+    }
+
     pub async fn toggle_pause(&mut self) {
         match self.dl_info.get_state() {
             DownloadState::Downloading => {
-                self.join_handle.as_mut().unwrap().abort();
+                if let Some(handle) = &self.join_handle {
+                    handle.abort();
+                }
                 self.dl_info.set_state(DownloadState::Paused);
             }
             DownloadState::Paused | DownloadState::Error => {
@@ -105,7 +113,7 @@ impl DownloadTask {
         path.push(file_name);
 
         if path.exists() {
-            if self.cache.file_index.files.read().await.get(&self.dl_info.file_info.file_id).is_none() {
+            if self.cache.file_index.file_id_map.read().await.get(&self.dl_info.file_info.file_id).is_none() {
                 self.msgs.push(format!("{} already exists but was missing its metadata.", file_name)).await;
                 let _ = self.downloads.update_metadata(self.dl_info.file_info.clone()).await;
             } else {
@@ -128,7 +136,9 @@ impl DownloadTask {
         /* The HTTP Range header is used to resume downloads.
          * https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range */
         let bytes_read = Arc::new(AtomicU64::new(0));
-        if part_path.exists() {
+
+        let resuming_download = part_path.exists();
+        if resuming_download {
             bytes_read.store(fs::metadata(&part_path).await.unwrap().len(), Ordering::Relaxed);
             builder = builder.header(RANGE, format!("bytes={:?}-", bytes_read));
         }
@@ -151,7 +161,11 @@ impl DownloadTask {
                         open_opts.write(true).create(true).open(&part_path).await
                     }
                     StatusCode::PARTIAL_CONTENT => {
-                        self.dl_info.progress.bytes_read = bytes_read.clone();
+                        if resuming_download {
+                            self.dl_info.progress.bytes_read = bytes_read.clone();
+                        } else {
+                            self.dl_info.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
+                        }
                         open_opts.append(true).open(&part_path).await
                     }
                     // Running into some other non-error status code shouldn't happen.

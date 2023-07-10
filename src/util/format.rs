@@ -51,10 +51,10 @@ mod tests {
 
     #[test]
     fn human_readable() {
-        assert_eq!("272 B", format::human_readable(272).0);
-        assert_eq!("83.4 KiB", format::human_readable(85417).0);
-        assert_eq!("204.1 MiB", format::human_readable(214022328).0);
-        assert_eq!("936.7 MiB", format::human_readable(982232812).0);
-        assert_eq!("19.9 GiB", format::human_readable(21402232812).0);
+        assert_eq!("272 B", format::human_readable(272));
+        assert_eq!("83.4 KiB", format::human_readable(85417));
+        assert_eq!("204.1 MiB", format::human_readable(214022328));
+        assert_eq!("936.7 MiB", format::human_readable(982232812));
+        assert_eq!("19.9 GiB", format::human_readable(21402232812));
     }
 }

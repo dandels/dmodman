@@ -157,8 +157,7 @@ impl Downloads {
 
         let latest_timestamp = file_list.and_then(|fl| fl.files.iter().last().cloned()).unwrap().uploaded_timestamp;
         {
-            if let Some(filedata_heap) =
-                self.cache.file_index.mod_file_map.read().await.get(&(game.to_owned(), mod_id))
+            if let Some(filedata_heap) = self.cache.file_index.mod_file_map.read().await.get(&(game.to_owned(), mod_id))
             {
                 for fdata in filedata_heap.iter() {
                     let mut lf = fdata.local_file.write().await;
@@ -180,6 +179,23 @@ impl Downloads {
         let lf = LocalFile::new(fi, UpdateStatus::UpToDate(latest_timestamp));
         self.cache.save_local_file(lf).await?;
         Ok(())
+    }
+
+    pub async fn delete(&self, i: usize) {
+        let mut tasks_lock = self.tasks.write().await;
+        let (_, mut task) = tasks_lock.shift_remove_index(i).unwrap();
+        task.stop();
+        let mut path = self.config.download_dir();
+        path.push(format!("{}.part", &task.dl_info.file_info.file_name));
+        if let Err(_) = fs::remove_file(path.clone()).await {
+            self.msgs.push(format!("Unable to delete {:?}.", &path)).await;
+        }
+        path.pop();
+        path.push(format!("{}.part.json", &task.dl_info.file_info.file_name));
+        if let Err(_) = fs::remove_file(path.clone()).await {
+            self.msgs.push(format!("Unable to delete {:?}.", &path)).await;
+        }
+        self.has_changed.store(true, Ordering::Relaxed);
     }
 }
 

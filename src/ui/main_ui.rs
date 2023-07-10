@@ -190,19 +190,47 @@ impl<'a> MainUI<'static> {
                     self.updater.update_all().await;
                 }
             }
-            Key::Delete => {
-                if let FocusedWidget::FileTable(_ft) = &self.focused {
-                    let ftable = self.files_view.read().await;
-                    if let Some(i) = ftable.state.selected() {
+            Key::Delete => match &self.focused.clone() {
+                FocusedWidget::FileTable(ft) => {
+                    let mut ft_lock = ft.write().await;
+                    if let Some(i) = ft_lock.state.selected() {
                         if let Err(e) = self.cache.delete_by_index(i).await {
                             self.msgs.push(format!("Unable to delete file: {}", e)).await;
+                        } else {
+                            if i == 0 {
+                                ft_lock.state.select(None);
+                            }
+                            drop(ft_lock);
+                            self.focused.previous().await;
                         }
                     }
                 }
-            }
+                FocusedWidget::DownloadTable(dt) => {
+                    let mut dt_lock = dt.write().await;
+                    if let Some(i) = dt_lock.state.selected() {
+                        dt_lock.downloads.delete(i).await;
+                        if i == 0 {
+                            dt_lock.state.select(None);
+                        }
+                        drop(dt_lock);
+                        self.focused.previous().await;
+                    }
+                }
+                FocusedWidget::MessageList(ml) => {
+                    let mut ml_lock = ml.write().await;
+                    if let Some(i) = ml_lock.state.selected() {
+                        ml_lock.msgs.remove(i).await;
+                        if i == 0 {
+                            ml_lock.state.select(None);
+                        }
+                        drop(ml_lock);
+                        self.focused.previous().await;
+                    }
+                }
+            },
             _ => {
                 // Uncomment to log keypresses
-                // self.msgs.push(format!("{:?}", key)).await;
+                self.msgs.push(format!("{:?}", key)).await;
             }
         }
     }

@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, Ordering},
     Arc,
 };
 use tokio::sync::RwLock;
@@ -8,14 +8,19 @@ use tokio::sync::RwLock;
 pub struct Messages {
     pub messages: Arc<RwLock<Vec<String>>>,
     pub has_changed: Arc<AtomicBool>, // used by UI to ask if error list needs to be redrawn
-    len: Arc<AtomicUsize>,
 }
 
 impl Messages {
     // TODO allow optionally logging to file (maybe with log levels?)
     pub async fn push<S: Into<String>>(&self, msg: S) {
-        self.messages.write().await.push(format!("{:?}: {}", self.len, msg.into()));
+        let mut lock = self.messages.write().await;
+        let len = lock.len();
+        lock.push(format!("{:?}: {}", len, msg.into()));
         self.has_changed.store(true, Ordering::Relaxed);
-        self.len.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub async fn remove(&self, i: usize) {
+        self.messages.write().await.remove(i);
+        self.has_changed.store(true, Ordering::Relaxed);
     }
 }
