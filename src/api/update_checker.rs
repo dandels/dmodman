@@ -29,6 +29,22 @@ impl UpdateChecker {
         }
     }
 
+    pub async fn ignore_file(&self, i: usize) {
+        let f_lock = self.cache.file_index.files_sorted.read().await;
+        let fd = f_lock.get(i).unwrap();
+        let mut lf_lock = fd.local_file.write().await;
+        if let Some(latest_remote_file) =
+            self.cache.file_lists.get((&lf_lock.game, lf_lock.mod_id)).await.unwrap().file_updates.peek()
+        {
+            lf_lock.update_status = UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp);
+
+            if let Err(e) = lf_lock.save(self.config.path_for(PathType::LocalFile(&lf_lock))).await {
+                self.msgs.push(format!("Unable save ignore status for: {e}.")).await;
+            }
+            self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
+        }
+    }
+
     pub async fn update_all(&self) {
         let mods;
         {
@@ -166,10 +182,6 @@ impl UpdateChecker {
                      * also need to compare file_id's. */
                     if file.file_details.uploaded_timestamp < upd.uploaded_timestamp && file.file_id != upd.new_file_id
                     {
-                        self.msgs.push(format!("while checking {:?}", file.file_details.file_name)).await;
-                        self.msgs.push(format!("time: {:?}", file.file_details.uploaded_timestamp)).await;
-                        self.msgs.push(format!("    newer than us: {:?}", &upd.new_file_name)).await;
-                        self.msgs.push(format!("    time: {:?}", &upd.uploaded_timestamp)).await;
                         newer_files.push(updates.pop().unwrap());
                     } else {
                         break;
