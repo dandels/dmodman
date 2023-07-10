@@ -160,6 +160,14 @@ impl<'a> MainUI<'static> {
                     self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
                 }
             },
+            Key::Char('i') => {
+                if let FocusedWidget::FileTable(fv) = &self.focused {
+                    let ftable_lock = fv.read().await;
+                    if let Some(i) = ftable_lock.state.selected() {
+                        self.updater.ignore_file(i).await;
+                    }
+                }
+            }
             Key::Char('p') => {
                 if let FocusedWidget::DownloadTable(_) = &self.focused {
                     let dls_table = self.download_view.read().await;
@@ -169,21 +177,23 @@ impl<'a> MainUI<'static> {
                 }
             }
             Key::Char('U') => {
-                let game: String;
-                let mod_id: u32;
-                {
-                    let ftable_lock = self.files_view.read().await;
-                    if let Some(i) = ftable_lock.state.selected() {
-                        let files_lock = ftable_lock.file_index.file_id_map.read().await;
-                        let fdata = files_lock.get(&(i as u64)).unwrap();
-                        let lf_lock = fdata.local_file.read().await;
-                        game = lf_lock.game.clone();
-                        mod_id = lf_lock.mod_id;
-                    } else {
-                        return;
+                if let FocusedWidget::FileTable(fv) = &self.focused {
+                    let game: String;
+                    let mod_id: u32;
+                    {
+                        let ftable_lock = fv.read().await;
+                        if let Some(i) = ftable_lock.state.selected() {
+                            let files_lock = ftable_lock.file_index.file_id_map.read().await;
+                            let fdata = files_lock.get(&(i as u64)).unwrap();
+                            let lf_lock = fdata.local_file.read().await;
+                            game = lf_lock.game.clone();
+                            mod_id = lf_lock.mod_id;
+                        } else {
+                            return;
+                        }
                     }
+                    self.updater.update_mod(game, mod_id).await;
                 }
-                self.updater.update_mod(game, mod_id).await;
             }
             Key::Char('u') => {
                 if let FocusedWidget::FileTable(_fv) = &self.focused {
