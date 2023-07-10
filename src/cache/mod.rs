@@ -108,7 +108,7 @@ mod test {
         let config = ConfigBuilder::default().game(game).build().unwrap();
         let cache = Cache::new(&config).await?;
 
-        let lock = cache.file_index.files.read().await;
+        let lock = cache.file_index.file_id_map.read().await;
         let fdata = lock.get(&82041).unwrap();
         println!("{:?}", fdata);
         assert_eq!(fdata.local_file.read().await.game, game);
