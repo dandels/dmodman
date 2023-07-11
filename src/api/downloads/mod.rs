@@ -139,7 +139,6 @@ impl Downloads {
     async fn update_metadata(&self, fi: FileInfo) -> Result<(), ApiError> {
         let (game, mod_id) = (&fi.game, fi.mod_id);
         /* TODO: If the FileList isn't found handle this as a foreign file, however they're going to be dealt with.
-         * The unwrap() here should be done away with.
          * TODO: Should we just do an Md5Search instead? It would allows us to validate the file while getting its
          * metadata. However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312 */
         let file_list: Option<FileList> = 'fl: {
