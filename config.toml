@@ -1,11 +1,11 @@
 ## Note that relative paths and environment variables are not yet handled.
 
-## Download directory as an absolute path. Default: $XDG_DOWNLOAD_DIR/dmodman.
+## Download base directory as an absolute path. Default: $XDG_DOWNLOAD_DIR/dmodman.
 #download_dir = "/home/user/downloads/dmodman"
 
-## The game name is the first part of the NexusMods website path
-## https://www.nexusmods.com/skyrimspecialedition/
-##                           ^game name
+## The game name is the subdirectory of the NexusMods website path, for example:
+# https://www.nexusmods.com/skyrimspecialedition/
+##                          ^subdirectory
 #game = "morrowind"
 
 ## A personal API key for development can be generated at https://www.nexusmods.com/users/myaccount?tab=api.
