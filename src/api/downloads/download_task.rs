@@ -127,6 +127,9 @@ impl DownloadTask {
 
     async fn start(&mut self, path: PathBuf) {
         self.dl_info.set_state(DownloadState::Downloading);
+        if let Err(e) = self.dl_info.save(self.config.path_for(PathType::DownloadInfo(&self.dl_info))).await {
+            self.msgs.push(format!("Error when saving download state: {}", e)).await;
+        }
 
         let file_name = &self.dl_info.file_info.file_name;
         let mut part_path = path.clone();

@@ -70,12 +70,13 @@ impl Downloads {
         let (nxm, url) = res.unwrap();
         let file_name = util::file_name_from_url(&url);
 
-        if let Some(mut dl) = self.tasks.write().await.get_mut(&nxm.file_id) {
-            match dl.dl_info.get_state() {
+        if let Some(mut task) = self.tasks.write().await.get_mut(&nxm.file_id) {
+            match task.dl_info.get_state() {
                 DownloadState::Downloading => {
                     self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
                     return;
                 }
+                //
                 DownloadState::Done => {
                     self.msgs
                         .push(format!(
@@ -83,15 +84,18 @@ impl Downloads {
                             file_name
                         ))
                         .await;
+                    let _ = task.try_start().await;
+                    self.has_changed.store(true, Ordering::Relaxed);
                     return;
                 }
                 // Restart the download using the new download link.
                 _ => {
-                    dl.dl_info.url = url.clone();
-                    if let Err(e) = dl.dl_info.save(self.config.path_for(PathType::DownloadInfo(&dl.dl_info))).await {
+                    task.dl_info.url = url.clone();
+                    if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&task.dl_info))).await
+                    {
                         self.msgs.push(format!("Couldn't store new download url for {}: {}", &file_name, e)).await;
                     }
-                    if let Err(()) = dl.try_start().await {
+                    if let Err(()) = task.try_start().await {
                         self.msgs.push(format!("Failed to restart download for {}", &file_name)).await;
                     }
                 }
@@ -104,9 +108,6 @@ impl Downloads {
     async fn add(&self, dl_info: DownloadInfo) {
         let mut task =
             DownloadTask::new(&self.cache, &self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
-        if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&dl_info))).await {
-            self.msgs.push(format!("Error when saving download state: {}", e)).await;
-        }
         if task.try_start().await.is_ok() {
             self.tasks.write().await.insert(dl_info.file_info.file_id, task);
             self.has_changed.store(true, Ordering::Relaxed);
@@ -190,6 +191,10 @@ impl Downloads {
     pub async fn delete(&self, i: usize) {
         let mut tasks_lock = self.tasks.write().await;
         let (_, mut task) = tasks_lock.shift_remove_index(i).unwrap();
+        if let DownloadState::Done = task.dl_info.get_state() {
+            self.has_changed.store(true, Ordering::Relaxed);
+            return;
+        }
         task.stop();
         let mut path = self.config.download_dir();
         path.push(format!("{}.part", &task.dl_info.file_info.file_name));
