@@ -3,8 +3,8 @@ dmodman is a Linux-native TUI download manager and update checker for [NexusMods
 written in Rust. It can be registered as a handler for the nxm:// protocol, allowing the "Mod manager download"-button
 to work on Nexus Mods.
 
-While the software should be usable, it's considered beta. It's also not meant for general use until approved by Nexus
-Mods. However, it should not crash or behave unexpectedly during normal use. The UI in particular is quite crude.
+While the software should be usable, it's considered alpha. Still, it should not crash or behave unexpectedly during
+normal use. While it's not meant for general use until approved by Nexus Mods, testing and feedback is appreciated.
 
 ![The TUI with a list of mod files, a completed download, some files that could be updated, and some
 messages.](/screenshot.png)
