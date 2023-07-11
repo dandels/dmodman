@@ -24,7 +24,7 @@ impl<'a> FileTable<'a> {
     pub fn new(redraw_terminal: Arc<AtomicBool>, file_index: FileIndex) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Files");
         let headers = Row::new(
-            vec!["Name", "Category", "Mod id", "Flags", "Version"]
+            vec!["Name", "Category", "ModId", "Flags", "Version"]
                 .iter()
                 .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
         );
