@@ -15,10 +15,6 @@ use std::env::args;
 use std::error::Error;
 use std::str::FromStr;
 
-use termion::event::Key;
-use termion::input::TermRead;
-use termion::raw::IntoRawMode;
-
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
  * - If the program is invoked without argument, it starts the TUI unless another instance is already running.
@@ -46,8 +42,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    /* Check if another instance for the same game is already running. If it is, optionally queue the download, then
-     * exit early. */
+    /* Check if another instance for the same game is already running.
+     * If it is, we queue the download if one exists, then exit early. */
     let nxm_rx = match nxm_listener::queue_download_else_bind_to_socket(nxm_str_opt).await? {
         Some(v) => v,
         None => return Ok(()),
@@ -58,10 +54,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let initialconfig = match ConfigBuilder::load() {
         Ok(mut ic) => {
             if ic.apikey.is_none() {
-                if let Some(apikey) = gen_apikey(&msgs) {
+                if let Some(apikey) = ui::sso::start_apikey_flow().await {
                     ic = ic.apikey(apikey);
+                } else {
+                    return Ok(());
                 }
             }
+            // TODO configuring doesn't seem to be necessary anymore unless cross-mod downloading is disabled
             if ic.game.is_none() {
                 if let Some(game) = game_opt {
                     ic = ic.game(game);
@@ -93,38 +92,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     nxm_listener::listen_for_downloads(&downloads, &msgs, nxm_rx).await;
 
     ui::MainUI::new(cache, client, config, downloads, msgs).run().await
-}
-
-fn gen_apikey(_msgs: &Messages) -> Option<String> {
-    let mut generate_apikey = false;
-    println!("You have not configured an API key.");
-    println!("Would you like to create one? (This opens your browser.)");
-    println!("[y]es, [n]o");
-    /* Read y/n without waiting for the user to press return.
-     * Entering raw mode messes with stdout, so we can't println until this scope ends.
-     * Stdout is restored when _stdout is dropped. */
-    {
-        let _stdout = std::io::stdout().into_raw_mode().unwrap();
-        let mut stdin = termion::async_stdin().keys();
-        loop {
-            if let Some(Ok(key)) = stdin.next() {
-                match key {
-                    Key::Char('y') => {
-                        generate_apikey = true;
-                        break;
-                    }
-                    Key::Char('n') => break,
-                    _ => continue,
-                }
-            }
-        }
-    }
-    #[allow(clippy::if_same_then_else)]
-    if generate_apikey {
-        // TODO begin Single Sign-On flow
-        // Some("".to_string())
-        None
-    } else {
-        None
-    }
 }

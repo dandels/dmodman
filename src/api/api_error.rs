@@ -4,6 +4,7 @@ use std::fmt;
 use std::num::ParseIntError;
 use tokio::io;
 use tokio::task::JoinError;
+use tokio_tungstenite::tungstenite;
 use url::ParseError;
 
 #[derive(Debug)]
@@ -18,6 +19,7 @@ pub enum ApiError {
     ParseError { source: ParseError },
     ParseIntError { source: ParseIntError },
     SerializationError { source: serde_json::Error },
+    WebsocketError { source: tungstenite::Error },
 }
 
 impl Error for ApiError {
@@ -49,6 +51,7 @@ impl fmt::Display for ApiError {
             ApiError::IsUnitTest => f.write_str("Unit tests aren't allowed to make network connections."),
             ApiError::ParseError { source } => source.fmt(f),
             ApiError::ParseIntError { source } => source.fmt(f),
+            ApiError::WebsocketError { source } => source.fmt(f),
         }
     }
 }
@@ -92,5 +95,11 @@ impl From<ParseError> for ApiError {
 impl From<ParseIntError> for ApiError {
     fn from(error: ParseIntError) -> Self {
         ApiError::ParseIntError { source: error }
+    }
+}
+
+impl From<tungstenite::Error> for ApiError {
+    fn from(error: tungstenite::Error) -> Self {
+        ApiError::WebsocketError { source: error }
     }
 }

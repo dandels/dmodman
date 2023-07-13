@@ -2,6 +2,7 @@ mod component;
 mod event;
 mod main_ui;
 mod rectangles;
+pub mod sso;
 
 pub use main_ui::MainUI;
 

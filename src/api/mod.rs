@@ -3,6 +3,7 @@ pub mod client;
 pub mod downloads;
 pub mod query;
 pub mod request_counter;
+pub mod sso;
 pub mod update_checker;
 
 pub use api_error::*;
