@@ -10,7 +10,7 @@ use self::download_task::*;
 pub use self::file_info::*;
 pub use self::nxm_url::*;
 
-use crate::api::query::{DownloadLink, FileList, Queriable};
+use crate::api::query::{md5_search::*, DownloadLink, FileList, Queriable};
 use crate::api::{ApiError, Client};
 use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
 use crate::config::{Config, PathType};
@@ -70,7 +70,7 @@ impl Downloads {
         let (nxm, url) = res.unwrap();
         let file_name = util::file_name_from_url(&url);
 
-        if let Some(mut task) = self.tasks.write().await.get_mut(&nxm.file_id) {
+        if let Some(task) = self.tasks.write().await.get_mut(&nxm.file_id) {
             match task.dl_info.get_state() {
                 DownloadState::Downloading => {
                     self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
@@ -184,8 +184,49 @@ impl Downloads {
         }
 
         let lf = LocalFile::new(fi, UpdateStatus::UpToDate(latest_timestamp));
-        self.cache.save_local_file(lf).await?;
+        self.verify_hash(&lf).await;
+        self.cache.save_local_file(lf.clone()).await?;
         Ok(())
+    }
+
+    async fn verify_hash(&self, local_file: &LocalFile) {
+        let mut path = self.config.download_dir();
+        path.push(&local_file.file_name);
+        match util::md5sum(path).await {
+            Ok(md5) => {
+                if let Ok(query_res) = Md5Search::request(&self.client, vec![&local_file.game, &md5]).await {
+                    // Uncomment to save API response
+                    //let _ = query_res
+                    //    .save(self.config.path_for(PathType::Md5Search(
+                    //        &local_file.game,
+                    //        &local_file.mod_id,
+                    //        &local_file.file_id,
+                    //    )))
+                    //    .await;
+                    if !(md5.eq(&query_res.results.file_details.md5)
+                        && local_file.file_name.eq(&query_res.results.file_details.file_name))
+                    {
+                        self.msgs
+                            .push(format!(
+                                "Warning: API returned unexpected file when checking hash for {}",
+                                &local_file.file_name
+                            ))
+                            .await;
+                        let mi = &query_res.results.r#mod;
+                        let fd = &query_res.results.file_details;
+                        self.msgs.push(format!("Found {}: {} ({})", mi.name, fd.name, fd.file_name)).await;
+                        self.msgs.push("This should be reported as a Nexus bug. See README for details.").await;
+                    }
+                } else {
+                    self.msgs.push(format!("Unable to verify integrity of: {}", &local_file.file_name)).await;
+                    self.msgs.push("This could mean the download got corrupted. See README for details.").await;
+                }
+            }
+            Err(e) => {
+                self.msgs.push(format!("Error when checking hash for: {}", local_file.file_name)).await;
+                self.msgs.push(format!("{}", e)).await;
+            }
+        }
     }
 
     pub async fn delete(&self, i: usize) {

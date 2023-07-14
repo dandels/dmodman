@@ -1,8 +1,8 @@
 pub mod format;
 
 use md5::{Digest, Md5};
-use std::fs::File;
-use std::path::Path;
+use std::path::PathBuf;
+use tokio::task;
 use url::Url;
 
 pub fn file_name_from_url(url: &Url) -> String {
@@ -13,21 +13,19 @@ pub fn file_name_from_url(url: &Url) -> String {
     file_name
 }
 
-/* The API doesn't offer other hash formats than md5.
- * TODO this implementation is probably not suitable for big files.
- * This is currently unused because the Nexus md5 lookup is broken, see:
- * https://github.com/Nexus-Mods/web-issues/issues/1312
- * TODO use it anyway and report if the hash is wrong.
- *
- * TODO this has to use tokio for reading the file, or it will block the thread
+/* The API doesn't offer other hash formats than md5. We could get the sha256 sum via the 3rd party virus scan URL for
+ * those files that have it, but that is very clunky. Still, it's an option in case Nexus still has issues with their
+ * md5 sums: https://github.com/Nexus-Mods/web-issues/issues/1312
  */
-#[allow(dead_code)]
-pub fn md5sum(path: &Path) -> Result<String, std::io::Error> {
-    let mut file = File::open(path)?;
-    let mut hasher = Md5::new();
-    let _bytes_read = std::io::copy(&mut file, &mut hasher)?;
-    let hash = hasher.finalize();
-    Ok(format!("{:x}", hash))
+pub async fn md5sum(path: PathBuf) -> Result<String, std::io::Error> {
+    task::spawn_blocking(move || {
+        let mut file = std::fs::File::open(path)?;
+        let mut hasher = Md5::new();
+        let _bytes_read = std::io::copy(&mut file, &mut hasher)?;
+        let hash = hasher.finalize();
+        Ok(format!("{:x}", hash))
+    })
+    .await?
 }
 
 pub fn trim_newline(mut string: String) -> String {
