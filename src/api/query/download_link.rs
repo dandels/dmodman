@@ -33,7 +33,7 @@ mod tests {
     #[tokio::test]
     async fn deserialize_link_array() -> Result<(), Box<dyn Error>> {
         let game = "skyrimspecialedition";
-        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(game).build().unwrap();
         let mod_id: u32 = 74484;
         let file_id: u64 = 1662417060;
         let path = config.path_for(PathType::DownloadLink(&game, &mod_id, &file_id));
@@ -46,7 +46,7 @@ mod tests {
     #[tokio::test]
     async fn deserialize_single_link() -> Result<(), Box<dyn Error>> {
         let game = "dragonage";
-        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(game).build().unwrap();
         let mod_id: u32 = 343;
         let file_id: u64 = 5801;
         let path = config.path_for(PathType::DownloadLink(&game, &mod_id, &file_id));

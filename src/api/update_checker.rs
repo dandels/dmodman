@@ -248,11 +248,10 @@ mod tests {
     async fn block_test_request() -> Result<(), ApiError> {
         let game = "morrowind";
         let mod_id = 46599;
-        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(game).build().unwrap();
 
         let cache = Cache::new(&config).await.unwrap();
-        let msgs = Messages::default();
-        let client = Client::new(&config, &msgs).await;
+        let client = Client::new(&config).await;
         let msgs = Messages::default();
         let updater = UpdateChecker::new(cache.clone(), client, config, msgs);
 
@@ -274,10 +273,10 @@ mod tests {
         let mod_id = 39350;
         let _fair_magicka_regen_file_id = 82041;
 
-        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(game).build().unwrap();
         let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
-        let client = Client::new(&config, &msgs).await;
+        let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
         let lock = cache.file_index.mod_file_map.read().await;
@@ -309,10 +308,10 @@ mod tests {
         let latest_local_time = 1558643754;
         let latest_remote_time = 1558643755;
 
-        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(game).build().unwrap();
         let cache = Cache::new(&config).await?;
         let msgs = Messages::default();
-        let client = Client::new(&config, &msgs).await;
+        let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
         let lock = cache.file_index.mod_file_map.read().await;

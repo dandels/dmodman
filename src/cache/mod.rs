@@ -105,7 +105,7 @@ mod test {
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
         let game = "morrowind";
-        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(game).build().unwrap();
         let cache = Cache::new(&config).await?;
 
         let lock = cache.file_index.file_id_map.read().await;

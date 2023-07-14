@@ -48,7 +48,7 @@ mod tests {
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = ConfigBuilder::load().unwrap().game(game).build().unwrap();
+        let config = ConfigBuilder::load().unwrap().profile(game).build().unwrap();
         let path = config.path_for(PathType::ModInfo(&game, &mod_id));
         println!("{:?}", path);
 
@@ -62,7 +62,7 @@ mod tests {
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = ConfigBuilder::default().game(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(game).build().unwrap();
         let path = config.path_for(PathType::FileList(&game, &mod_id));
 
         let fl = FileList::load(path).await?;

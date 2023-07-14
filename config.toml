@@ -1,13 +1,12 @@
-## Note that relative paths and environment variables are not yet handled.
+## dmodman example config
+##
+## Relative paths like ~/ and environment variables like $HOME are not supported.
 
-## Download base directory as an absolute path. Default: $XDG_DOWNLOAD_DIR/dmodman.
-#download_dir = "/home/user/downloads/dmodman"
+## The base download directory as an absolute path.
+## Default: $XDG_DOWNLOAD_DIR/dmodman
+#download_dir = "/home/user/Downloads/dmodman/"
 
-## The game name is the subdirectory of the NexusMods website path, for example:
-# https://www.nexusmods.com/skyrimspecialedition/
-##                          ^subdirectory
-#game = "morrowind"
-
-## A personal API key for development can be generated at https://www.nexusmods.com/users/myaccount?tab=api.
-## This is temporary, since NexusMods requires that released applications don't use personal API keys.
-#apikey = "hunter2"
+## If set, appends a subdirectory to the download_dir path.
+## For example "morrowind" would set the download dir to $XDG_DOWNLOAD_DIR/dmodman/morrowind.
+## Default: none
+#profile = "morrowind"

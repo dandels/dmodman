@@ -29,3 +29,14 @@ pub fn md5sum(path: &Path) -> Result<String, std::io::Error> {
     let hash = hasher.finalize();
     Ok(format!("{:x}", hash))
 }
+
+pub fn trim_newline(mut string: String) -> String {
+    // We're probably only going to run into Unix line endings, but let's deal with both cases to be sure
+    if string.ends_with('\n') {
+        string.pop();
+        if string.ends_with('\r') {
+            string.pop();
+        }
+    }
+    string
+}

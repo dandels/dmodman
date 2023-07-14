@@ -24,7 +24,7 @@ impl RequestCounter {
     }
 
     // TODO race condition when many requests are made at once
-    pub async fn push(&mut self, headers: &HeaderMap) {
+    pub async fn push(&self, headers: &HeaderMap) {
         let mut counter = self.counter.write().await;
         if let Some(value) = headers.get("x-rl-daily-remaining") {
             counter.daily_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());

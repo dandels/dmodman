@@ -1,4 +1,4 @@
-use crate::{config::Config, Messages};
+use crate::config::Config;
 
 use super::query::Search;
 use super::request_counter::RequestCounter;
@@ -26,23 +26,19 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn new(config: &Config, msgs: &Messages) -> Self {
+    pub async fn new(config: &Config) -> Self {
         let version = String::from(env!("CARGO_CRATE_NAME")) + " " + env!("CARGO_PKG_VERSION");
 
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_str(&version).unwrap());
 
-        let api_headers = match config.apikey.to_owned() {
+        let api_headers = match &config.apikey {
             Some(apikey) => {
                 let mut api_headers = headers.clone();
-                // TODO register this app with Nexus so we can get the apikey via SSO login
-                api_headers.insert("apikey", HeaderValue::from_str(&apikey).unwrap());
+                api_headers.insert("apikey", HeaderValue::from_str(apikey).unwrap());
                 Some(api_headers)
             }
-            None => {
-                msgs.push("No apikey configured. API connections are disabled.").await;
-                None
-            }
+            None => None,
         };
 
         Self {
@@ -76,18 +72,21 @@ impl Client {
     pub async fn send_api_request(&self, endpoint: &str) -> Result<Response, ApiError> {
         let builder = self.build_api_request(endpoint)?;
         let resp = builder.send().await?;
-        /* TODO the response headers contain a count of remaining API request quota and would be useful to track
+        /* The response headers contain a count of remaining API request quota and are tracked in api/query/queriable.rs
          * println!("Response headers: {:#?}\n", resp.headers());
          * println!(
          *     "Got response: {} {:?}",
          *     resp.status().as_str(),
          *     resp.status().canonical_reason()
-         * );
-         */
+         * ); */
         Ok(resp)
     }
 
-    // TODO test this
+    /* This is unused but should work. Most API requests are easy to implement with serde & traits, but this lacks UI
+     * and a sufficiently compelling use case.
+     * For example, premium users could search and install mods directly through this application.
+     * (Others would have to visit the Nexus, as only premium users can generate download URLs without getting a nxm://
+     * URL from the website.) */
     #[allow(dead_code)]
     pub async fn mod_search(&self, query: String) -> Result<Search, ApiError> {
         let base: Url = Url::parse(SEARCH_URL).unwrap();
