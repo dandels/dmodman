@@ -90,8 +90,16 @@ impl FileIndex {
         let file_details = self.file_lists.filedetails_for(&lf).await.unwrap();
         let fdata: Arc<FileData> = FileData::new(lf.clone(), file_details).into();
         self.file_id_map.write().await.insert(lf.file_id, fdata.clone());
-        if let Some(heap) = self.mod_file_map.write().await.get_mut(&(lf.game, lf.mod_id)) {
-            heap.push(fdata.clone());
+        let mut mfm_lock = self.mod_file_map.write().await;
+        match mfm_lock.get_mut(&(lf.game.to_owned(), lf.mod_id)) {
+            Some(heap) => {
+                heap.push(fdata.clone());
+            }
+            None => {
+                let mut heap = BinaryHeap::new();
+                heap.push(fdata.clone());
+                mfm_lock.insert((lf.game, lf.mod_id), heap);
+            }
         }
         self.files_sorted.write().await.push(fdata);
         self.has_changed.store(true, Ordering::Relaxed);

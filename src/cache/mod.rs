@@ -77,15 +77,25 @@ impl Cache {
         Ok(())
     }
 
+    // Delete a file and its metadata based on its index in file_index.files_sorted.
     pub async fn delete_by_index(&self, i: usize) -> Result<(), io::Error> {
         let mut fs_lock = self.file_index.files_sorted.write().await;
         let mut mf_lock = self.file_index.mod_file_map.write().await;
         let mut files_lock = self.file_index.file_id_map.write().await;
         let fd = fs_lock.get(i).unwrap().clone();
         let lf_lock = fd.local_file.write().await;
-        mf_lock.remove(&(lf_lock.game.clone(), lf_lock.mod_id));
+        let id_to_delete = fs_lock.get(i).unwrap().file_id;
+
+        files_lock.remove(&id_to_delete);
+
         fs_lock.remove(i);
-        files_lock.remove(&fd.file_id);
+
+        let heap = mf_lock.get_mut(&(lf_lock.game.to_owned(), lf_lock.mod_id)).unwrap();
+        heap.retain(|fdata| fdata.file_id != id_to_delete);
+        if heap.is_empty() {
+            mf_lock.remove(&(lf_lock.game.to_owned(), lf_lock.mod_id));
+        }
+
         let mut path = self.config.path_for(PathType::LocalFile(&lf_lock));
         fs::remove_file(&path).await?;
         path.pop();
