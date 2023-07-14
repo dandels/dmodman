@@ -104,7 +104,7 @@ impl UpdateChecker {
     }
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, ApiError> {
-        let file_list = FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await?;
+        let file_list = FileList::request(&self.client, vec![game, &mod_id.to_string()]).await?;
         self.cache.save_file_list(&file_list, game, mod_id).await?;
         Ok(file_list)
     }

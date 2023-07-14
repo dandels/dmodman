@@ -118,7 +118,6 @@ impl Downloads {
         let nxm = NxmUrl::from_str(nxm_str)?;
         let dls = DownloadLink::request(
             &self.client,
-            self.msgs.clone(),
             vec![
                 &nxm.domain_name,
                 &nxm.mod_id.to_string(),
@@ -141,14 +140,15 @@ impl Downloads {
         let (game, mod_id) = (&fi.game, fi.mod_id);
         /* TODO: If the FileList isn't found handle this as a foreign file, however they're going to be dealt with.
          * TODO: Should we just do an Md5Search instead? It would allows us to validate the file while getting its
-         * metadata. However, md5 searching is currently broken: https://github.com/Nexus-Mods/web-issues/issues/1312 */
+         * metadata.
+         * However, md5 searching might still be broken: https://github.com/Nexus-Mods/web-issues/issues/1312 */
         let file_list: Option<FileList> = 'fl: {
             if let Some(fl) = self.cache.file_lists.get((game, mod_id)).await {
                 if fl.files.iter().any(|fd| fd.file_id == fi.file_id) {
                     break 'fl Some(fl);
                 }
             }
-            match FileList::request(&self.client, self.msgs.clone(), vec![game, &mod_id.to_string()]).await {
+            match FileList::request(&self.client, vec![game, &mod_id.to_string()]).await {
                 Ok(fl) => {
                     if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
                         self.msgs.push(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e)).await;
