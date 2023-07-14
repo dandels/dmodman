@@ -9,6 +9,7 @@ use crate::ui::*;
 use crate::Messages;
 
 use std::error::Error;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -198,6 +199,20 @@ impl<'a> MainUI<'static> {
             Key::Char('u') => {
                 if let FocusedWidget::FileTable(_fv) = &self.focused {
                     self.updater.update_all().await;
+                }
+            }
+            Key::Char('v') => {
+                if let FocusedWidget::FileTable(fv) = &self.focused {
+                    let ftable_lock = fv.read().await;
+                    if let Some(i) = ftable_lock.state.selected() {
+                        let files_lock = ftable_lock.file_index.files_sorted.read().await;
+                        let fdata = files_lock.get(i).unwrap();
+                        let lf_lock = fdata.local_file.read().await;
+                        let url = format!("https://www.nexusmods.com/{}/mods/{}", &lf_lock.game, &lf_lock.mod_id);
+                        if let Err(_) = Command::new("xdg-open").arg(url).status() {
+                            self.msgs.push(format!("xdg-open is needed to open URLs in browser.")).await;
+                        }
+                    }
                 }
             }
             Key::Delete => match &self.focused.clone() {

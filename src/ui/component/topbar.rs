@@ -10,8 +10,6 @@ pub struct TopBar<'a> {
 impl<'a> TopBar<'a> {
     pub fn new() -> Self {
         let text = vec![Line::from(vec![
-            Span::styled("<q>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::raw("quit,"),
             Span::styled(" <u>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw("update all,"),
             Span::styled(" <U>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
@@ -20,8 +18,12 @@ impl<'a> TopBar<'a> {
             Span::raw("ignore update,"),
             Span::styled(" <p>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw("pause/resume,"),
+            Span::styled(" <v>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw("visit on Nexus,"),
             Span::styled(" <Del>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw("delete,"),
+            Span::styled(" <q>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::raw("quit"),
         ])];
 
         let widget = Paragraph::new(Line::from(vec![]));
