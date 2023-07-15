@@ -18,6 +18,8 @@ impl FileLists {
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
         let mut file_lists: HashMap<(String, u32), FileList> = HashMap::new();
 
+        fs::create_dir_all(config.cache_dir()).await?;
+
         // Iterates over the entries in cache_dir/file_lists/<game>/<mod_id>.json and deserializes them into FileLists
         let mut stream = fs::read_dir(config.cache_dir()).await?;
         while let Some(game_dir) = stream.next_entry().await? {
