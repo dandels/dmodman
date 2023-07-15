@@ -35,7 +35,7 @@ venerable MO2.
 - [ ] Tomato sauce to go with the occasional spaghetti code (WIP).
 
 ## Known issues
-* The UI can crash the program during terminal resizing if the terminal is made small enough.
+* The UI can crash the program when resizing the terminal window.
 
 ## Installation
 * It is recommended to add "dmodman" to your PATH, either by placing the binary
