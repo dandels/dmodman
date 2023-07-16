@@ -84,17 +84,16 @@ impl<'a> MainUI<'static> {
         let mut terminal = term_setup().unwrap();
 
         loop {
-            if got_sigwinch.swap(false, Ordering::Relaxed) {
-                self.rectangles.recalculate();
-                self.redraw_terminal.store(true, Ordering::Relaxed);
-            }
             self.files_view.write().await.refresh().await;
             // TODO make sure we don't redraw too often during downloads
             self.download_view.write().await.refresh().await;
             self.msg_view.write().await.refresh().await;
             self.top_bar.write().await.refresh().await;
             self.bottom_bar.write().await.refresh().await;
-            if self.redraw_terminal.swap(false, Ordering::Relaxed) {
+
+            let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
+
+            if self.redraw_terminal.swap(false, Ordering::Relaxed) || recalculate_rects {
                 let mut files_view = self.files_view.write().await;
                 let mut downloads_view = self.download_view.write().await;
                 let mut msgs_view = self.msg_view.write().await;
@@ -102,6 +101,9 @@ impl<'a> MainUI<'static> {
                 let botbar = self.bottom_bar.read().await;
                 // TODO should this be done in a blocking thread?
                 terminal.draw(|f| {
+                    if recalculate_rects {
+                        self.rectangles.recalculate(f.size());
+                    }
                     f.render_stateful_widget(
                         files_view.widget.clone(),
                         self.rectangles.rect_main[0],

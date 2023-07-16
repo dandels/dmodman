@@ -56,14 +56,8 @@ impl Rectangles {
 }
 
 impl Rectangles {
-    pub fn recalculate(&mut self) {
-        let (width, height) = termion::terminal_size().unwrap();
-        self.rect_root = self.main_vertical_layout.split(Rect {
-            x: 0,
-            y: 0,
-            height,
-            width,
-        });
+    pub fn recalculate(&mut self, rect: Rect) {
+        self.rect_root = self.main_vertical_layout.split(rect);
         self.rect_topbar = self.topbar_layout.split(self.rect_root[0]);
         self.rect_main = self.tables_layout.split(self.rect_topbar[1]);
         self.rect_botbar = self.botbar_layout.split(self.rect_root[1]);
