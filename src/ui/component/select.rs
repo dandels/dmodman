@@ -18,7 +18,7 @@ impl_stateful!(DownloadTable<'_>, downloads);
 impl_stateful!(FileTable<'_>, files);
 impl_stateful!(MessageList<'_>, msgs);
 
-pub trait Select: Send {
+pub trait Select {
     fn select(&mut self, index: Option<usize>);
 
     fn selected(&self) -> Option<usize>;
