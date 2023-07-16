@@ -34,15 +34,17 @@ venerable MO2.
 - [ ] Querying download urls without visiting the Nexus (Premium users only).
 - [ ] Tomato sauce to go with the occasional spaghetti code (WIP).
 
-## Known issues
-* The UI can crash the program when resizing the terminal window.
-
 ## Installation
 * It is recommended to add "dmodman" to your PATH, either by placing the binary
 there, or by symlinking to a release/debug binary (`target/release/dmodman` and `target/debug/dmodman`, respectively).
 * Nxm url handling requires putting the dmodman.desktop file in `~/.local/share/applications` and dmodman being found in
 PATH.
 * dmodman depends on xdg-utils, as `xdg-open` is used for opening URLs.
+
+## Known issues
+* dmodman currently only manages files that are present in the download directory, meaning that you need to pointlessly
+keep mod archives around in order to check updates for them. If this is an issue for you, you can replace unneeded mod
+archives with empty files until a fix is released.
 
 ## Usage
 * Only one instance of dmodman can run at the same time.
