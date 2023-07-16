@@ -84,44 +84,45 @@ impl<'a> MainUI<'static> {
         let mut terminal = term_setup().unwrap();
 
         loop {
-            self.files_view.write().await.refresh().await;
-            // TODO make sure we don't redraw too often during downloads
-            self.download_view.write().await.refresh().await;
-            self.msg_view.write().await.refresh().await;
-            self.top_bar.write().await.refresh().await;
-            self.bottom_bar.write().await.refresh().await;
-
-            let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
-
-            if self.redraw_terminal.swap(false, Ordering::Relaxed) || recalculate_rects {
+            {
                 let mut files_view = self.files_view.write().await;
                 let mut downloads_view = self.download_view.write().await;
                 let mut msgs_view = self.msg_view.write().await;
-                let topbar = self.top_bar.read().await;
-                let botbar = self.bottom_bar.read().await;
-                // TODO should this be done in a blocking thread?
-                terminal.draw(|f| {
-                    if recalculate_rects {
-                        self.rectangles.recalculate(f.size());
-                    }
-                    f.render_stateful_widget(
-                        files_view.widget.clone(),
-                        self.rectangles.rect_main[0],
-                        &mut files_view.state,
-                    );
-                    f.render_stateful_widget(
-                        downloads_view.widget.clone(),
-                        self.rectangles.rect_main[1],
-                        &mut downloads_view.state,
-                    );
-                    f.render_stateful_widget(
-                        msgs_view.widget.clone(),
-                        self.rectangles.rect_root[1],
-                        &mut msgs_view.state,
-                    );
-                    f.render_widget(topbar.widget.clone(), self.rectangles.rect_topbar[0]);
-                    f.render_widget(botbar.widget.clone(), self.rectangles.rect_botbar[1]);
-                })?;
+                let mut topbar = self.top_bar.write().await;
+                let mut botbar = self.bottom_bar.write().await;
+                files_view.refresh().await;
+                downloads_view.refresh().await;
+                msgs_view.refresh().await;
+                topbar.refresh().await;
+                botbar.refresh().await;
+
+                let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
+
+                if self.redraw_terminal.swap(false, Ordering::Relaxed) || recalculate_rects {
+                    // TODO should this be done in a blocking thread?
+                    terminal.draw(|f| {
+                        if recalculate_rects {
+                            self.rectangles.recalculate(f.size());
+                        }
+                        f.render_stateful_widget(
+                            files_view.widget.clone(),
+                            self.rectangles.rect_main[0],
+                            &mut files_view.state,
+                        );
+                        f.render_stateful_widget(
+                            downloads_view.widget.clone(),
+                            self.rectangles.rect_main[1],
+                            &mut downloads_view.state,
+                        );
+                        f.render_stateful_widget(
+                            msgs_view.widget.clone(),
+                            self.rectangles.rect_root[1],
+                            &mut msgs_view.state,
+                        );
+                        f.render_widget(topbar.widget.clone(), self.rectangles.rect_topbar[0]);
+                        f.render_widget(botbar.widget.clone(), self.rectangles.rect_botbar[1]);
+                    })?;
+                }
             }
 
             if let Ok(Event::Input(key)) = self.events.next() {
