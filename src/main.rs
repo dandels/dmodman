@@ -71,5 +71,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     nxm_listener::listen_for_downloads(&downloads, &msgs, nxm_rx).await;
 
-    ui::MainUI::new(cache, client, config, downloads, msgs).run().await
+    ui::MainUI::new(cache, client, config, downloads, msgs).run().await;
+    Ok(())
 }
