@@ -98,6 +98,7 @@ impl Downloads {
                     if let Err(()) = task.try_start().await {
                         self.msgs.push(format!("Failed to restart download for {}", &file_name)).await;
                     }
+                    return;
                 }
             }
         };
