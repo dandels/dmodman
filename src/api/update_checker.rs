@@ -193,7 +193,6 @@ impl UpdateChecker {
             for upd in newer_files.iter().rev() {
                 if file.file_id == upd.old_file_id {
                     has_update = true;
-                    self.msgs.push(format!("Found {} is old", &file.file_details.name)).await;
                     break;
                 }
             }
