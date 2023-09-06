@@ -204,24 +204,30 @@ impl Downloads {
                     //        &local_file.file_id,
                     //    )))
                     //    .await;
-                    if !(md5.eq(&query_res.results.file_details.md5)
-                        && local_file.file_name.eq(&query_res.results.file_details.file_name))
+
+                    if let Some(md5result) =
+                        query_res.results.iter().find(|fd| fd.file_details.file_id == local_file.file_id)
                     {
-                        self.msgs
-                            .push(format!(
-                                "Warning: API returned unexpected file when checking hash for {}",
-                                &local_file.file_name
-                            ))
-                            .await;
-                        let mi = &query_res.results.r#mod;
-                        let fd = &query_res.results.file_details;
-                        self.msgs.push(format!("Found {}: {} ({})", mi.name, fd.name, fd.file_name)).await;
-                        self.msgs.push("This should be reported as a Nexus bug. See README for details.").await;
+                        if !(md5.eq(&md5result.file_details.md5)
+                            && local_file.file_name.eq(&md5result.file_details.file_name))
+                        {
+                            self.msgs
+                                .push(format!(
+                                    "Warning: API returned unexpected file when checking hash for {}",
+                                    &local_file.file_name
+                                ))
+                                .await;
+                            let mi = &md5result.r#mod;
+                            let fd = &md5result.file_details;
+                            self.msgs.push(format!("Found {}: {} ({})", mi.name, fd.name, fd.file_name)).await;
+                            self.msgs.push("This should be reported as a Nexus bug. See README for details.").await;
+                        }
+                        // Early return if success, else fall through to error reporting.
+                        return;
                     }
-                } else {
-                    self.msgs.push(format!("Unable to verify integrity of: {}", &local_file.file_name)).await;
-                    self.msgs.push("This could mean the download got corrupted. See README for details.").await;
                 }
+                self.msgs.push(format!("Unable to verify integrity of: {}", &local_file.file_name)).await;
+                self.msgs.push("This could mean the download got corrupted. See README for details.").await;
             }
             Err(e) => {
                 self.msgs.push(format!("Error when checking hash for: {}", local_file.file_name)).await;

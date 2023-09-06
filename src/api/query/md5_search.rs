@@ -1,12 +1,13 @@
 use super::{ModInfo, Queriable};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Md5Search {
-    pub results: Md5Results,
+    pub results: Vec<Md5Results>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Md5Results {
     pub r#mod: ModInfo, // Needs to be named "mod" for serialization to succeed
     pub file_details: Md5FileDetails,
@@ -15,7 +16,7 @@ pub struct Md5Results {
 /* This is mostly the same as FileDetails, but it doesn't have a description field or size_kb field.
  * FileDetails on the other hand lacks the md5 sum.
  */
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Md5FileDetails {
     pub file_id: u64,
     pub name: String,
