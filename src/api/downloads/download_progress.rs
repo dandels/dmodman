@@ -15,7 +15,7 @@ impl DownloadProgress {
     pub fn new(bytes_read: Arc<AtomicU64>, content_length: Option<u64>) -> Self {
         let size = match content_length {
             Some(total) => format::human_readable(total),
-            None => ("?".to_string(), 3),
+            None => ("?".to_string(), 3), // fall back to formatting size as mebibytes
         };
         Self {
             bytes_read,
