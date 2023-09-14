@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 // TODO several of these should probably be Options
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModInfo {
-    pub name: String,
-    pub summary: String,
-    pub description: String,
+    pub name: Option<String>,
+    pub summary: Option<String>,
+    pub description: Option<String>,
     pub picture_url: Option<String>,
     pub mod_id: u32,
     pub game_id: u32,
