@@ -219,7 +219,7 @@ impl Downloads {
                                 .await;
                             let mi = &md5result.r#mod;
                             let fd = &md5result.file_details;
-                            self.msgs.push(format!("Found {}: {} ({})", mi.name, fd.name, fd.file_name)).await;
+                            self.msgs.push(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name)).await;
                             self.msgs.push("This should be reported as a Nexus bug. See README for details.").await;
                         }
                         // Early return if success, else fall through to error reporting.
