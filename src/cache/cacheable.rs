@@ -53,7 +53,7 @@ mod tests {
         println!("{:?}", path);
 
         let mi: ModInfo = ModInfo::load(path).await?;
-        assert_eq!(mi.name, "Graphic Herbalism - MWSE and OpenMW Edition");
+        assert_eq!(mi.name.unwrap(), "Graphic Herbalism - MWSE and OpenMW Edition");
         Ok(())
     }
 
