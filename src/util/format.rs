@@ -25,7 +25,7 @@ pub fn bytes_as_unit(bytes: u64, unit: usize) -> String {
 
 pub fn human_readable(bytes: u64) -> (String, usize) {
     let mut bytes: f64 = bytes as f64;
-    let units = vec!["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
+    let units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
     let mut i = 0;
     while (bytes * 10.0).round() / 10.0 >= 1024.0 && i < units.len() - 1 {
         bytes /= 1024.0;
@@ -46,7 +46,7 @@ mod tests {
         let arg = "games/{}/mods/{}/files.json";
         let params = vec!["morrowind", "46599"];
 
-        assert_eq!("games/morrowind/mods/46599/files.json", format::vec_with_format_string(&arg, params));
+        assert_eq!("games/morrowind/mods/46599/files.json", format::vec_with_format_string(arg, params));
     }
 
     #[test]

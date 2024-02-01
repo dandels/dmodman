@@ -205,8 +205,8 @@ impl<'a> MainUI<'static> {
                         let fdata = files_lock.get(i).unwrap();
                         let lf_lock = fdata.local_file.read().await;
                         let url = format!("https://www.nexusmods.com/{}/mods/{}", &lf_lock.game, &lf_lock.mod_id);
-                        if let Err(_) = Command::new("xdg-open").arg(url).status() {
-                            self.msgs.push(format!("xdg-open is needed to open URLs in browser.")).await;
+                        if Command::new("xdg-open").arg(url).status().is_err() {
+                            self.msgs.push("xdg-open is needed to open URLs in browser.".to_string()).await;
                         }
                     }
                 }

@@ -82,7 +82,7 @@ mod tests {
     fn expired_nxm() -> Result<(), ApiError> {
         let nxm_str =
             "nxm://SkyrimSE/mods/8850/files/27772?key=XnbXtdAspojLzUAn7x-Grw&expires=1583065790&user_id=1234321";
-        if let Err(ApiError::Expired) = NxmUrl::from_str(&nxm_str) {
+        if let Err(ApiError::Expired) = NxmUrl::from_str(nxm_str) {
             return Ok(());
         }
         panic!("Nxm link should have expired");

@@ -22,7 +22,7 @@ impl<'a> DownloadTable<'a> {
         let block = Block::default().borders(Borders::ALL).title("Downloads");
 
         let headers = Row::new(
-            vec!["Filename", "Progress", "Status"]
+            ["Filename", "Progress", "Status"]
                 .iter()
                 .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
         );

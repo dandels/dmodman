@@ -49,7 +49,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::load().unwrap().profile(game).build().unwrap();
-        let path = config.path_for(PathType::ModInfo(&game, &mod_id));
+        let path = config.path_for(PathType::ModInfo(game, &mod_id));
         println!("{:?}", path);
 
         let mi: ModInfo = ModInfo::load(path).await?;
@@ -63,7 +63,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::default().profile(game).build().unwrap();
-        let path = config.path_for(PathType::FileList(&game, &mod_id));
+        let path = config.path_for(PathType::FileList(game, &mod_id));
 
         let fl = FileList::load(path).await?;
         let mut upds = fl.file_updates.clone();
