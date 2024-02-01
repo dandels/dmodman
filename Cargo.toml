@@ -29,3 +29,4 @@ uuid = { version = "1.4", features = ["v4", "fast-rng"] }
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.
 lto=true
+strip="debuginfo"
