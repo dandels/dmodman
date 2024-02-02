@@ -1,8 +1,8 @@
 use crate::api::RequestCounter;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use ratatui::layout::Alignment;
 use ratatui::widgets::Paragraph;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub struct BottomBar<'a> {
     request_counter: RequestCounter,

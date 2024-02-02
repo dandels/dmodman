@@ -3,10 +3,10 @@ use crate::Messages;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tokio_stream::StreamExt;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
+use tokio_stream::StreamExt;
 
 pub struct MessageList<'a> {
     pub block: Block<'a>,
@@ -42,7 +42,6 @@ impl<'a> MessageList<'a> {
     where
         'b: 'a,
     {
-
         if self.has_data_changed.swap(false, Ordering::Relaxed) {
             let mut items: Vec<ListItem<'b>> = vec![];
             let msgs = self.msgs.messages.read().await;
