@@ -17,6 +17,7 @@ use crate::config::{Config, PathType};
 use crate::{util, Messages};
 
 use std::ffi::OsStr;
+use std::io::ErrorKind;
 use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -40,18 +41,14 @@ pub struct Downloads {
 
 impl Downloads {
     pub async fn new(cache: &Cache, client: &Client, config: &Config, msgs: &Messages) -> Self {
-        let downloads = Self {
+        Self {
             tasks: Arc::new(RwLock::new(IndexMap::new())),
             has_changed: Arc::new(AtomicBool::new(true)),
             cache: cache.clone(),
             client: client.clone(),
             config: config.clone(),
             msgs: msgs.clone(),
-        };
-
-        self::resume_on_startup(downloads.clone()).await;
-
-        downloads
+        }
     }
 
     pub async fn toggle_pause_for(&self, i: usize) {
@@ -76,7 +73,6 @@ impl Downloads {
                     self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
                     return;
                 }
-                //
                 DownloadState::Done => {
                     self.msgs
                         .push(format!(
@@ -91,28 +87,33 @@ impl Downloads {
                 // Restart the download using the new download link.
                 _ => {
                     task.dl_info.url = url.clone();
+                    if let Err(()) = task.try_start().await {
+                        self.msgs.push(format!("Failed to restart download for {}", &file_name)).await;
+                    }
                     if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&task.dl_info))).await
                     {
                         self.msgs.push(format!("Couldn't store new download url for {}: {}", &file_name, e)).await;
                     }
-                    if let Err(()) = task.try_start().await {
-                        self.msgs.push(format!("Failed to restart download for {}", &file_name)).await;
-                    }
                     return;
                 }
             }
-        };
+        } // Important to drop the lock here or self.add() deadlocks
         let f_info = FileInfo::new(nxm.domain_name, nxm.mod_id, nxm.file_id, file_name);
         self.add(DownloadInfo::new(f_info, url)).await;
     }
 
-    async fn add(&self, dl_info: DownloadInfo) {
+    pub async fn add(&self, dl_info: DownloadInfo) {
         let mut task =
             DownloadTask::new(&self.cache, &self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
-        if task.try_start().await.is_ok() {
-            self.tasks.write().await.insert(dl_info.file_info.file_id, task);
-            self.has_changed.store(true, Ordering::Relaxed);
+
+        match dl_info.get_state() {
+            DownloadState::Paused => {}
+            _ => {
+                let _ = task.try_start().await;
+            }
         }
+        self.tasks.write().await.insert(dl_info.file_info.file_id, task);
+        self.has_changed.store(true, Ordering::Relaxed);
     }
 
     async fn parse_nxm(&self, nxm_str: &str) -> Result<(NxmUrl, Url), ApiError> {
@@ -256,29 +257,35 @@ impl Downloads {
         }
         self.has_changed.store(true, Ordering::Relaxed);
     }
-}
 
-async fn resume_on_startup(dls: Downloads) {
-    if let Ok(mut file_stream) = fs::read_dir(&dls.config.download_dir()).await {
-        while let Some(f) = file_stream.next_entry().await.unwrap() {
-            if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("part") {
-                let part_json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
-                if let Ok(dl_info) = DownloadInfo::load(part_json_file).await {
-                    let mut task = DownloadTask::new(
-                        &dls.cache,
-                        &dls.client,
-                        &dls.config,
-                        &dls.msgs,
-                        dl_info.clone(),
-                        dls.clone(),
-                    );
-                    match dl_info.get_state() {
-                        DownloadState::Paused => {
-                            dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
+    pub async fn resume_on_startup(&self) {
+        if let Ok(mut file_stream) = fs::read_dir(&self.config.download_dir()).await {
+            while let Some(f) = file_stream.next_entry().await.unwrap() {
+                // Resume incomplete downloads
+                if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("part") {
+                    let part_json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
+                    match DownloadInfo::load(part_json_file).await {
+                        Ok(dl_info) => {
+                            self.add(dl_info).await;
                         }
-                        _ => {
-                            if task.try_start().await.is_ok() {
-                                dls.tasks.write().await.insert(task.dl_info.file_info.file_id, task);
+                        Err(ref e) => {
+                            if e.kind() == ErrorKind::NotFound {
+                                self.msgs
+                                    .push(format!(
+                                        "Metadata for partially downloaded file {:?} is missing.\n
+                                         The download needs to be restarted through the Nexus.",
+                                        f.file_name()
+                                    ))
+                                    .await;
+                            } else {
+                                self.msgs
+                                    .push(format!(
+                                        "Unable to deserialize metadata from {:?}:\n
+                                        {}",
+                                        f.file_name(),
+                                        e
+                                    ))
+                                    .await;
                             }
                         }
                     }

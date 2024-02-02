@@ -1,5 +1,5 @@
 use super::DownloadState;
-use super::{ApiError, Client, DownloadInfo, DownloadProgress, Downloads};
+use super::{Client, DownloadInfo, DownloadProgress, Downloads};
 use crate::cache::{Cache, Cacheable};
 use crate::config::{Config, PathType};
 use crate::Messages;
@@ -24,7 +24,7 @@ pub struct DownloadTask {
     config: Config,
     msgs: Messages,
     downloads: Downloads,
-    join_handle: Option<JoinHandle<Result<(), ApiError>>>,
+    join_handle: Option<JoinHandle<()>>,
     pub dl_info: DownloadInfo,
 }
 
@@ -78,17 +78,7 @@ impl DownloadTask {
             }
             DownloadState::Done => {}
         }
-        match self.dl_info.save(self.config.path_for(PathType::DownloadInfo(&self.dl_info))).await {
-            Ok(()) => {}
-            Err(e) => {
-                self.msgs
-                    .push(format!(
-                        "IO error when saving download state for {}: {}",
-                        self.dl_info.file_info.file_name, e
-                    ))
-                    .await;
-            }
-        }
+        self.save_dl_info().await;
     }
 
     // helper function to reduce repetition in start()
@@ -127,9 +117,6 @@ impl DownloadTask {
 
     async fn start(&mut self, path: PathBuf) {
         self.dl_info.set_state(DownloadState::Downloading);
-        if let Err(e) = self.dl_info.save(self.config.path_for(PathType::DownloadInfo(&self.dl_info))).await {
-            self.msgs.push(format!("Error when saving download state: {}", e)).await;
-        }
 
         let file_name = &self.dl_info.file_info.file_name;
         let mut part_path = path.clone();
@@ -156,13 +143,12 @@ impl DownloadTask {
         let resp = resp.unwrap();
 
         let mut open_opts = OpenOptions::new();
-        #[allow(clippy::needless_late_init)] // false clippy positive methinks
-        let open_result;
-        match resp.error_for_status_ref() {
+        let open_result = match resp.error_for_status_ref() {
             Ok(resp) => {
-                open_result = match resp.status() {
+                match resp.status() {
                     StatusCode::OK => {
                         self.dl_info.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
+                        self.save_dl_info().await;
                         open_opts.write(true).create(true).open(&part_path).await
                     }
                     StatusCode::PARTIAL_CONTENT => {
@@ -171,6 +157,7 @@ impl DownloadTask {
                         } else {
                             self.dl_info.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
                         }
+                        self.save_dl_info().await;
                         open_opts.append(true).open(&part_path).await
                     }
                     // Running into some other non-error status code shouldn't happen.
@@ -181,11 +168,12 @@ impl DownloadTask {
                         .await;
                         return;
                     }
-                };
+                }
             }
             Err(e) => {
                 if resp.status() == StatusCode::GONE {
                     self.dl_info.set_state(DownloadState::Expired);
+                    self.save_dl_info().await;
                     self.downloads.has_changed.store(true, Ordering::Relaxed);
                 } else {
                     self.log_and_set_error(format!("Download {file_name} failed with error: {}", e.status().unwrap()))
@@ -193,7 +181,8 @@ impl DownloadTask {
                 }
                 return;
             }
-        }
+        };
+
         if let Err(e) = open_result {
             self.log_and_set_error(format!("Unable to open {file_name} for writing: {}", e)).await;
             return;
@@ -204,26 +193,35 @@ impl DownloadTask {
         let fi = self.dl_info.file_info.clone();
         let dl_info = self.dl_info.clone();
         let msgs = self.msgs.clone();
-        let handle: JoinHandle<Result<(), ApiError>> = task::spawn(async move {
+        let handle: JoinHandle<()> = task::spawn(async move {
             let mut bufwriter = BufWriter::new(&mut file);
             let mut stream = resp.bytes_stream();
 
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(bytes) => {
-                        bufwriter.write_all(&bytes).await?;
+                        if let Err(e) = bufwriter.write_all(&bytes).await {
+                            msgs.push(format!("IO error when writing bytes to disk: {}", e)).await;
+                            return;
+                        }
                         bytes_read.fetch_add(bytes.len() as u64, Ordering::Relaxed);
                         downloads.has_changed.store(true, Ordering::Relaxed);
                     }
                     Err(e) => {
+                        msgs.push(format!("Error during download: {}", e)).await;
                         /* The download could fail for network-related reasons. Flush the data we got so that we can
                          * continue it at some later point. */
-                        bufwriter.flush().await?;
-                        return Err(ApiError::from(e));
+                        if let Err(e) = bufwriter.flush().await {
+                            msgs.push(format!("IO error when flushing bytes to disk: {}", e)).await;
+                            return;
+                        }
                     }
                 }
             }
-            bufwriter.flush().await?;
+            if let Err(e) = bufwriter.flush().await {
+                msgs.push(format!("IO error when flushing bytes to disk: {}", e)).await;
+                return;
+            }
             if fs::rename(part_path.clone(), path).await.is_err() {
                 msgs.push(format!(
                     "Download of {} complete, but unable to remove .part extension.",
@@ -235,14 +233,29 @@ impl DownloadTask {
             part_path.pop();
             part_path.push(format!("{}.part.json", fi.file_name));
             if fs::remove_file(&part_path).await.is_err() {
-                msgs.push(format!("Unable to remove .part.json file after download is complete: {:?}", part_path)).await
+                msgs.push(format!("Unable to remove .part.json file after download is complete: {:?}", part_path))
+                    .await
             }
 
-            downloads.update_metadata(fi).await?;
             dl_info.set_state(DownloadState::Done);
             downloads.has_changed.store(true, Ordering::Relaxed);
-            Ok(())
+
+            if let Err(e) = downloads.update_metadata(fi).await {
+                msgs.push(format!(
+                    "Unable to update metadata for downloaded file {}: {}",
+                    dl_info.file_info.file_name, e
+                ))
+                .await;
+            }
         });
         self.join_handle = Some(handle);
+    }
+
+    async fn save_dl_info(&self) {
+        if let Err(e) = self.dl_info.save(self.config.path_for(PathType::DownloadInfo(&self.dl_info))).await {
+            self.msgs
+                .push(format!("Error when saving download state for {}: {}", self.dl_info.file_info.file_name, e))
+                .await;
+        }
     }
 }
