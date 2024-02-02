@@ -91,8 +91,8 @@ impl DownloadTask {
         }
     }
 
-    // helper function to reduce repetition instart()
-    async fn log_and_set_error<S: Into<String>>(&self, msg: S) {
+    // helper function to reduce repetition in start()
+    async fn log_and_set_error<S: Into<String> + std::fmt::Debug>(&self, msg: S) {
         self.msgs.push(msg).await;
         self.dl_info.set_state(DownloadState::Error);
         self.downloads.has_changed.store(true, Ordering::Relaxed);

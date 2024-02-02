@@ -32,7 +32,7 @@ impl Drop for NxmListener {
     }
 }
 
-async fn handle_input(stream: UnixStream) -> Result<Option<String>, Error> {
+async fn parse_input(stream: UnixStream) -> Result<Option<String>, Error> {
     if stream.ready(Interest::READABLE).await?.is_readable() {
         let mut data = vec![0; 1024];
         match stream.try_read(&mut data) {
@@ -62,7 +62,7 @@ pub fn listen() -> Result<Receiver<Result<String, Error>>, Error> {
     task::spawn(async move {
         loop {
             match socket.listener.accept().await {
-                Ok((stream, _addr)) => match handle_input(stream).await {
+                Ok((stream, _addr)) => match parse_input(stream).await {
                     Ok(opt_s) => {
                         if let Some(msg) = opt_s {
                             tx.send(Ok(msg)).await.unwrap();
@@ -113,14 +113,11 @@ pub fn remove_existing() -> Result<(), Error> {
     std::fs::remove_file(path)
 }
 
-// Listen to socket for nxm links to download
 pub async fn listen_for_downloads(
-    downloads: &Downloads,
-    msgs: &Messages,
+    downloads: Downloads,
+    msgs: Messages,
     mut nxm_rx: Receiver<Result<String, std::io::Error>>,
 ) {
-    let downloads = downloads.clone();
-    let msgs = msgs.clone();
     let _handle = tokio::task::spawn(async move {
         while let Some(socket_msg) = nxm_rx.recv().await {
             match socket_msg {
@@ -145,16 +142,14 @@ pub async fn listen_for_downloads(
  * running instance and exit early.
  * If another instance is already running, we exit early.
  *
- * Returns Ok(None) if we we want to exit early, otherwise returns the mpsc receiver for the socket we bind to.
- */
+ * Returns Ok(None) if we we want to exit early, otherwise returns the mpsc receiver for the socket we bind to. */
 pub async fn queue_download_else_bind_to_socket(
     nxm_str_opt: Option<&str>,
 ) -> Result<Option<Receiver<Result<String, std::io::Error>>>, std::io::Error> {
     match listen() {
         Ok(nxm_rx) => Ok(Some(nxm_rx)),
         /* If the address is in use, either another instance is using it or a previous instance was killed without
-         * closing it.
-         */
+         * closing it. */
         Err(ref e) if e.kind() == ErrorKind::AddrInUse => {
             match connect().await {
                 // Another running instance is listening to the socket

@@ -8,8 +8,7 @@ mod util;
 
 use api::{Client, Downloads};
 use cache::Cache;
-use config::Config;
-use config::ConfigBuilder;
+use config::{Config, ConfigBuilder};
 use messages::Messages;
 use std::env::args;
 use std::error::Error;
@@ -20,9 +19,11 @@ use std::error::Error;
  * If an nxm:// link is passed as an argument, we try to queue it in an already running instance. If none exists, we
  * start the TUI normally and queue the download.
  */
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut nxm_str_opt: Option<&str> = None;
+    let mut is_interactive = true;
 
     let args: Vec<String> = args().collect();
     if args.len() > 2 {
@@ -31,6 +32,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     } else if let Some(first_arg) = args.get(1) {
         if first_arg.starts_with("nxm://") {
             nxm_str_opt = Some(first_arg);
+        } else if first_arg == "-d" {
+            is_interactive = false;
         } else {
             println!("Arguments are expected only when acting as an nxm:// URL handler.");
             return Ok(());
@@ -43,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         None => return Ok(()),
     };
 
-    let msgs = Messages::default();
+    let msgs = Messages::new(is_interactive);
 
     // TODO config is cloned needlessly in a few places
     let mut config = match ConfigBuilder::load() {
@@ -64,13 +67,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let cache = Cache::new(&config).await?;
     let client = Client::new(&config).await;
     let downloads = Downloads::new(&cache, &client, &config, &msgs).await;
+    downloads.resume_on_startup().await;
 
     if let Some(nxm_str) = nxm_str_opt {
         let _ = downloads.queue(nxm_str.to_string()).await;
     }
 
-    nxm_listener::listen_for_downloads(&downloads, &msgs, nxm_rx).await;
+    if is_interactive {
+        {
+            let downloads = downloads.clone();
+            let msgs = msgs.clone();
+            tokio::task::spawn(async move {
+                nxm_listener::listen_for_downloads(downloads, msgs, nxm_rx).await;
+            });
+        }
+        ui::MainUI::new(cache, client, config, downloads, msgs).run().await;
+    } else {
+        nxm_listener::listen_for_downloads(downloads, msgs, nxm_rx).await;
+    }
 
-    ui::MainUI::new(cache, client, config, downloads, msgs).run().await;
     Ok(())
 }
