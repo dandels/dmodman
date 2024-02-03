@@ -80,14 +80,14 @@ impl Downloads {
                             file_name
                         ))
                         .await;
-                    let _ = task.try_start().await;
+                    let _ = task.start().await;
                     self.has_changed.store(true, Ordering::Relaxed);
                     return;
                 }
                 // Restart the download using the new download link.
                 _ => {
                     task.dl_info.url = url.clone();
-                    if let Err(()) = task.try_start().await {
+                    if let Err(()) = task.start().await {
                         self.msgs.push(format!("Failed to restart download for {}", &file_name)).await;
                     }
                     if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&task.dl_info))).await
@@ -106,11 +106,13 @@ impl Downloads {
         let mut task =
             DownloadTask::new(&self.cache, &self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
 
+        if task.file_exists().await {
+            return;
+        }
+
         match dl_info.get_state() {
             DownloadState::Paused => {}
-            _ => {
-                let _ = task.try_start().await;
-            }
+            _ => if let Ok(()) = task.start().await {},
         }
         self.tasks.write().await.insert(dl_info.file_info.file_id, task);
         self.has_changed.store(true, Ordering::Relaxed);
@@ -138,7 +140,7 @@ impl Downloads {
         Ok((nxm, Url::parse(&location.URI)?))
     }
 
-    async fn update_metadata(&self, fi: FileInfo) -> Result<(), ApiError> {
+    async fn update_metadata(&self, fi: &FileInfo) -> Result<(), ApiError> {
         let (game, mod_id) = (&fi.game, fi.mod_id);
         /* TODO: If the FileList isn't found handle this as a foreign file, however they're going to be dealt with.
          * TODO: Should we just do an Md5Search instead? It would allows us to validate the file while getting its
@@ -185,7 +187,7 @@ impl Downloads {
             }
         }
 
-        let lf = LocalFile::new(fi, UpdateStatus::UpToDate(latest_timestamp));
+        let lf = LocalFile::new(fi.clone(), UpdateStatus::UpToDate(latest_timestamp));
         self.verify_hash(&lf).await;
         self.cache.save_local_file(lf.clone()).await?;
         Ok(())
