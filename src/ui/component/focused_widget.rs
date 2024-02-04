@@ -19,18 +19,18 @@ impl<'a> FocusedWidget<'a> {
     pub async fn change_to(&mut self, mut selected: FocusedWidget<'a>) {
         match self {
             FocusedWidget::DownloadTable(current) => {
-                current.write().await.unfocus().await;
-                selected.focus().await;
+                current.write().await.unfocus();
+                selected.set_focus().await;
                 *self = selected;
             }
             FocusedWidget::FileTable(current) => {
-                current.write().await.unfocus().await;
-                selected.focus().await;
+                current.write().await.unfocus();
+                selected.set_focus().await;
                 *self = selected;
             }
             FocusedWidget::MessageList(current) => {
-                current.write().await.unfocus().await;
-                selected.focus().await;
+                current.write().await.unfocus();
+                selected.set_focus().await;
                 *self = selected;
             }
         }
@@ -87,16 +87,16 @@ impl<'a> FocusedWidget<'a> {
         }
     }
 
-    pub async fn focus(&mut self) {
+    pub async fn set_focus(&mut self) {
         match self {
             FocusedWidget::DownloadTable(current) => {
-                current.write().await.focus().await;
+                current.write().await.focus();
             }
             FocusedWidget::FileTable(current) => {
-                current.write().await.focus().await;
+                current.write().await.focus();
             }
             FocusedWidget::MessageList(current) => {
-                current.write().await.focus().await;
+                current.write().await.focus();
             }
         }
     }

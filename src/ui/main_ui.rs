@@ -1,13 +1,3 @@
-use super::component::*;
-use super::event::{Event, Events};
-use crate::ui::rectangles::Rectangles;
-
-use crate::api::{Client, Downloads, UpdateChecker};
-use crate::cache::Cache;
-use crate::config::Config;
-use crate::ui::*;
-use crate::Messages;
-
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -18,12 +8,22 @@ use termion::event::Key;
 use tokio::sync::RwLock;
 use tokio::task;
 
+use super::component::*;
+use super::event::{Event, Events};
+use crate::api::{Client, Downloads, UpdateChecker};
+use crate::cache::Cache;
+use crate::config::Config;
+use crate::ui::rectangles::Rectangles;
+use crate::ui::*;
+use crate::Messages;
+
 pub struct MainUI<'a> {
     cache: Cache,
     downloads: Downloads,
     rectangles: Rectangles,
     focused: FocusedWidget<'a>,
-    top_bar: Arc<RwLock<TopBar<'a>>>,
+    tab_bar: TabBar<'a>,
+    key_bar: Arc<RwLock<KeyBar<'a>>>,
     files_view: Arc<RwLock<FileTable<'a>>>,
     download_view: Arc<RwLock<DownloadTable<'a>>>,
     msg_view: Arc<RwLock<MessageList<'a>>>,
@@ -37,10 +37,11 @@ impl<'a> MainUI<'static> {
     pub fn new(cache: Cache, client: Client, config: Config, downloads: Downloads, msgs: Messages) -> Self {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
 
-        let top_bar = RwLock::new(TopBar::new()).into();
+        let key_bar = RwLock::new(KeyBar::new()).into();
 
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
+        let tab_bar = TabBar::new(redraw_terminal.clone());
         let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.file_index.clone())));
         let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
@@ -53,7 +54,8 @@ impl<'a> MainUI<'static> {
             downloads,
             rectangles: Rectangles::new(),
             focused,
-            top_bar,
+            tab_bar,
+            key_bar,
             files_view,
             download_view,
             msg_view,
@@ -69,7 +71,7 @@ impl<'a> MainUI<'static> {
      * happens when necessary. */
     pub async fn run(mut self) {
         let mut events = Events::new();
-        self.files_view.write().await.focus().await;
+        self.files_view.write().await.focus();
         /* X11 (and maybe Wayland?) sends SIGWINCH when the window is resized, so we can listen to that. Otherwise we
          * redraw when something has changed.
          * We set this to true so that all widgets are rendered in the first loop. */
@@ -84,12 +86,13 @@ impl<'a> MainUI<'static> {
                 let mut files_view = self.files_view.write().await;
                 let mut downloads_view = self.download_view.write().await;
                 let mut msgs_view = self.msg_view.write().await;
-                let mut topbar = self.top_bar.write().await;
+                let mut keybar = self.key_bar.write().await;
                 let mut botbar = self.bottom_bar.write().await;
                 files_view.refresh().await;
                 downloads_view.refresh().await;
                 msgs_view.refresh().await;
-                topbar.refresh().await;
+                self.tab_bar.refresh().await;
+                keybar.refresh().await;
                 botbar.refresh().await;
 
                 let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
@@ -100,23 +103,26 @@ impl<'a> MainUI<'static> {
                             if recalculate_rects {
                                 self.rectangles.recalculate(f.size());
                             }
-                            f.render_stateful_widget(
-                                files_view.widget.clone(),
-                                self.rectangles.rect_main[0],
-                                &mut files_view.state,
-                            );
-                            f.render_stateful_widget(
-                                downloads_view.widget.clone(),
-                                self.rectangles.rect_main[1],
-                                &mut downloads_view.state,
-                            );
-                            f.render_stateful_widget(
-                                msgs_view.widget.clone(),
-                                self.rectangles.rect_root[1],
-                                &mut msgs_view.state,
-                            );
-                            f.render_widget(topbar.widget.clone(), self.rectangles.rect_topbar[0]);
-                            f.render_widget(botbar.widget.clone(), self.rectangles.rect_botbar[1]);
+                            if self.tab_bar.selected().unwrap() == 0 {
+                                f.render_stateful_widget(
+                                    files_view.widget.clone(),
+                                    self.rectangles.rect_main[0],
+                                    &mut files_view.state,
+                                );
+                                f.render_stateful_widget(
+                                    downloads_view.widget.clone(),
+                                    self.rectangles.rect_main[1],
+                                    &mut downloads_view.state,
+                                );
+                                f.render_stateful_widget(
+                                    msgs_view.widget.clone(),
+                                    self.rectangles.rect_root[1],
+                                    &mut msgs_view.state,
+                                );
+                                f.render_widget(botbar.widget.clone(), self.rectangles.rect_botbar[1]);
+                            }
+                            f.render_widget(keybar.widget.clone(), self.rectangles.rect_keybar[0]);
+                            f.render_widget(self.tab_bar.widget.clone(), self.rectangles.rect_tabbar[0]);
                         })
                         .unwrap();
                 }
@@ -157,6 +163,7 @@ impl<'a> MainUI<'static> {
                     self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
                 }
             },
+            // TODO abstract things like this away from the UI code
             Key::Char('i') => {
                 if let FocusedWidget::FileTable(fv) = &self.focused {
                     let ftable_lock = fv.read().await;
@@ -249,9 +256,15 @@ impl<'a> MainUI<'static> {
                     }
                 }
             },
+            Key::Char('\t') => {
+                self.tab_bar.next_tab();
+            }
+            Key::BackTab => {
+                self.tab_bar.prev_tab();
+            }
             _ => {
                 // Uncomment to log keypresses
-                // self.msgs.push(format!("{:?}", key)).await;
+                //self.msgs.push(format!("{:?}", key)).await;
             }
         }
     }

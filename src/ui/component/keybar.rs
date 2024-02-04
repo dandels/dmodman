@@ -2,15 +2,15 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-pub struct TopBar<'a> {
+pub struct KeyBar<'a> {
     pub widget: Paragraph<'a>,
     text: Vec<Line<'a>>,
 }
 
-impl<'a> TopBar<'a> {
+impl<'a> KeyBar<'a> {
     pub fn new() -> Self {
         let text = vec![Line::from(vec![
-            Span::styled(" <u>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled("<u>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw("update all,"),
             Span::styled(" <U>", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw("update selected,"),

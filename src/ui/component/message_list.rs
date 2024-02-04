@@ -31,7 +31,7 @@ impl<'a> MessageList<'a> {
             msgs: msgs.clone(),
             state: ListState::default(),
             highlight_style,
-            widget: List::new(vec![]),
+            widget: List::default(),
             needs_redraw: AtomicBool::new(false),
             has_data_changed: msgs.has_changed,
             redraw_terminal,

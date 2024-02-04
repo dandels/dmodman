@@ -1,7 +1,21 @@
-use super::{DownloadTable, FileTable, MessageList};
+use super::{DownloadTable, FileTable, MessageList, TabBar};
+use std::sync::atomic::Ordering;
+
+impl Select for TabBar<'_> {
+    fn select(&mut self, index: Option<usize>) {
+        let i = index.unwrap();
+        self.widget = self.widget.clone().select(i);
+        self.selected_tab = i;
+        self.needs_redraw.store(true, Ordering::Relaxed);
+    }
+
+    fn selected(&self) -> Option<usize> {
+        Some(self.selected_tab)
+    }
+}
 
 macro_rules! impl_stateful {
-    ($T:ty, $collection:ident) => {
+    ($T:ty) => {
         impl Select for $T {
             fn select(&mut self, index: Option<usize>) {
                 self.state.select(index)
@@ -14,9 +28,9 @@ macro_rules! impl_stateful {
     };
 }
 
-impl_stateful!(DownloadTable<'_>, downloads);
-impl_stateful!(FileTable<'_>, files);
-impl_stateful!(MessageList<'_>, msgs);
+impl_stateful!(DownloadTable<'_>);
+impl_stateful!(FileTable<'_>);
+impl_stateful!(MessageList<'_>);
 
 pub trait Select {
     fn select(&mut self, index: Option<usize>);

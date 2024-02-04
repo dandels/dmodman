@@ -11,6 +11,7 @@ pub struct DownloadTable<'a> {
     pub downloads: Downloads,
     pub block: Block<'a>,
     headers: Row<'a>,
+    widths: [Constraint; 3],
     pub highlight_style: Style,
     pub widget: Table<'a>,
     pub needs_redraw: AtomicBool,
@@ -28,14 +29,17 @@ impl<'a> DownloadTable<'a> {
         );
 
         downloads.has_changed.store(true, Ordering::Relaxed);
+        let widths = [ Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)];
+
 
         Self {
             state: TableState::default(),
             downloads,
             block,
             headers,
+            widths,
             highlight_style: Style::default(),
-            widget: Table::new(vec![]),
+            widget: Table::default(),
             needs_redraw: AtomicBool::new(false),
             redraw_terminal,
         }
@@ -58,14 +62,9 @@ impl<'a> DownloadTable<'a> {
                 ]))
             }
 
-            self.widget = Table::new(rows)
+            self.widget = Table::new(rows, self.widths)
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())
-                .widths(&[
-                    Constraint::Percentage(60),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(20),
-                ])
                 .highlight_style(self.highlight_style);
 
             self.needs_redraw.store(false, Ordering::Relaxed);
