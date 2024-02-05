@@ -1,3 +1,4 @@
+mod archive_table;
 mod bottom_bar;
 mod download_table;
 mod file_table;
@@ -7,6 +8,7 @@ mod message_list;
 mod tabbar;
 pub mod traits;
 
+pub use archive_table::ArchiveTable;
 pub use bottom_bar::BottomBar;
 pub use download_table::DownloadTable;
 pub use file_table::FileTable;

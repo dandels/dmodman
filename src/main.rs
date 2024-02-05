@@ -1,4 +1,5 @@
 mod api;
+mod archives;
 mod cache;
 mod config;
 mod messages;
@@ -6,12 +7,14 @@ mod nxm_listener;
 mod ui;
 mod util;
 
+use std::env::args;
+use std::error::Error;
+
 use api::{Client, Downloads};
+use archives::Archives;
 use cache::Cache;
 use config::{Config, ConfigBuilder};
 use messages::Messages;
-use std::env::args;
-use std::error::Error;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
@@ -81,7 +84,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 nxm_listener::listen_for_downloads(downloads, msgs, nxm_rx).await;
             });
         }
-        ui::MainUI::new(cache, client, config, downloads, msgs).run().await;
+
+        let archive = Archives::new(config.clone(), msgs.clone());
+        ui::MainUI::new(cache, client, config, downloads, msgs, archive).run().await;
     } else {
         nxm_listener::listen_for_downloads(downloads, msgs, nxm_rx).await;
     }

@@ -12,6 +12,7 @@ use super::component::traits::*;
 use super::component::*;
 use super::event::{Event, Events};
 use crate::api::{Client, Downloads, UpdateChecker};
+use crate::archives::Archives;
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::ui::rectangles::Rectangles;
@@ -26,6 +27,7 @@ pub struct MainUI<'a> {
     tab_bar: TabBar<'a>,
     key_bar: KeyBar<'a>,
     bottom_bar: BottomBar<'a>,
+    archives_view: Arc<RwLock<ArchiveTable<'a>>>,
     files_view: Arc<RwLock<FileTable<'a>>>,
     download_view: Arc<RwLock<DownloadTable<'a>>>,
     msg_view: Arc<RwLock<MessageList<'a>>>,
@@ -35,14 +37,22 @@ pub struct MainUI<'a> {
 }
 
 impl<'a> MainUI<'static> {
-    pub fn new(cache: Cache, client: Client, config: Config, downloads: Downloads, msgs: Messages) -> Self {
+    pub fn new(
+        cache: Cache,
+        client: Client,
+        config: Config,
+        downloads: Downloads,
+        msgs: Messages,
+        archives: Archives,
+    ) -> Self {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
 
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
         let tab_bar = TabBar::new(redraw_terminal.clone());
         let key_bar = KeyBar::new();
-        let mut bottom_bar = BottomBar::new(redraw_terminal.clone(), client.request_counter);
+        let bottom_bar = BottomBar::new(redraw_terminal.clone(), client.request_counter);
+        let archives_view = RwLock::new(ArchiveTable::new(redraw_terminal.clone(), archives)).into();
         let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.file_index.clone())));
         let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
@@ -56,6 +66,7 @@ impl<'a> MainUI<'static> {
             focused,
             tab_bar,
             key_bar,
+            archives_view,
             files_view,
             download_view,
             msg_view,
@@ -83,9 +94,11 @@ impl<'a> MainUI<'static> {
                 let mut files_view = self.files_view.write().await;
                 let mut downloads_view = self.download_view.write().await;
                 let mut msgs_view = self.msg_view.write().await;
+                let mut archives_view = self.archives_view.write().await;
                 files_view.refresh().await;
                 downloads_view.refresh().await;
                 msgs_view.refresh().await;
+                archives_view.refresh().await;
                 self.key_bar.refresh().await;
                 self.tab_bar.refresh().await;
                 self.bottom_bar.refresh().await;
@@ -109,13 +122,20 @@ impl<'a> MainUI<'static> {
                                     self.rectangles.rect_main[1],
                                     &mut downloads_view.state,
                                 );
-                                f.render_stateful_widget(
-                                    msgs_view.widget.clone(),
-                                    self.rectangles.rect_root[1],
-                                    &mut msgs_view.state,
-                                );
                                 f.render_widget(self.bottom_bar.widget.clone(), self.rectangles.rect_botbar[1]);
+                            } else if self.tab_bar.selected().unwrap() == 1 {
+                                f.render_stateful_widget(
+                                    archives_view.widget.clone(),
+                                    self.rectangles.rect_tabbar[1],
+                                    &mut archives_view.state,
+                                );
                             }
+                            f.render_stateful_widget(
+                                msgs_view.widget.clone(),
+                                self.rectangles.rect_root[1],
+                                &mut msgs_view.state,
+                            );
+
                             f.render_widget(self.key_bar.widget.clone(), self.rectangles.rect_keybar[0]);
                             f.render_widget(self.tab_bar.widget.clone(), self.rectangles.rect_tabbar[0]);
                         })
@@ -149,6 +169,7 @@ impl<'a> MainUI<'static> {
                 FocusedWidget::FileTable(_) => {
                     self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
                 }
+                _ => {}
             },
             Key::Right | Key::Char('l') => match self.focused {
                 FocusedWidget::MessageList(_) | FocusedWidget::FileTable(_) => {
@@ -157,6 +178,7 @@ impl<'a> MainUI<'static> {
                 FocusedWidget::DownloadTable(_) => {
                     self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
                 }
+                _ => {}
             },
             // TODO abstract things like this away from the UI code
             Key::Char('i') => {
@@ -214,6 +236,9 @@ impl<'a> MainUI<'static> {
                 }
             }
             Key::Delete => match &self.focused.clone() {
+                FocusedWidget::ArchiveTable(at) => {
+                    self.msgs.push("Not implemented.").await;
+                }
                 FocusedWidget::FileTable(ft) => {
                     let mut ft_lock = ft.write().await;
                     if let Some(i) = ft_lock.state.selected() {
@@ -253,14 +278,42 @@ impl<'a> MainUI<'static> {
             },
             Key::Char('\t') => {
                 self.tab_bar.next_tab();
+                self.change_focused_tab().await;
             }
             Key::BackTab => {
                 self.tab_bar.prev_tab();
+                self.change_focused_tab().await;
+            }
+            Key::PageDown => {
+                if let FocusedWidget::ArchiveTable(at) = &self.focused {
+                    let lock = at.read().await;
+                    let foo = lock.selected();
+                    self.msgs.push(format!("Foo: {:?}", foo)).await;
+                }
+                //self.msgs.push(self.focused
             }
             _ => {
                 // Uncomment to log keypresses
                 //self.msgs.push(format!("{:?}", key)).await;
             }
+        }
+    }
+
+    async fn change_focused_tab(&mut self) {
+        match self.tab_bar.selected() {
+            Some(0) => {
+                // TODO remember previously focused pane
+                self.focused.change_to(FocusedWidget::FileTable(self.files_view.clone())).await;
+                self.msgs.push("Focusing files").await;
+            }
+            Some(1) => {
+                self.focused.change_to(FocusedWidget::ArchiveTable(self.archives_view.clone())).await;
+                self.msgs.push("Focusing archives").await;
+            }
+            None => {
+                panic!("Invalid tabstate")
+            }
+            _ => {}
         }
     }
 }

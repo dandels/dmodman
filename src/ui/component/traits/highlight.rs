@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use async_trait::async_trait;
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::ui::component::{DownloadTable, FileTable, MessageList};
+use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, MessageList};
 
 macro_rules! impl_highlight {
     ($T:ty) => {
@@ -29,6 +29,7 @@ macro_rules! impl_highlight {
     };
 }
 
+impl_highlight!(ArchiveTable<'_>);
 impl_highlight!(DownloadTable<'_>);
 impl_highlight!(FileTable<'_>);
 impl_highlight!(MessageList<'_>);

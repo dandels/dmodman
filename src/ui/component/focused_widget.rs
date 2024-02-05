@@ -8,9 +8,11 @@ use super::*;
 
 #[derive(Clone)]
 pub enum FocusedWidget<'a> {
+    // All these Arc<RwLock>s are perhaps not really necessary, but they solve a lot of lifetime issues
     DownloadTable(Arc<RwLock<DownloadTable<'a>>>),
     FileTable(Arc<RwLock<FileTable<'a>>>),
     MessageList(Arc<RwLock<MessageList<'a>>>),
+    ArchiveTable(Arc<RwLock<ArchiveTable<'a>>>),
 }
 
 /* I couldn't figure out how to avoid copypasting here. All the enum members implement the Highlight and Select
@@ -18,6 +20,11 @@ pub enum FocusedWidget<'a> {
 impl<'a> FocusedWidget<'a> {
     pub async fn change_to(&mut self, mut selected: FocusedWidget<'a>) {
         match self {
+            FocusedWidget::ArchiveTable(current) => {
+                current.write().await.unfocus();
+                selected.set_focus().await;
+                *self = selected;
+            }
             FocusedWidget::DownloadTable(current) => {
                 current.write().await.unfocus();
                 selected.set_focus().await;
@@ -38,6 +45,12 @@ impl<'a> FocusedWidget<'a> {
 
     pub async fn next(&mut self) {
         match self {
+            Self::ArchiveTable(at) => {
+                let mut table_lock = at.write().await;
+                let len = table_lock.archives.len();
+                table_lock.next(len);
+                table_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
             Self::DownloadTable(dt) => {
                 let mut table_lock = dt.write().await;
                 let dls = table_lock.downloads.clone();
@@ -64,6 +77,12 @@ impl<'a> FocusedWidget<'a> {
 
     pub async fn previous(&mut self) {
         match self {
+            Self::ArchiveTable(at) => {
+                let mut table_lock = at.write().await;
+                let len = table_lock.archives.len();
+                table_lock.previous(len);
+                table_lock.needs_redraw.store(true, Ordering::Relaxed);
+            }
             Self::DownloadTable(dt) => {
                 let mut table_lock = dt.write().await;
                 let dls = table_lock.downloads.clone();
@@ -90,6 +109,9 @@ impl<'a> FocusedWidget<'a> {
 
     pub async fn set_focus(&mut self) {
         match self {
+            FocusedWidget::ArchiveTable(current) => {
+                current.write().await.focus();
+            }
             FocusedWidget::DownloadTable(current) => {
                 current.write().await.focus();
             }
