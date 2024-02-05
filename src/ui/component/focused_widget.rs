@@ -1,10 +1,10 @@
-use super::*;
-use super::{Highlight, Select};
-
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
+
+use super::traits::{Highlight, Select};
+use super::*;
 
 #[derive(Clone)]
 pub enum FocusedWidget<'a> {
@@ -61,6 +61,7 @@ impl<'a> FocusedWidget<'a> {
             }
         }
     }
+
     pub async fn previous(&mut self) {
         match self {
             Self::DownloadTable(dt) => {

@@ -8,6 +8,7 @@ use termion::event::Key;
 use tokio::sync::RwLock;
 use tokio::task;
 
+use super::component::traits::*;
 use super::component::*;
 use super::event::{Event, Events};
 use crate::api::{Client, Downloads, UpdateChecker};
@@ -23,11 +24,11 @@ pub struct MainUI<'a> {
     rectangles: Rectangles,
     focused: FocusedWidget<'a>,
     tab_bar: TabBar<'a>,
-    key_bar: Arc<RwLock<KeyBar<'a>>>,
+    key_bar: KeyBar<'a>,
+    bottom_bar: BottomBar<'a>,
     files_view: Arc<RwLock<FileTable<'a>>>,
     download_view: Arc<RwLock<DownloadTable<'a>>>,
     msg_view: Arc<RwLock<MessageList<'a>>>,
-    bottom_bar: Arc<RwLock<BottomBar<'a>>>,
     redraw_terminal: Arc<AtomicBool>,
     updater: UpdateChecker,
     msgs: Messages,
@@ -37,15 +38,14 @@ impl<'a> MainUI<'static> {
     pub fn new(cache: Cache, client: Client, config: Config, downloads: Downloads, msgs: Messages) -> Self {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
 
-        let key_bar = RwLock::new(KeyBar::new()).into();
-
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
         let tab_bar = TabBar::new(redraw_terminal.clone());
+        let key_bar = KeyBar::new();
+        let mut bottom_bar = BottomBar::new(redraw_terminal.clone(), client.request_counter);
         let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.file_index.clone())));
         let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), downloads.clone())).into();
         let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
-        let bottom_bar = RwLock::new(BottomBar::new(redraw_terminal.clone(), client.request_counter)).into();
 
         let focused = FocusedWidget::FileTable(files_view.clone());
 
@@ -67,15 +67,12 @@ impl<'a> MainUI<'static> {
     }
 
     /* This is the main UI loop.
-     * Redrawing the terminal is quite CPU intensive, so we use a bunch of locks and atomics to make sure it only
-     * happens when necessary. */
+     * Redrawing the terminal is CPU intensive - locks and atomics are used to ensure it's done only when necessary. */
     pub async fn run(mut self) {
         let mut events = Events::new();
         self.files_view.write().await.focus();
-        /* X11 (and maybe Wayland?) sends SIGWINCH when the window is resized, so we can listen to that. Otherwise we
-         * redraw when something has changed.
-         * We set this to true so that all widgets are rendered in the first loop. */
-        let got_sigwinch = Arc::new(AtomicBool::new(true));
+        // X11 (and maybe Wayland?) sends SIGWINCH when the window is resized
+        let got_sigwinch = Arc::new(AtomicBool::new(false));
         let signals = Signals::new([SIGWINCH]).unwrap();
         let handle = signals.handle();
         let _sigwinch_task = task::spawn(handle_sigwinch(signals, got_sigwinch.clone()));
@@ -86,14 +83,12 @@ impl<'a> MainUI<'static> {
                 let mut files_view = self.files_view.write().await;
                 let mut downloads_view = self.download_view.write().await;
                 let mut msgs_view = self.msg_view.write().await;
-                let mut keybar = self.key_bar.write().await;
-                let mut botbar = self.bottom_bar.write().await;
                 files_view.refresh().await;
                 downloads_view.refresh().await;
                 msgs_view.refresh().await;
+                self.key_bar.refresh().await;
                 self.tab_bar.refresh().await;
-                keybar.refresh().await;
-                botbar.refresh().await;
+                self.bottom_bar.refresh().await;
 
                 let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
 
@@ -119,9 +114,9 @@ impl<'a> MainUI<'static> {
                                     self.rectangles.rect_root[1],
                                     &mut msgs_view.state,
                                 );
-                                f.render_widget(botbar.widget.clone(), self.rectangles.rect_botbar[1]);
+                                f.render_widget(self.bottom_bar.widget.clone(), self.rectangles.rect_botbar[1]);
                             }
-                            f.render_widget(keybar.widget.clone(), self.rectangles.rect_keybar[0]);
+                            f.render_widget(self.key_bar.widget.clone(), self.rectangles.rect_keybar[0]);
                             f.render_widget(self.tab_bar.widget.clone(), self.rectangles.rect_tabbar[0]);
                         })
                         .unwrap();

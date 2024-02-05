@@ -1,4 +1,4 @@
-use super::{DownloadTable, FileTable, MessageList, TabBar};
+use crate::ui::component::{DownloadTable, FileTable, MessageList, TabBar};
 use std::sync::atomic::Ordering;
 
 impl Select for TabBar<'_> {

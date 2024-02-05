@@ -1,11 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::style::{Color, Style};
 use ratatui::widgets::Tabs;
-
-use super::Select;
+use crate::ui::component::traits::Select;
 
 pub struct TabBar<'a> {
     pub widget: Tabs<'a>,
