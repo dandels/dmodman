@@ -4,7 +4,6 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 pub struct Rectangles {
     topbar_layout: Layout,
-    topbar_row_layout: Layout,
     botbar_layout: Layout,
     tables_layout: Layout,
     main_vertical_layout: Layout,
@@ -20,10 +19,6 @@ impl Rectangles {
         let topbar_layout: Layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(2), Constraint::Percentage(99)]);
-
-        let topbar_row_layout: Layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]);
 
         let botbar_layout: Layout = Layout::default()
             .direction(Direction::Vertical)
@@ -55,7 +50,6 @@ impl Rectangles {
 
         Self {
             topbar_layout,
-            topbar_row_layout,
             botbar_layout,
             tables_layout,
             main_vertical_layout,
