@@ -14,13 +14,13 @@ use ratatui::Terminal;
 use signal_hook_tokio::Signals;
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
-use termion::screen::AlternateScreen;
+use termion::screen::IntoAlternateScreen;
 use tokio_stream::StreamExt;
 
 pub fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
     let stdout = std::io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
-    let stdout = AlternateScreen::from(stdout);
+    let stdout = stdout.into_alternate_screen()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
