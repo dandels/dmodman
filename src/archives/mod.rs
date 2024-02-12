@@ -2,8 +2,10 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
+use compress_tools::tokio_support::*;
+use std::fs::File;
 use tokio::fs;
-use tokio::fs::{DirEntry, File};
+use tokio::fs::DirEntry;
 
 use crate::config::Config;
 use crate::messages::Messages;
@@ -12,13 +14,7 @@ pub struct Archives {
     config: Config,
     msgs: Messages,
     has_changed: bool,
-    files: Vec<DirEntry>,
-}
-
-enum ArchiveType {
-    Lzma,
-    Zip,
-    Rar,
+    pub files: Vec<DirEntry>,
 }
 
 impl Archives {
@@ -60,30 +56,11 @@ impl Archives {
         self.files.len()
     }
 
-    pub async fn extract(&self, file: &PathBuf) {
-        let atype: ArchiveType;
-        if let Some(ext) = file.extension() {
-            match ext.to_ascii_lowercase().to_str() {
-                Some("7z") | Some("omod") => atype = ArchiveType::Lzma,
-                Some("rar") => atype = ArchiveType::Rar,
-                Some("zip") => atype = ArchiveType::Zip,
-                None => return,
-                Some(_) => {
-                    self.msgs.push(format!("")).await;
-                    return;
-                }
-            }
-        } else {
-            return;
+    pub async fn list_contents(&self, path: &PathBuf) {
+        let file = File::open(path).unwrap();
+        let list = compress_tools::list_archive_files(&file).unwrap();
+        for l in list {
+            self.msgs.push(l).await;
         }
-
-        if let ArchiveType::Lzma = atype {
-            let _ = self.extract_7z(file).await;
-        }
-    }
-
-    async fn extract_7z(&self, file: &PathBuf) -> Result<(), ()> {
-        let f = File::open(file).await.unwrap();
-        Ok(())
     }
 }
