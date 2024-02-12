@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         let archive = Archives::new(config.clone(), msgs.clone());
-        ui::MainUI::new(cache, client, config, downloads, msgs, archive).run().await;
+        ui::MainUI::new(cache, client, config, downloads, msgs, archive).await.run().await;
     } else {
         nxm_socket::listen_for_downloads(nxm_socket, downloads, msgs).await;
     }

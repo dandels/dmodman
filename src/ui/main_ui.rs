@@ -37,7 +37,7 @@ pub struct MainUI<'a> {
 }
 
 impl<'a> MainUI<'static> {
-    pub fn new(
+    pub async fn new(
         cache: Cache,
         client: Client,
         config: Config,
@@ -55,7 +55,7 @@ impl<'a> MainUI<'static> {
         let archives_view = RwLock::new(ArchiveTable::new(redraw_terminal.clone(), archives)).into();
         let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.file_index.clone())));
         let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), downloads.clone())).into();
-        let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone())).into();
+        let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone()).await).into();
 
         let focused = FocusedWidget::FileTable(files_view.clone());
 
