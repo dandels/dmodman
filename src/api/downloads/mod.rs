@@ -58,13 +58,27 @@ impl Downloads {
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
-    pub async fn queue(&self, nxm_str: String) {
-        let res = self.parse_nxm(&nxm_str).await;
-        if let Err(e) = res {
-            self.msgs.push(format!("Unable to parse nxm string \"{}\" {}", nxm_str, e)).await;
-            return;
+    pub async fn try_queue(&self, nxm_str: &str) {
+        let nxm;
+        match NxmUrl::from_str(nxm_str) {
+            Ok(n) => nxm = n,
+            Err(e) => {
+                if let ApiError::Expired = e {
+                    self.msgs.push(format!("nxm url has expired: {nxm_str}")).await;
+                    return;
+                } else {
+                    self.msgs.push(format!("Unable to parse string as nxm url: {nxm_str}")).await;
+                    self.msgs.push(format!("{}", e)).await;
+                    return;
+                }
+            }
         }
-        let (nxm, url) = res.unwrap();
+
+        let url;
+        match self.request_download_link(&nxm).await {
+            Ok(u) => url = u,
+            Err(_e) => return,
+        }
         let file_name = util::file_name_from_url(&url);
 
         if let Some(task) = self.tasks.write().await.get_mut(&nxm.file_id) {
@@ -118,10 +132,10 @@ impl Downloads {
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
-    async fn parse_nxm(&self, nxm_str: &str) -> Result<(NxmUrl, Url), ApiError> {
-        let nxm = NxmUrl::from_str(nxm_str)?;
-        let dls = DownloadLink::request(
+    async fn request_download_link(&self, nxm: &NxmUrl) -> Result<Url, ApiError> {
+        match DownloadLink::request(
             &self.client,
+            // TODO get rid of passing a vec as argument
             vec![
                 &nxm.domain_name,
                 &nxm.mod_id.to_string(),
@@ -129,15 +143,28 @@ impl Downloads {
                 &nxm.query,
             ],
         )
-        .await?;
-        self.cache.save_download_links(&dls, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
-        /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
-         * global CDN, unless the user has selected a preferred download location.
-         * For small files the download URL is the same regardless of location choice.
-         * Free-tier users only get one location choice.
-         * Anyway, we can just pick the first location. */
-        let location = dls.locations.first().unwrap();
-        Ok((nxm, Url::parse(&location.URI)?))
+        .await {
+            Ok(dl_links) => {
+                self.cache.save_download_links(&dl_links, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
+                /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
+                 * global CDN, unless the user has selected a preferred download location.
+                 * For small files the download URL is the same regardless of location choice.
+                 * Free-tier users only get one location choice.
+                 * Anyway, we can just pick the first location. */
+                let location = dl_links.locations.first().unwrap();
+                match Url::parse(&location.URI) {
+                    Ok(url) => Ok(url),
+                    Err(e) => {
+                        self.msgs.push(format!("Failed to parse URI in response from Nexus: {}. Please file a bug about this.", &location.URI)).await;
+                        Err(e.into())
+                    }
+                }
+            }
+            Err(e) => {
+                self.msgs.push(format!("Failed to query download links from Nexus: {}", e)).await;
+                Err(e)
+            }
+        }
     }
 
     async fn update_metadata(&self, fi: &FileInfo) -> Result<(), ApiError> {

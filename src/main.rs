@@ -3,12 +3,13 @@ mod archives;
 mod cache;
 mod config;
 mod messages;
-mod nxm_listener;
+mod nxm_socket;
 mod ui;
 mod util;
 
 use std::env::args;
 use std::error::Error;
+use std::io::ErrorKind;
 
 use api::{Client, Downloads};
 use archives::Archives;
@@ -43,12 +44,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // If dmodman is already running, we queue any possible nxm:// URL, then exit early.
-    let nxm_rx = match nxm_listener::queue_download_else_bind_to_socket(nxm_str_opt).await? {
-        Some(v) => v,
-        None => return Ok(()),
-    };
-
+    /* We can't println in the TUI. Instead we use Messages which displays messages in the TUI.
+     * It calls println!() instead when running as a daemon. */
     let msgs = Messages::new(is_interactive);
 
     // TODO config is cloned needlessly in a few places
@@ -70,25 +67,48 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let cache = Cache::new(&config).await?;
     let client = Client::new(&config).await;
     let downloads = Downloads::new(&cache, &client, &config, &msgs).await;
+
+    // Try bind to /run/user/$uid. If it already exists then send nexus download links there and quit.
+    let nxm_socket;
+    match nxm_socket::try_bind().await {
+        Ok(sock) => {
+            nxm_socket = sock;
+        }
+        Err(e) if e.kind() == ErrorKind::AddrInUse => {
+            println!("Another instance of dmodman is already running.");
+            if let Some(nxm_str) = nxm_str_opt {
+                println!("Sending download to already running instance.");
+                nxm_socket::send_msg(nxm_str).await.unwrap();
+            }
+            return Err(e.into());
+        }
+        Err(e) => {
+            println!("Unable to bind to socket: {}", e);
+            return Err(e.into());
+        }
+    };
+
     downloads.resume_on_startup().await;
 
     if let Some(nxm_str) = nxm_str_opt {
-        let _ = downloads.queue(nxm_str.to_string()).await;
+        downloads.try_queue(nxm_str).await;
     }
 
+    /* Only start the UI if running interactively. Otherwise we block the main thread with the listen loop so the
+     * program doesn't exit. */
     if is_interactive {
         {
             let downloads = downloads.clone();
             let msgs = msgs.clone();
             tokio::task::spawn(async move {
-                nxm_listener::listen_for_downloads(downloads, msgs, nxm_rx).await;
+                nxm_socket::listen_for_downloads(nxm_socket, downloads, msgs).await;
             });
         }
 
         let archive = Archives::new(config.clone(), msgs.clone());
         ui::MainUI::new(cache, client, config, downloads, msgs, archive).run().await;
     } else {
-        nxm_listener::listen_for_downloads(downloads, msgs, nxm_rx).await;
+        nxm_socket::listen_for_downloads(nxm_socket, downloads, msgs).await;
     }
 
     Ok(())
