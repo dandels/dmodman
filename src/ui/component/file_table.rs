@@ -19,6 +19,7 @@ pub struct FileTable<'a> {
     pub needs_redraw: AtomicBool,
     has_data_changed: Arc<AtomicBool>,
     redraw_terminal: Arc<AtomicBool>,
+    pub len: usize,
 }
 
 impl<'a> FileTable<'a> {
@@ -51,12 +52,14 @@ impl<'a> FileTable<'a> {
             needs_redraw: AtomicBool::new(true),
             has_data_changed: file_index.has_changed,
             redraw_terminal,
+            len: 0,
         }
     }
 
     pub async fn refresh<'b>(&mut self)
     where
-        'b: 'a, {
+        'b: 'a,
+    {
         if self.has_data_changed.swap(false, Ordering::Relaxed) {
             let files = self.file_index.files_sorted.read().await;
             let mut stream = tokio_stream::iter(files.iter());
@@ -80,6 +83,8 @@ impl<'a> FileTable<'a> {
                     fd.version.clone().map_or("".to_string(), |v| v),
                 ]))
             }
+
+            self.len = rows.len();
 
             self.widget = Table::new(rows, self.widths)
                 .header(self.headers.to_owned())

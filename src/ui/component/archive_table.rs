@@ -18,8 +18,8 @@ pub struct ArchiveTable<'a> {
     pub state: TableState,
     pub widget: Table<'a>,
     pub needs_redraw: AtomicBool,
-    // TODO this could be a method instead of an extra field
     redraw_terminal: Arc<AtomicBool>,
+    pub len: usize,
 }
 
 impl<'a> ArchiveTable<'a> {
@@ -38,6 +38,7 @@ impl<'a> ArchiveTable<'a> {
             widget: Table::default().widths(widths),
             needs_redraw: AtomicBool::new(true),
             redraw_terminal,
+            len: 0,
         }
     }
 
@@ -53,6 +54,7 @@ impl<'a> ArchiveTable<'a> {
                     util::format::human_readable(direntry.metadata().await.unwrap().len()).0,
                 ]))
             }
+            self.len = rows.len();
             self.widget = Table::new(rows, self.widths)
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())

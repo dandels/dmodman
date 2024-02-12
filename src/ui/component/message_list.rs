@@ -17,7 +17,7 @@ pub struct MessageList<'a> {
     pub needs_redraw: AtomicBool,
     has_data_changed: Arc<AtomicBool>,
     redraw_terminal: Arc<AtomicBool>,
-    prev_len: usize,
+    pub len: usize,
 }
 
 impl<'a> MessageList<'a> {
@@ -36,7 +36,7 @@ impl<'a> MessageList<'a> {
             needs_redraw: AtomicBool::new(false),
             has_data_changed: msgs.has_changed,
             redraw_terminal,
-            prev_len: 0,
+            len: 0,
         }
     }
 
@@ -49,7 +49,7 @@ impl<'a> MessageList<'a> {
             let msgs = self.msgs.messages.read().await;
 
             let scroll_downwards =
-                (self.state.selected() == Some(self.prev_len) || self.state.selected() == None) && msgs.len() != 0;
+                (self.state.selected() == Some(self.len) || self.state.selected() == None) && msgs.len() != 0;
 
             let mut stream = tokio_stream::iter(msgs.iter());
 
@@ -67,7 +67,7 @@ impl<'a> MessageList<'a> {
             if scroll_downwards {
                 self.state.select(Some(msgs.len()));
             }
-            self.prev_len = msgs.len();
+            self.len = msgs.len();
 
             self.needs_redraw.store(false, Ordering::Relaxed);
             self.redraw_terminal.store(true, Ordering::Relaxed);

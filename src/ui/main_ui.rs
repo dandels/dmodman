@@ -5,7 +5,6 @@ use std::sync::Arc;
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use termion::event::Key;
-use tokio::sync::RwLock;
 use tokio::task;
 
 use super::component::traits::*;
@@ -23,14 +22,14 @@ pub struct MainUI<'a> {
     cache: Cache,
     downloads: Downloads,
     rectangles: Rectangles,
-    focused: FocusedWidget<'a>,
-    tab_bar: TabBar<'a>,
-    key_bar: KeyBar<'a>,
-    bottom_bar: BottomBar<'a>,
-    archives_view: Arc<RwLock<ArchiveTable<'a>>>,
-    files_view: Arc<RwLock<FileTable<'a>>>,
-    download_view: Arc<RwLock<DownloadTable<'a>>>,
-    msg_view: Arc<RwLock<MessageList<'a>>>,
+    pub focused: FocusedWidget,
+    pub tab_bar: TabBar<'a>,
+    pub key_bar: KeyBar<'a>,
+    pub bottom_bar: BottomBar<'a>,
+    pub archives_view: ArchiveTable<'a>,
+    pub files_view: FileTable<'a>,
+    pub downloads_view: DownloadTable<'a>,
+    pub msgs_view: MessageList<'a>,
     redraw_terminal: Arc<AtomicBool>,
     updater: UpdateChecker,
     msgs: Messages,
@@ -52,12 +51,12 @@ impl<'a> MainUI<'static> {
         let tab_bar = TabBar::new(redraw_terminal.clone());
         let key_bar = KeyBar::new();
         let bottom_bar = BottomBar::new(redraw_terminal.clone(), client.request_counter);
-        let archives_view = RwLock::new(ArchiveTable::new(redraw_terminal.clone(), archives)).into();
-        let files_view = Arc::new(RwLock::new(FileTable::new(redraw_terminal.clone(), cache.file_index.clone())));
-        let download_view = RwLock::new(DownloadTable::new(redraw_terminal.clone(), downloads.clone())).into();
-        let msg_view = RwLock::new(MessageList::new(redraw_terminal.clone(), msgs.clone()).await).into();
+        let archives_view = ArchiveTable::new(redraw_terminal.clone(), archives);
+        let files_view = FileTable::new(redraw_terminal.clone(), cache.file_index.clone());
+        let downloads_view = DownloadTable::new(redraw_terminal.clone(), downloads.clone());
+        let msgs_view = MessageList::new(redraw_terminal.clone(), msgs.clone()).await;
 
-        let focused = FocusedWidget::FileTable(files_view.clone());
+        let focused = FocusedWidget::FileTable;
 
         Self {
             cache,
@@ -68,8 +67,8 @@ impl<'a> MainUI<'static> {
             key_bar,
             archives_view,
             files_view,
-            download_view,
-            msg_view,
+            downloads_view,
+            msgs_view,
             bottom_bar,
             redraw_terminal,
             updater,
@@ -81,7 +80,7 @@ impl<'a> MainUI<'static> {
      * Redrawing the terminal is CPU intensive - locks and atomics are used to ensure it's done only when necessary. */
     pub async fn run(mut self) {
         let mut events = Events::new();
-        self.files_view.write().await.focus();
+        self.files_view.focus();
         // X11 (and maybe Wayland?) sends SIGWINCH when the window is resized
         let got_sigwinch = Arc::new(AtomicBool::new(false));
         let signals = Signals::new([SIGWINCH]).unwrap();
@@ -91,14 +90,10 @@ impl<'a> MainUI<'static> {
 
         loop {
             {
-                let mut files_view = self.files_view.write().await;
-                let mut downloads_view = self.download_view.write().await;
-                let mut msgs_view = self.msg_view.write().await;
-                let mut archives_view = self.archives_view.write().await;
-                files_view.refresh().await;
-                downloads_view.refresh().await;
-                msgs_view.refresh().await;
-                archives_view.refresh().await;
+                self.files_view.refresh().await;
+                self.downloads_view.refresh().await;
+                self.msgs_view.refresh().await;
+                self.archives_view.refresh().await;
                 self.key_bar.refresh().await;
                 self.tab_bar.refresh().await;
                 self.bottom_bar.refresh().await;
@@ -113,27 +108,27 @@ impl<'a> MainUI<'static> {
                             }
                             if self.tab_bar.selected().unwrap() == 0 {
                                 f.render_stateful_widget(
-                                    files_view.widget.clone(),
+                                    self.files_view.widget.clone(),
                                     self.rectangles.rect_main[0],
-                                    &mut files_view.state,
+                                    &mut self.files_view.state,
                                 );
                                 f.render_stateful_widget(
-                                    downloads_view.widget.clone(),
+                                    self.downloads_view.widget.clone(),
                                     self.rectangles.rect_main[1],
-                                    &mut downloads_view.state,
+                                    &mut self.downloads_view.state,
                                 );
                                 f.render_widget(self.bottom_bar.widget.clone(), self.rectangles.rect_botbar[1]);
                             } else if self.tab_bar.selected().unwrap() == 1 {
                                 f.render_stateful_widget(
-                                    archives_view.widget.clone(),
+                                    self.archives_view.widget.clone(),
                                     self.rectangles.rect_tabbar[1],
-                                    &mut archives_view.state,
+                                    &mut self.archives_view.state,
                                 );
                             }
                             f.render_stateful_widget(
-                                msgs_view.widget.clone(),
+                                self.msgs_view.widget.clone(),
                                 self.rectangles.rect_root[1],
-                                &mut msgs_view.state,
+                                &mut self.msgs_view.state,
                             );
 
                             f.render_widget(self.key_bar.widget.clone(), self.rectangles.rect_keybar[0]);
@@ -157,54 +152,51 @@ impl<'a> MainUI<'static> {
     async fn handle_keypress(&mut self, key: Key) {
         match key {
             Key::Down | Key::Char('j') => {
-                self.focused.next().await;
+                self.focus_next();
             }
             Key::Up | Key::Char('k') => {
-                self.focused.previous().await;
+                self.focus_previous();
             }
             Key::Left | Key::Char('h') => match self.focused {
-                FocusedWidget::MessageList(_) | FocusedWidget::DownloadTable(_) => {
-                    self.focused.change_to(FocusedWidget::FileTable(self.files_view.clone())).await;
+                FocusedWidget::MessageList | FocusedWidget::DownloadTable => {
+                    self.change_focus_to(FocusedWidget::FileTable);
                 }
-                FocusedWidget::FileTable(_) => {
-                    self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
+                FocusedWidget::FileTable => {
+                    self.change_focus_to(FocusedWidget::MessageList);
                 }
                 _ => {}
             },
             Key::Right | Key::Char('l') => match self.focused {
-                FocusedWidget::MessageList(_) | FocusedWidget::FileTable(_) => {
-                    self.focused.change_to(FocusedWidget::DownloadTable(self.download_view.clone())).await;
+                FocusedWidget::MessageList | FocusedWidget::FileTable => {
+                    self.change_focus_to(FocusedWidget::DownloadTable);
                 }
-                FocusedWidget::DownloadTable(_) => {
-                    self.focused.change_to(FocusedWidget::MessageList(self.msg_view.clone())).await;
+                FocusedWidget::DownloadTable => {
+                    self.change_focus_to(FocusedWidget::MessageList);
                 }
                 _ => {}
             },
             // TODO abstract things like this away from the UI code
             Key::Char('i') => {
-                if let FocusedWidget::FileTable(fv) = &self.focused {
-                    let ftable_lock = fv.read().await;
-                    if let Some(i) = ftable_lock.state.selected() {
+                if let FocusedWidget::FileTable = self.focused {
+                    if let Some(i) = self.selected_index() {
                         self.updater.ignore_file(i).await;
                     }
                 }
             }
             Key::Char('p') => {
-                if let FocusedWidget::DownloadTable(_) = &self.focused {
-                    let dls_table = self.download_view.read().await;
-                    if let Some(i) = dls_table.state.selected() {
+                if let FocusedWidget::DownloadTable = self.focused {
+                    if let Some(i) = self.selected_index() {
                         self.downloads.toggle_pause_for(i).await;
                     }
                 }
             }
             Key::Char('U') => {
-                if let FocusedWidget::FileTable(fv) = &self.focused {
+                if let FocusedWidget::FileTable = self.focused {
                     let game: String;
                     let mod_id: u32;
                     {
-                        let ftable_lock = fv.read().await;
-                        if let Some(i) = ftable_lock.state.selected() {
-                            let files_lock = ftable_lock.file_index.files_sorted.read().await;
+                        if let Some(i) = self.selected_index() {
+                            let files_lock = self.files_view.file_index.files_sorted.read().await;
                             let fdata = files_lock.get(i).unwrap();
                             let lf_lock = fdata.local_file.read().await;
                             game = lf_lock.game.clone();
@@ -217,15 +209,14 @@ impl<'a> MainUI<'static> {
                 }
             }
             Key::Char('u') => {
-                if let FocusedWidget::FileTable(_fv) = &self.focused {
+                if let FocusedWidget::FileTable = self.focused {
                     self.updater.update_all().await;
                 }
             }
             Key::Char('v') => {
-                if let FocusedWidget::FileTable(fv) = &self.focused {
-                    let ftable_lock = fv.read().await;
-                    if let Some(i) = ftable_lock.state.selected() {
-                        let files_lock = ftable_lock.file_index.files_sorted.read().await;
+                if let FocusedWidget::FileTable = self.focused {
+                    if let Some(i) = self.selected_index() {
+                        let files_lock = self.files_view.file_index.files_sorted.read().await;
                         let fdata = files_lock.get(i).unwrap();
                         let lf_lock = fdata.local_file.read().await;
                         let url = format!("https://www.nexusmods.com/{}/mods/{}", &lf_lock.game, &lf_lock.mod_id);
@@ -233,46 +224,45 @@ impl<'a> MainUI<'static> {
                             self.msgs.push("xdg-open is needed to open URLs in browser.".to_string()).await;
                         }
                     }
+                } else if let FocusedWidget::ArchiveTable = &self.focused {
+                    if let Some(i) = self.selected_index() {
+                        let path = self.archives_view.archives.files.get(i).unwrap().path();
+                        self.archives_view.archives.list_contents(&path).await;
+                    }
                 }
             }
-            Key::Delete => match &self.focused.clone() {
-                FocusedWidget::ArchiveTable(at) => {
+            Key::Delete => match self.focused {
+                FocusedWidget::ArchiveTable => {
                     self.msgs.push("Not implemented.").await;
                 }
-                FocusedWidget::FileTable(ft) => {
-                    let mut ft_lock = ft.write().await;
-                    if let Some(i) = ft_lock.state.selected() {
+                FocusedWidget::FileTable => {
+                    if let Some(i) = self.selected_index() {
                         if let Err(e) = self.cache.delete_by_index(i).await {
                             self.msgs.push(format!("Unable to delete file: {}", e)).await;
                         } else {
                             if i == 0 {
-                                ft_lock.state.select(None);
+                                self.select_widget_index(None);
                             }
-                            drop(ft_lock);
-                            self.focused.previous().await;
+                            self.focus_previous();
                         }
                     }
                 }
-                FocusedWidget::DownloadTable(dt) => {
-                    let mut dt_lock = dt.write().await;
-                    if let Some(i) = dt_lock.state.selected() {
-                        dt_lock.downloads.delete(i).await;
+                FocusedWidget::DownloadTable => {
+                    if let Some(i) = self.selected_index() {
+                        self.downloads_view.downloads.delete(i).await;
                         if i == 0 {
-                            dt_lock.state.select(None);
+                            self.select_widget_index(None);
                         }
-                        drop(dt_lock);
-                        self.focused.previous().await;
+                        self.focus_previous();
                     }
                 }
-                FocusedWidget::MessageList(ml) => {
-                    let mut ml_lock = ml.write().await;
-                    if let Some(i) = ml_lock.state.selected() {
-                        ml_lock.msgs.remove(i).await;
+                FocusedWidget::MessageList => {
+                    if let Some(i) = self.selected_index() {
+                        self.msgs_view.msgs.remove(i).await;
                         if i == 0 {
-                            ml_lock.state.select(None);
+                            self.select_widget_index(None);
                         }
-                        drop(ml_lock);
-                        self.focused.previous().await;
+                        self.focus_previous();
                     }
                 }
             },
@@ -283,14 +273,6 @@ impl<'a> MainUI<'static> {
             Key::BackTab => {
                 self.tab_bar.prev_tab();
                 self.change_focused_tab().await;
-            }
-            Key::PageDown => {
-                if let FocusedWidget::ArchiveTable(at) = &self.focused {
-                    let lock = at.read().await;
-                    let foo = lock.selected();
-                    self.msgs.push(format!("Foo: {:?}", foo)).await;
-                }
-                //self.msgs.push(self.focused
             }
             _ => {
                 // Uncomment to log keypresses
@@ -303,13 +285,9 @@ impl<'a> MainUI<'static> {
         match self.tab_bar.selected() {
             Some(0) => {
                 // TODO remember previously focused pane
-                self.focused.change_to(FocusedWidget::FileTable(self.files_view.clone())).await;
-                self.msgs.push("Focusing files").await;
+                self.change_focus_to(FocusedWidget::FileTable);
             }
-            Some(1) => {
-                self.focused.change_to(FocusedWidget::ArchiveTable(self.archives_view.clone())).await;
-                self.msgs.push("Focusing archives").await;
-            }
+            Some(1) => self.change_focus_to(FocusedWidget::ArchiveTable),
             None => {
                 panic!("Invalid tabstate")
             }

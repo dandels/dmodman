@@ -16,6 +16,7 @@ pub struct DownloadTable<'a> {
     pub widget: Table<'a>,
     pub needs_redraw: AtomicBool,
     redraw_terminal: Arc<AtomicBool>,
+    pub len: usize,
 }
 
 impl<'a> DownloadTable<'a> {
@@ -23,14 +24,15 @@ impl<'a> DownloadTable<'a> {
         let block = Block::default().borders(Borders::ALL).title("Downloads");
 
         let headers = Row::new(
-            ["Filename", "Progress", "Status"]
-                .iter()
-                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
+            ["Filename", "Progress", "Status"].iter().map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
         );
 
         downloads.has_changed.store(true, Ordering::Relaxed);
-        let widths = [ Constraint::Percentage(60), Constraint::Percentage(20), Constraint::Percentage(20)];
-
+        let widths = [
+            Constraint::Percentage(60),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+        ];
 
         Self {
             state: TableState::default(),
@@ -42,6 +44,7 @@ impl<'a> DownloadTable<'a> {
             widget: Table::default(),
             needs_redraw: AtomicBool::new(false),
             redraw_terminal,
+            len: 0,
         }
     }
 
@@ -62,6 +65,7 @@ impl<'a> DownloadTable<'a> {
                 ]))
             }
 
+            self.len = rows.len();
             self.widget = Table::new(rows, self.widths)
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())

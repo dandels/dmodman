@@ -3,6 +3,10 @@ use std::sync::atomic::Ordering;
 use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, MessageList, TabBar};
 
 impl Select for TabBar<'_> {
+    fn len(&self) -> usize {
+        self.len
+    }
+
     fn select(&mut self, index: Option<usize>) {
         let i = index.unwrap();
         self.widget = self.widget.clone().select(i);
@@ -18,6 +22,10 @@ impl Select for TabBar<'_> {
 macro_rules! impl_stateful {
     ($T:ty) => {
         impl Select for $T {
+            fn len(&self) -> usize {
+                self.len
+            }
+
             fn select(&mut self, index: Option<usize>) {
                 self.state.select(index)
             }
@@ -35,6 +43,8 @@ impl_stateful!(FileTable<'_>);
 impl_stateful!(MessageList<'_>);
 
 pub trait Select {
+    fn len(&self) -> usize;
+
     fn select(&mut self, index: Option<usize>);
 
     fn selected(&self) -> Option<usize>;
@@ -43,7 +53,8 @@ pub trait Select {
         self.select(None);
     }
 
-    fn next(&mut self, len: usize) {
+    fn next(&mut self) {
+        let len = self.len();
         if len == 0 {
             return;
         }
@@ -60,7 +71,8 @@ pub trait Select {
         self.select(Some(i));
     }
 
-    fn previous(&mut self, len: usize) {
+    fn previous(&mut self) {
+        let len = self.len();
         if len == 0 {
             return;
         }

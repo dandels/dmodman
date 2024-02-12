@@ -1,126 +1,56 @@
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
-use tokio::sync::RwLock;
-
 use super::traits::{Highlight, Select};
 use super::*;
+use crate::ui::main_ui::MainUI;
 
 #[derive(Clone)]
-pub enum FocusedWidget<'a> {
-    // All these Arc<RwLock>s are perhaps not really necessary, but they solve a lot of lifetime issues
-    DownloadTable(Arc<RwLock<DownloadTable<'a>>>),
-    FileTable(Arc<RwLock<FileTable<'a>>>),
-    MessageList(Arc<RwLock<MessageList<'a>>>),
-    ArchiveTable(Arc<RwLock<ArchiveTable<'a>>>),
+pub enum FocusedWidget {
+    DownloadTable,
+    FileTable,
+    MessageList,
+    ArchiveTable,
 }
 
-/* I couldn't figure out how to avoid copypasting here. All the enum members implement the Highlight and Select
- * trait, which have the methods we need here. */
-impl<'a> FocusedWidget<'a> {
-    pub async fn change_to(&mut self, mut selected: FocusedWidget<'a>) {
-        match self {
-            FocusedWidget::ArchiveTable(current) => {
-                current.write().await.unfocus();
-                selected.set_focus().await;
-                *self = selected;
-            }
-            FocusedWidget::DownloadTable(current) => {
-                current.write().await.unfocus();
-                selected.set_focus().await;
-                *self = selected;
-            }
-            FocusedWidget::FileTable(current) => {
-                current.write().await.unfocus();
-                selected.set_focus().await;
-                *self = selected;
-            }
-            FocusedWidget::MessageList(current) => {
-                current.write().await.unfocus();
-                selected.set_focus().await;
-                *self = selected;
-            }
+pub trait FocusableWidget: Highlight + Select {}
+impl FocusableWidget for ArchiveTable<'_> {}
+impl FocusableWidget for DownloadTable<'_> {}
+impl FocusableWidget for FileTable<'_> {}
+impl FocusableWidget for MessageList<'_> {}
+
+impl<'a> MainUI<'a> {
+    fn inner(&mut self, focused: FocusedWidget) -> &mut dyn FocusableWidget {
+        match focused {
+            FocusedWidget::ArchiveTable => &mut self.archives_view,
+            FocusedWidget::DownloadTable => &mut self.downloads_view,
+            FocusedWidget::FileTable => &mut self.files_view,
+            FocusedWidget::MessageList => &mut self.msgs_view,
         }
     }
 
-    pub async fn next(&mut self) {
-        match self {
-            Self::ArchiveTable(at) => {
-                let mut table_lock = at.write().await;
-                let len = table_lock.archives.len();
-                table_lock.next(len);
-                table_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-            Self::DownloadTable(dt) => {
-                let mut table_lock = dt.write().await;
-                let dls = table_lock.downloads.clone();
-                let tasks_lock = dls.tasks.read().await;
-                table_lock.next(tasks_lock.len());
-                table_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-            Self::FileTable(ft) => {
-                let mut table_lock = ft.write().await;
-                let file_index = table_lock.file_index.clone();
-                let files_lock = file_index.file_id_map.read().await;
-                table_lock.next(files_lock.len());
-                table_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-            Self::MessageList(ml) => {
-                let mut list_lock = ml.write().await;
-                let msgs = list_lock.msgs.clone();
-                let msgs_lock = msgs.messages.read().await;
-                list_lock.next(msgs_lock.len());
-                list_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-        }
+    pub fn focused_widget(&mut self) -> &mut dyn FocusableWidget {
+        self.inner(self.focused.clone())
     }
 
-    pub async fn previous(&mut self) {
-        match self {
-            Self::ArchiveTable(at) => {
-                let mut table_lock = at.write().await;
-                let len = table_lock.archives.len();
-                table_lock.previous(len);
-                table_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-            Self::DownloadTable(dt) => {
-                let mut table_lock = dt.write().await;
-                let dls = table_lock.downloads.clone();
-                let tasks_lock = dls.tasks.read().await;
-                table_lock.previous(tasks_lock.len());
-                table_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-            Self::FileTable(ft) => {
-                let mut table_lock = ft.write().await;
-                let file_index = table_lock.file_index.clone();
-                let files_lock = file_index.file_id_map.read().await;
-                table_lock.previous(files_lock.len());
-                table_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-            Self::MessageList(ml) => {
-                let mut list_lock = ml.write().await;
-                let msgs = list_lock.msgs.clone();
-                let msgs_lock = msgs.messages.read().await;
-                list_lock.previous(msgs_lock.len());
-                list_lock.needs_redraw.store(true, Ordering::Relaxed);
-            }
-        }
+    pub fn change_focus_to(&mut self, selected: FocusedWidget) {
+        self.focused_widget().unfocus();
+        self.inner(selected.clone()).focus();
+        self.focused = selected;
     }
 
-    pub async fn set_focus(&mut self) {
-        match self {
-            FocusedWidget::ArchiveTable(current) => {
-                current.write().await.focus();
-            }
-            FocusedWidget::DownloadTable(current) => {
-                current.write().await.focus();
-            }
-            FocusedWidget::FileTable(current) => {
-                current.write().await.focus();
-            }
-            FocusedWidget::MessageList(current) => {
-                current.write().await.focus();
-            }
-        }
+    pub fn focus_next(&mut self) {
+        self.focused_widget().next();
+        self.focused_widget().needs_redraw();
+    }
+
+    pub fn focus_previous(&mut self) {
+        self.focused_widget().previous();
+        self.focused_widget().needs_redraw();
+    }
+
+    pub fn selected_index(&mut self) -> Option<usize> {
+        self.focused_widget().selected()
+    }
+
+    pub fn select_widget_index(&mut self, index: Option<usize>) {
+        self.focused_widget().select(index);
     }
 }

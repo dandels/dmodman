@@ -1,17 +1,17 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::ui::component::traits::Select;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Tabs;
-use crate::ui::component::traits::Select;
 
 pub struct TabBar<'a> {
     pub widget: Tabs<'a>,
     pub highlight_style: Style,
     pub selected_tab: usize,
-    pub len: usize,
     pub needs_redraw: AtomicBool,
     redraw_terminal: Arc<AtomicBool>,
+    pub len: usize,
 }
 
 impl<'a> TabBar<'a> {
@@ -41,12 +41,12 @@ impl<'a> TabBar<'a> {
     }
 
     pub fn next_tab(&mut self) {
-        self.next(self.len);
+        self.next();
         self.needs_redraw.store(true, Ordering::Relaxed);
     }
 
     pub fn prev_tab(&mut self) {
-        self.previous(self.len);
+        self.previous();
         self.needs_redraw.store(true, Ordering::Relaxed);
     }
 }
