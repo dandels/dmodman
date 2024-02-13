@@ -9,7 +9,7 @@ use std::error::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-pub use main_ui::MainUI;
+pub use main_ui::*;
 use ratatui::backend::{Backend, TermionBackend};
 use ratatui::Terminal;
 use signal_hook_tokio::Signals;

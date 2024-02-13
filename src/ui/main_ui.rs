@@ -3,12 +3,11 @@ use std::sync::Arc;
 
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
-use termion::event::Key;
 use tokio::task;
 
 use super::component::traits::*;
 use super::component::*;
-use super::event::{Event, Events};
+use super::event::{Events, TickEvent};
 use crate::api::{Client, Downloads, UpdateChecker};
 use crate::archives::Archives;
 use crate::cache::Cache;
@@ -16,6 +15,11 @@ use crate::config::Config;
 use crate::ui::rectangles::Rectangles;
 use crate::ui::*;
 use crate::Messages;
+
+pub enum InputMode {
+    Normal,
+    ReadLine,
+}
 
 pub struct MainUI<'a> {
     pub cache: Cache,
@@ -29,12 +33,15 @@ pub struct MainUI<'a> {
     pub files_view: FileTable<'a>,
     pub downloads_view: DownloadTable<'a>,
     pub msgs_view: MessageList<'a>,
+    pub input_line: InputLine<'a>,
+    pub input_mode: InputMode,
     pub redraw_terminal: Arc<AtomicBool>,
     pub updater: UpdateChecker,
     pub msgs: Messages,
+    pub should_run: bool,
 }
 
-impl<'a> MainUI<'a> {
+impl MainUI<'_> {
     pub async fn new(
         cache: Cache,
         client: Client,
@@ -54,6 +61,7 @@ impl<'a> MainUI<'a> {
         let files_view = FileTable::new(redraw_terminal.clone(), cache.file_index.clone());
         let downloads_view = DownloadTable::new(redraw_terminal.clone(), downloads.clone());
         let msgs_view = MessageList::new(redraw_terminal.clone(), msgs.clone()).await;
+        let input_line = InputLine::new(redraw_terminal.clone());
 
         let focused = FocusedWidget::FileTable;
 
@@ -69,9 +77,12 @@ impl<'a> MainUI<'a> {
             downloads_view,
             msgs_view,
             bottom_bar,
+            input_line,
+            input_mode: InputMode::Normal,
             redraw_terminal,
             updater,
             msgs,
+            should_run: true,
         }
     }
 
@@ -83,11 +94,11 @@ impl<'a> MainUI<'a> {
         // X11 (and maybe Wayland?) sends SIGWINCH when the window is resized
         let got_sigwinch = Arc::new(AtomicBool::new(false));
         let signals = Signals::new([SIGWINCH]).unwrap();
-        let handle = signals.handle();
+        let _handle = signals.handle();
         let _sigwinch_task = task::spawn(handle_sigwinch(signals, got_sigwinch.clone()));
         let mut terminal = term_setup().unwrap();
 
-        loop {
+        while self.should_run {
             self.files_view.refresh().await;
             self.downloads_view.refresh().await;
             self.msgs_view.refresh().await;
@@ -100,48 +111,48 @@ impl<'a> MainUI<'a> {
 
             if self.redraw_terminal.swap(false, Ordering::Relaxed) || recalculate_rects {
                 terminal
-                    .draw(|f| {
+                    .draw(|frame| {
                         if recalculate_rects {
-                            self.rectangles.recalculate(f.size());
+                            self.rectangles.recalculate(frame.size());
                         }
                         if self.tab_bar.selected().unwrap() == 0 {
-                            f.render_stateful_widget(
+                            frame.render_stateful_widget(
                                 &self.files_view.widget,
-                                self.rectangles.rect_main[0],
+                                self.rectangles.rect_main_horizontal[0],
                                 &mut self.files_view.state,
                             );
-                            f.render_stateful_widget(
+                            frame.render_stateful_widget(
                                 &self.downloads_view.widget,
-                                self.rectangles.rect_main[1],
+                                self.rectangles.rect_main_horizontal[1],
                                 &mut self.downloads_view.state,
                             );
-                            f.render_widget(&self.bottom_bar.widget, self.rectangles.rect_botbar[1]);
                         } else if self.tab_bar.selected().unwrap() == 1 {
-                            f.render_stateful_widget(
+                            frame.render_stateful_widget(
                                 &self.archives_view.widget,
-                                self.rectangles.rect_tabbar[1],
+                                self.rectangles.rect_main_vertical[2],
                                 &mut self.archives_view.state,
                             );
                         }
-                        f.render_stateful_widget(
+                        frame.render_stateful_widget(
                             &self.msgs_view.widget,
-                            self.rectangles.rect_root[1],
+                            self.rectangles.rect_main_vertical[3],
                             &mut self.msgs_view.state,
                         );
 
-                        f.render_widget(&self.key_bar.widget, self.rectangles.rect_keybar[0]);
-                        f.render_widget(&self.tab_bar.widget, self.rectangles.rect_tabbar[0]);
+                        frame.render_widget(&self.tab_bar.widget, self.rectangles.rect_main_vertical[0]);
+                        frame.render_widget(&self.key_bar.widget, self.rectangles.rect_main_vertical[1]);
+                        frame.render_widget(&self.bottom_bar.widget, self.rectangles.rect_statcounter[0]);
+
+                        if let InputMode::ReadLine = self.input_mode {
+                            // Draw on top of the rest of the widgets
+                            frame.render_widget(self.input_line.widget(), self.rectangles.rect_inputline[0]);
+                        }
                     })
                     .unwrap();
             }
 
-            if let Some(Event::Input(key)) = events.next().await {
-                if let Key::Char('q') | Key::Ctrl('c') = key {
-                    handle.close();
-                    return;
-                } else {
-                    self.handle_keypress(key).await;
-                }
+            if let Some(TickEvent::Input(event)) = events.next().await {
+                self.handle_events(event).await;
             }
         }
     }

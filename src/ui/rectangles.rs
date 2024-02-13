@@ -1,76 +1,78 @@
 use std::rc::Rc;
 
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
 
 pub struct Rectangles {
-    topbar_layout: Layout,
-    botbar_layout: Layout,
-    tables_layout: Layout,
     main_vertical_layout: Layout,
+    tables_layout: Layout,
+    statcounter_layout: Layout,
+    inputline_layout: Layout,
     pub rect_root: Rc<[Rect]>,
-    pub rect_tabbar: Rc<[Rect]>,
-    pub rect_keybar: Rc<[Rect]>,
-    pub rect_main: Rc<[Rect]>,
-    pub rect_botbar: Rc<[Rect]>,
+    pub rect_main_horizontal: Rc<[Rect]>,
+    pub rect_main_vertical: Rc<[Rect]>,
+    pub rect_statcounter: Rc<[Rect]>,
+    pub rect_inputline: Rc<[Rect]>,
 }
 impl Rectangles {
     pub fn new() -> Self {
-        // TODO learn to use the constraints
-        let topbar_layout: Layout = Layout::default()
+        let main_vertical_layout: Layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(2), Constraint::Percentage(99)]);
-
-        let botbar_layout: Layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(99), Constraint::Min(1)]);
+            .constraints( [
+                Constraint::Length(1), // tab bar
+                Constraint::Length(1), // key bar
+                Constraint::Percentage(75), // main vertical container
+                Constraint::Fill(1) // message box,
+            ]);
 
         let tables_layout: Layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Ratio(2, 4), Constraint::Ratio(2, 4)]);
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]);
 
-        let main_vertical_layout: Layout = Layout::default()
+        let statcounter_layout: Layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)]);
+            .constraints([Constraint::Length(1)])
+            .flex(Flex::End);
+
+        let inputline_layout: Layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3)])
+            .flex(Flex::Center);
 
         let (width, height) = termion::terminal_size().unwrap();
 
-        let rect_root = main_vertical_layout.split(Rect {
+        let rect_root = Rc::new([Rect {
             x: 0,
             y: 0,
             height,
             width,
-        });
-        let rect_tabbar = topbar_layout.split(rect_root[0]);
-        let rect_keybar = Rc::new([Rect {
-            y: rect_tabbar[0].y + 1,
-            ..rect_tabbar[0]
         }]);
-        let rect_main = tables_layout.split(rect_tabbar[1]);
-        let rect_botbar = botbar_layout.split(rect_root[1]);
+
+        let rect_main_vertical = main_vertical_layout.split(rect_root[0]);
+        let rect_main_horizontal = tables_layout.split(rect_main_vertical[2]);
+        let rect_statcounter = statcounter_layout.split(rect_root[0]);
+        let rect_inputline = inputline_layout.split(rect_root[0]);
 
         Self {
-            topbar_layout,
-            botbar_layout,
             tables_layout,
+            inputline_layout,
             main_vertical_layout,
+            statcounter_layout,
             rect_root,
-            rect_tabbar,
-            rect_keybar,
-            rect_main,
-            rect_botbar,
+            rect_main_horizontal,
+            rect_main_vertical,
+            rect_statcounter,
+            rect_inputline,
         }
     }
 }
 
 impl Rectangles {
+    // TODO violates DRY, this is copypasted from constructor
     pub fn recalculate(&mut self, rect: Rect) {
-        self.rect_root = self.main_vertical_layout.split(rect);
-        self.rect_tabbar = self.topbar_layout.split(self.rect_root[0]);
-        self.rect_keybar = Rc::new([Rect {
-            y: self.rect_tabbar[0].y + 1,
-            ..self.rect_tabbar[0]
-        }]);
-        self.rect_main = self.tables_layout.split(self.rect_tabbar[1]);
-        self.rect_botbar = self.botbar_layout.split(self.rect_root[1]);
+        self.rect_root = [rect].into();
+        self.rect_main_vertical = self.main_vertical_layout.split(self.rect_root[0]);
+        self.rect_main_horizontal = self.tables_layout.split(self.rect_main_vertical[2]);
+        self.rect_statcounter = self.statcounter_layout.split(self.rect_root[0]);
+        self.rect_inputline = self.inputline_layout.split(self.rect_root[0]);
     }
 }

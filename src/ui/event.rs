@@ -1,18 +1,18 @@
 use std::io;
 use std::thread;
-use termion::event::Key;
+use termion::event::Event;
 use termion::input::TermRead;
 use tokio::sync::mpsc;
 
 use std::time::Duration;
 
-pub enum Event<I> {
-    Input(I),
+pub enum TickEvent {
+    Input(Event),
     Tick,
 }
 
 pub struct Events {
-    rx: mpsc::UnboundedReceiver<Event<Key>>,
+    rx: mpsc::UnboundedReceiver<TickEvent>,
 }
 
 impl Events {
@@ -24,8 +24,8 @@ impl Events {
             let tx = tx.clone();
             thread::spawn(move || {
                 let stdin = io::stdin();
-                for key in stdin.keys().flatten() {
-                    if tx.send(Event::Input(key)).is_err() {
+                for event in stdin.events().flatten() {
+                    if tx.send(TickEvent::Input(event)).is_err() {
                         return;
                     }
                 }
@@ -33,7 +33,7 @@ impl Events {
         };
         let _tick_handle = {
             thread::spawn(move || loop {
-                if tx.send(Event::Tick).is_err() {
+                if tx.send(TickEvent::Tick).is_err() {
                     break;
                 }
                 thread::sleep(tick_rate);
@@ -42,7 +42,7 @@ impl Events {
         Events { rx }
     }
 
-    pub async fn next(&mut self) -> Option<Event<Key>> {
+    pub async fn next(&mut self) -> Option<TickEvent> {
         self.rx.recv().await
     }
 }

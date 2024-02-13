@@ -16,7 +16,7 @@ impl FocusableWidget for DownloadTable<'_> {}
 impl FocusableWidget for FileTable<'_> {}
 impl FocusableWidget for MessageList<'_> {}
 
-impl<'a> MainUI<'a> {
+impl MainUI<'_> {
     fn inner(&mut self, focused: FocusedWidget) -> &mut dyn FocusableWidget {
         match focused {
             FocusedWidget::ArchiveTable => &mut self.archives_view,

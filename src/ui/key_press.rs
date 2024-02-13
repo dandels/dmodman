@@ -1,11 +1,43 @@
+use std::process::Command;
+
+use std::sync::atomic::Ordering;
+use termion::event::{Event, Key, MouseEvent};
+
+//use tui_textarea::{Input, Key};
+//use tui_textarea::{Input, Key, TextArea};
 use super::component::traits::*;
 use super::component::*;
-use super::MainUI;
-use std::process::Command;
-use termion::event::Key;
+use super::main_ui::*;
 
 impl MainUI<'_> {
-    pub async fn handle_keypress(&mut self, key: Key) {
+    pub async fn handle_events(&mut self, event: Event) {
+        let key: Key;
+        match event {
+            Event::Key(k) => key = k,
+            Event::Mouse(m) => match m {
+                MouseEvent::Press(mouse_event, x, y) => {
+                    self.msgs.push(format!("click! {mouse_event:?}, x: {x}, y: {y}")).await;
+                    return;
+                }
+                _ => {
+                    return;
+                }
+            },
+            Event::Unsupported(u) => {
+                self.msgs.push(format!("Unsupported: {u:?}")).await;
+                return;
+            }
+        }
+        if let InputMode::ReadLine = self.input_mode {
+            self.read_input_line(key).await;
+            return;
+        }
+
+        if let Key::Char('q') | Key::Ctrl('c') = key {
+            self.should_run = false;
+            return;
+        }
+
         match key {
             Key::Down | Key::Char('j') => {
                 self.focus_next();
@@ -136,12 +168,23 @@ impl MainUI<'_> {
             _ => {}
         }
     }
+
     async fn handle_archives_keys(&mut self, key: Key) {
         match key {
             Key::Char('\n') => {
+                println!("pressed enter");
                 if let Some(i) = self.selected_index() {
                     let path = self.archives_view.archives.files.get(i).unwrap().path();
-                    self.archives_view.archives.list_contents(&path).await;
+                    let _contents = self.archives_view.archives.list_contents(&path).await;
+                    let file_name = path.file_name().unwrap().to_string_lossy();
+                    if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
+                        self.input_line.get_file_name(&fd.file_details.name);
+                    } else {
+                        self.msgs.push("Warn: mod for {file_name} doesn't exist in db").await;
+                        self.input_line.get_file_name(&file_name);
+                    }
+                    self.input_mode = InputMode::ReadLine;
+                    self.redraw_terminal.store(true, Ordering::Relaxed);
                 }
             }
             Key::Delete => {
@@ -150,6 +193,7 @@ impl MainUI<'_> {
             _ => {}
         }
     }
+
     async fn handle_messages_keys(&mut self, key: Key) {
         match key {
             Key::Delete => {
@@ -177,5 +221,27 @@ impl MainUI<'_> {
             }
             _ => {}
         }
+    }
+
+    async fn read_input_line(&mut self, key: Key) {
+        match key {
+            Key::Ctrl('c') | Key::Esc => {
+                self.input_mode = InputMode::Normal;
+            }
+            Key::Char('\n') => {
+                self.msgs.push(self.input_line.get_contents()).await;
+                if self.input_line.clear() {
+                    self.msgs.push("Succesful delete").await;
+                } else {
+                    self.msgs.push("Failed delete").await;
+                }
+                self.input_mode = InputMode::Normal;
+                self.redraw_terminal.store(true, Ordering::Relaxed);
+            }
+            _ => {
+                self.input_line.textarea.input(key);
+            }
+        }
+        self.redraw_terminal.store(true, Ordering::Relaxed);
     }
 }

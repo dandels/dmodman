@@ -1,6 +1,6 @@
 [package]
 name = "dmodman"
-version = "0.2.4"
+version = "0.3.0"
 authors = ["dandels <dandels (at) hotmail.com>"]
 edition = "2021"
 
@@ -22,9 +22,10 @@ tokio-stream = { version = "0.1", features = ["fs"] }
 tokio-tungstenite = { version = "*", features = ["native-tls"] }
 toml = "0.8"
 url = { version = "2", features = [ "serde" ] }
-termion = "3"
+termion = "2" # upgrading to version 3 breaks tui-textarea's input()
+tui-textarea = { version = "0.4", default-features = false, features = ["termion"] }
 ratatui = { version = "0.26", default-features = false, features = ["termion"] }
-uuid = { version = "1.4", features = ["v4", "fast-rng"] }
+uuid = { version = "1.7", features = ["v4", "fast-rng"] }
 
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.

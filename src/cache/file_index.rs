@@ -104,4 +104,15 @@ impl FileIndex {
         self.files_sorted.write().await.push(fdata);
         self.has_changed.store(true, Ordering::Relaxed);
     }
+
+    pub async fn get_by_filename(&self, name: &str) -> Option<Arc<FileData>> {
+        let lock = self.files_sorted.read().await;
+        for fd in lock.iter() {
+            let lf = fd.local_file.read().await;
+            if lf.file_name == name {
+                return Some(fd.clone());
+            }
+        }
+        None
+    }
 }

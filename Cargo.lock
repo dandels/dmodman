@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "dmodman"
-version = "0.2.4"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "compress-tools",
@@ -275,11 +275,12 @@ dependencies = [
  "serde_json",
  "signal-hook",
  "signal-hook-tokio",
- "termion",
+ "termion 2.0.3",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
  "toml",
+ "tui-textarea",
  "url",
  "uuid",
 ]
@@ -925,7 +926,7 @@ dependencies = [
  "paste",
  "stability",
  "strum",
- "termion",
+ "termion 3.0.0",
  "unicode-segmentation",
  "unicode-width",
 ]
@@ -1284,6 +1285,18 @@ dependencies = [
 
 [[package]]
 name = "termion"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4648c7def6f2043b2568617b9f9b75eae88ca185dbc1f1fda30e95a85d49d7d"
+dependencies = [
+ "libc",
+ "libredox 0.0.2",
+ "numtoa",
+ "redox_termios",
+]
+
+[[package]]
+name = "termion"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "417813675a504dfbbf21bfde32c03e5bf9f2413999962b479023c02848c1c7a5"
@@ -1471,6 +1484,17 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "tui-textarea"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3e38ced1f941a9cfc923fbf2fe6858443c42cc5220bfd35bdd3648371e7bd8e"
+dependencies = [
+ "ratatui",
+ "termion 2.0.3",
+ "unicode-width",
+]
 
 [[package]]
 name = "tungstenite"
