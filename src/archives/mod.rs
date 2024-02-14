@@ -65,11 +65,17 @@ impl Archives {
         let mut dest_path = self.config.download_dir();
 
         let logger = self.logger.clone();
-        tokio::task::spawn_blocking(move || match File::open(&src_path) {
+        std::thread::spawn(move || match File::open(&src_path) {
             Ok(src_file) => {
                 dest_path.push(dest_dir_name);
-                if let Err(e) = uncompress_archive(src_file, &dest_path, Ownership::Ignore) {
-                    logger.log(format!("Extract failed with error: {:?}", e));
+                logger.log(format!("Begin extracting: {:?}", src_path.file_name().unwrap()));
+                match uncompress_archive(src_file, &dest_path, Ownership::Ignore) {
+                    Ok(()) => {
+                        logger.log(format!("Finished extracting: {:?}", src_path.file_name().unwrap()));
+                    }
+                    Err(e) => {
+                        logger.log(format!("Extract failed with error: {:?}", e));
+                    }
                 }
             }
             Err(e) => {
