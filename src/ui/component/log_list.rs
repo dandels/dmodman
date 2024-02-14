@@ -4,7 +4,6 @@ use std::sync::Arc;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
-use tokio_stream::StreamExt;
 
 use crate::Logger;
 
@@ -15,16 +14,17 @@ pub struct LogList<'a> {
     pub highlight_style: Style,
     pub widget: List<'a>,
     pub needs_redraw: AtomicBool,
-    has_data_changed: Arc<AtomicBool>,
+    list_items: Vec<ListItem<'a>>,
     redraw_terminal: Arc<AtomicBool>,
     pub len: usize,
 }
 
 impl<'a> LogList<'a> {
-    pub async fn new(redraw_terminal: Arc<AtomicBool>, logger: Logger) -> Self {
+    pub fn new(redraw_terminal: Arc<AtomicBool>, logger: Logger) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Log");
         let highlight_style = Style::default();
 
+        // Render on first loop
         logger.has_changed.store(true, Ordering::Relaxed);
 
         Self {
@@ -34,40 +34,40 @@ impl<'a> LogList<'a> {
             highlight_style,
             widget: List::default(),
             needs_redraw: AtomicBool::new(false),
-            has_data_changed: logger.has_changed,
+            list_items: vec![],
             redraw_terminal,
             len: 0,
         }
     }
 
+    /* TODO there is an open issue for ratatui for word wrapping list items. Until then we can't properly show
+     * long error messages: https://github.com/ratatui-org/ratatui/issues/128 */
     pub async fn refresh<'b>(&mut self)
     where
         'b: 'a,
     {
-        if self.has_data_changed.swap(false, Ordering::Relaxed) {
-            let mut items: Vec<ListItem<'b>> = vec![];
-            let msgs = self.logger.messages.read().await;
+        if self.logger.has_changed.swap(false, Ordering::Relaxed) {
+            let new_len;
+            let mut items: Vec<ListItem<'a>> = {
+                let msgs_lock = self.logger.messages.read().unwrap();
+                new_len = msgs_lock.len();
+                if new_len > 0 {
+                    let msgs: &[String] = &msgs_lock[self.len..msgs_lock.len()];
+                    msgs.iter().map(|msg| ListItem::new(Line::from(msg.to_owned()))).collect()
+                } else {
+                    vec![]
+                }
+            };
+            self.list_items.append(&mut items);
 
-            let scroll_downwards =
-                (self.state.selected() == Some(self.len) || self.state.selected() == None) && msgs.len() != 0;
-
-            let mut stream = tokio_stream::iter(msgs.iter());
-
-            // TODO append new items to the list instead of constantly recreating it?
-            /* TODO there is an open issue for ratatui for word wrapping list items. Until then we can't properly show
-             * long error messages: https://github.com/ratatui-org/ratatui/issues/128 */
-            while let Some(val) = stream.next().await {
-                let lines = vec![Line::from(val.to_string())];
-                items.push(ListItem::new(lines))
+            if self.state.selected() == None && new_len != 0 || self.state.selected() == self.len.checked_sub(1) {
+                self.state.select(Some(new_len));
             }
+            self.len = new_len;
 
-            self.widget =
-                List::new(items).block(self.block.to_owned()).highlight_style(self.highlight_style.to_owned());
-
-            if scroll_downwards {
-                self.state.select(Some(msgs.len()));
-            }
-            self.len = msgs.len();
+            self.widget = List::new(self.list_items.clone())
+                .block(self.block.to_owned())
+                .highlight_style(self.highlight_style.to_owned());
 
             self.needs_redraw.store(false, Ordering::Relaxed);
             self.redraw_terminal.store(true, Ordering::Relaxed);
