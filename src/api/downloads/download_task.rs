@@ -69,11 +69,10 @@ impl DownloadTask {
             // TODO premium users could get a new download link through the API, without having to visit Nexusmods
             DownloadState::Expired => {
                 self.dl_info.set_state(DownloadState::Expired);
-                self.logger
-                    .log(format!(
-                        "Download link for {} expired, please download again.",
-                        self.dl_info.file_info.file_name
-                    ));
+                self.logger.log(format!(
+                    "Download link for {} expired, please download again.",
+                    self.dl_info.file_info.file_name
+                ));
             }
             DownloadState::Done => return,
         }
@@ -209,11 +208,10 @@ impl DownloadTask {
                         if resuming_download {
                             self.dl_info.progress.bytes_read = bytes_read.clone();
                         } else {
-                            self.logger
-                                .log(
-                                    "Server unexpectedly responded with 206 PARTIAL CONTENT \
+                            self.logger.log(
+                                "Server unexpectedly responded with 206 PARTIAL CONTENT \
                                            when starting download for {file_name}",
-                                );
+                            );
                             self.dl_info.progress = DownloadProgress::new(bytes_read.clone(), resp.content_length());
                         }
                         open_opts.append(true)

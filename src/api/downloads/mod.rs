@@ -87,11 +87,10 @@ impl Downloads {
                     return;
                 }
                 DownloadState::Done => {
-                    self.logger
-                        .log(format!(
-                            "{} was recently downloaded but no longer exists. Downloading again...",
-                            file_name
-                        ));
+                    self.logger.log(format!(
+                        "{} was recently downloaded but no longer exists. Downloading again...",
+                        file_name
+                    ));
                     let _ = task.start().await;
                     self.has_changed.store(true, Ordering::Relaxed);
                     return;
@@ -141,7 +140,8 @@ impl Downloads {
                 &nxm.query,
             ],
         )
-        .await {
+        .await
+        {
             Ok(dl_links) => {
                 self.cache.save_download_links(&dl_links, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
                 /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
@@ -153,8 +153,11 @@ impl Downloads {
                 match Url::parse(&location.URI) {
                     Ok(url) => Ok(url),
                     Err(e) => {
-                        self.logger.log(format!("Failed to parse URI in response from Nexus: {}. \
-                                                Please file a bug about this.", &location.URI));
+                        self.logger.log(format!(
+                            "Failed to parse URI in response from Nexus: {}. \
+                                                Please file a bug about this.",
+                            &location.URI
+                        ));
                         Err(e.into())
                     }
                 }
@@ -241,9 +244,9 @@ impl Downloads {
                             && local_file.file_name.eq(&md5result.file_details.file_name))
                         {
                             self.logger.log(format!(
-                                    "Warning: API returned unexpected file when checking hash for {}",
-                                    &local_file.file_name
-                                ));
+                                "Warning: API returned unexpected file when checking hash for {}",
+                                &local_file.file_name
+                            ));
                             let mi = &md5result.r#mod;
                             let fd = &md5result.file_details;
                             self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name));
@@ -296,20 +299,18 @@ impl Downloads {
                         }
                         Err(ref e) => {
                             if e.kind() == ErrorKind::NotFound {
-                                self.logger
-                                    .log(format!(
-                                        "Metadata for partially downloaded file {:?} is missing.\n
+                                self.logger.log(format!(
+                                    "Metadata for partially downloaded file {:?} is missing.\n
                                          The download needs to be restarted through the Nexus.",
-                                        f.file_name()
-                                    ));
+                                    f.file_name()
+                                ));
                             } else {
-                                self.logger
-                                    .log(format!(
-                                        "Unable to deserialize metadata from {:?}:\n
+                                self.logger.log(format!(
+                                    "Unable to deserialize metadata from {:?}:\n
                                         {}",
-                                        f.file_name(),
-                                        e
-                                    ));
+                                    f.file_name(),
+                                    e
+                                ));
                             }
                         }
                     }

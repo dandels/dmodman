@@ -34,9 +34,7 @@ pub async fn try_bind() -> Result<NxmSocketListener, Error> {
             // Even if the socket address is in use, we can't know if it's responding without trying to connect
             match connect().await {
                 // Another running instance is accepting connections
-                Ok(_stream) => {
-                    Err(ErrorKind::AddrInUse.into())
-                }
+                Ok(_stream) => Err(ErrorKind::AddrInUse.into()),
                 // Socket probably hasn't been cleanly removed. Remove it and bind to it.
                 Err(ref e) if e.kind() == ErrorKind::ConnectionRefused => {
                     println!(
