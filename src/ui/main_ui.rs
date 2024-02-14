@@ -62,7 +62,7 @@ impl MainUI<'_> {
         let archives_view = ArchiveTable::new(redraw_terminal.clone());
         let files_view = FileTable::new(redraw_terminal.clone(), cache.file_index.clone());
         let downloads_view = DownloadTable::new(redraw_terminal.clone(), downloads.clone());
-        let log_view = LogList::new(redraw_terminal.clone(), logger.clone()).await;
+        let log_view = LogList::new(redraw_terminal.clone(), logger.clone());
         let input_line = InputLine::new(redraw_terminal.clone());
 
         let focused = FocusedWidget::FileTable;

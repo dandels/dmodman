@@ -39,7 +39,7 @@ impl UpdateChecker {
             lf_lock.update_status = UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp);
 
             if let Err(e) = lf_lock.save(self.config.path_for(PathType::LocalFile(&lf_lock))).await {
-                self.logger.log(format!("Unable save ignore status for: {e}.")).await;
+                self.logger.log(format!("Unable save ignore status for: {e}."));
             }
             self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
         }
@@ -54,7 +54,7 @@ impl UpdateChecker {
         for (game, mod_id) in mods {
             self.update_mod(game, mod_id).await;
         }
-        self.logger.log("Finished checking updates.").await;
+        self.logger.log("Finished checking updates.");
     }
 
     pub async fn update_mod(&self, game: String, mod_id: u32) {
@@ -77,7 +77,7 @@ impl UpdateChecker {
                     }
                 }
             } else {
-                me.logger.log(format!("Strange, no file list in cache for {mod_id}. Fetching.")).await;
+                me.logger.log(format!("Strange, no file list in cache for {mod_id}. Fetching."));
                 needs_refresh = true;
             }
             if needs_refresh {
@@ -88,14 +88,14 @@ impl UpdateChecker {
                         checked = me.check_mod(files, &fl).await;
                     }
                     Err(e) => {
-                        me.logger.log(format!("Error when refresh filelist for {mod_id}: {}", e)).await;
+                        me.logger.log(format!("Error when refresh filelist for {mod_id}: {}", e));
                     }
                 }
             }
             for (file, new_status) in checked {
                 let mut lf = file.local_file.write().await;
                 if lf.update_status != new_status {
-                    me.logger.log(format!("Setting {} status to {:?}", file.file_details.name, new_status)).await;
+                    me.logger.log(format!("Setting {} status to {:?}", file.file_details.name, new_status));
                     lf.update_status = new_status;
                     lf.save(me.config.path_for(PathType::LocalFile(&lf))).await.unwrap();
                 }
@@ -143,7 +143,7 @@ impl UpdateChecker {
         file_list: &FileList,
     ) -> Vec<(Arc<FileData>, UpdateStatus)> {
         if to_check.peek().is_none() {
-            self.logger.log("Tried to check updates for nonexistent files. This shouldn't happen.").await;
+            self.logger.log("Tried to check updates for nonexistent files. This shouldn't happen.");
             return vec![];
         }
 

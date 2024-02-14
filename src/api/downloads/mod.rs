@@ -64,11 +64,10 @@ impl Downloads {
             Ok(n) => nxm = n,
             Err(e) => {
                 if let ApiError::Expired = e {
-                    self.logger.log(format!("nxm url has expired: {nxm_str}")).await;
+                    self.logger.log(format!("nxm url has expired: {nxm_str}"));
                     return;
                 } else {
-                    self.logger.log(format!("Unable to parse string as nxm url: {nxm_str}")).await;
-                    self.logger.log(format!("{}", e)).await;
+                    self.logger.log(format!("Unable to parse string \"{nxm_str}\" as nxm url: {e}"));
                     return;
                 }
             }
@@ -84,7 +83,7 @@ impl Downloads {
         if let Some(task) = self.tasks.write().await.get_mut(&nxm.file_id) {
             match task.dl_info.get_state() {
                 DownloadState::Downloading => {
-                    self.logger.log(format!("Download of {} is already in progress.", file_name)).await;
+                    self.logger.log(format!("Download of {} is already in progress.", file_name));
                     return;
                 }
                 DownloadState::Done => {
@@ -92,8 +91,7 @@ impl Downloads {
                         .log(format!(
                             "{} was recently downloaded but no longer exists. Downloading again...",
                             file_name
-                        ))
-                        .await;
+                        ));
                     let _ = task.start().await;
                     self.has_changed.store(true, Ordering::Relaxed);
                     return;
@@ -102,11 +100,11 @@ impl Downloads {
                 _ => {
                     task.dl_info.url = url.clone();
                     if let Err(()) = task.start().await {
-                        self.logger.log(format!("Failed to restart download for {}", &file_name)).await;
+                        self.logger.log(format!("Failed to restart download for {}", &file_name));
                     }
                     if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&task.dl_info))).await
                     {
-                        self.logger.log(format!("Couldn't store new download url for {}: {}", &file_name, e)).await;
+                        self.logger.log(format!("Couldn't store new download url for {}: {}", &file_name, e));
                     }
                     return;
                 }
@@ -155,13 +153,14 @@ impl Downloads {
                 match Url::parse(&location.URI) {
                     Ok(url) => Ok(url),
                     Err(e) => {
-                        self.logger.log(format!("Failed to parse URI in response from Nexus: {}. Please file a bug about this.", &location.URI)).await;
+                        self.logger.log(format!("Failed to parse URI in response from Nexus: {}. \
+                                                Please file a bug about this.", &location.URI));
                         Err(e.into())
                     }
                 }
             }
             Err(e) => {
-                self.logger.log(format!("Failed to query download links from Nexus: {}", e)).await;
+                self.logger.log(format!("Failed to query download links from Nexus: {}", e));
                 Err(e)
             }
         }
@@ -182,12 +181,12 @@ impl Downloads {
             match FileList::request(&self.client, vec![game, &mod_id.to_string()]).await {
                 Ok(fl) => {
                     if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
-                        self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e)).await;
+                        self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
                     }
                     Some(fl)
                 }
                 Err(e) => {
-                    self.logger.log(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e)).await;
+                    self.logger.log(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e));
                     None
                 }
             }
@@ -204,7 +203,7 @@ impl Downloads {
                             lf.update_status = UpdateStatus::UpToDate(latest_timestamp);
                             let path = self.config.path_for(PathType::LocalFile(&lf));
                             if let Err(e) = lf.save(path).await {
-                                self.logger.log(format!("Couldn't set UpdateStatus for {}: {}", lf.file_name, e)).await;
+                                self.logger.log(format!("Couldn't set UpdateStatus for {}: {}", lf.file_name, e));
                             }
                         }
                         // Probably doesn't make sense to do anything in the other cases..?
@@ -241,27 +240,25 @@ impl Downloads {
                         if !(md5.eq(&md5result.file_details.md5)
                             && local_file.file_name.eq(&md5result.file_details.file_name))
                         {
-                            self.logger
-                                .log(format!(
+                            self.logger.log(format!(
                                     "Warning: API returned unexpected file when checking hash for {}",
                                     &local_file.file_name
-                                ))
-                                .await;
+                                ));
                             let mi = &md5result.r#mod;
                             let fd = &md5result.file_details;
-                            self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name)).await;
-                            self.logger.log("This should be reported as a Nexus bug. See README for details.").await;
+                            self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name));
+                            self.logger.log("This should be reported as a Nexus bug. See README for details.");
                         }
                         // Early return if success, else fall through to error reporting.
                         return;
                     }
                 }
-                self.logger.log(format!("Unable to verify integrity of: {}", &local_file.file_name)).await;
-                self.logger.log("This could mean the download got corrupted. See README for details.").await;
+                self.logger.log(format!("Unable to verify integrity of: {}", &local_file.file_name));
+                self.logger.log("This could mean the download got corrupted. See README for details.");
             }
             Err(e) => {
-                self.logger.log(format!("Error when checking hash for: {}", local_file.file_name)).await;
-                self.logger.log(format!("{}", e)).await;
+                self.logger.log(format!("Error when checking hash for: {}", local_file.file_name));
+                self.logger.log(format!("{}", e));
             }
         }
     }
@@ -277,12 +274,12 @@ impl Downloads {
         let mut path = self.config.download_dir();
         path.push(format!("{}.part", &task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            self.logger.log(format!("Unable to delete {:?}.", &path)).await;
+            self.logger.log(format!("Unable to delete {:?}.", &path));
         }
         path.pop();
         path.push(format!("{}.part.json", &task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            self.logger.log(format!("Unable to delete {:?}.", &path)).await;
+            self.logger.log(format!("Unable to delete {:?}.", &path));
         }
         self.has_changed.store(true, Ordering::Relaxed);
     }
@@ -304,8 +301,7 @@ impl Downloads {
                                         "Metadata for partially downloaded file {:?} is missing.\n
                                          The download needs to be restarted through the Nexus.",
                                         f.file_name()
-                                    ))
-                                    .await;
+                                    ));
                             } else {
                                 self.logger
                                     .log(format!(
@@ -313,8 +309,7 @@ impl Downloads {
                                         {}",
                                         f.file_name(),
                                         e
-                                    ))
-                                    .await;
+                                    ));
                             }
                         }
                     }

@@ -16,7 +16,7 @@ impl MainUI<'_> {
             Event::Key(k) => key = k,
             Event::Mouse(m) => match m {
                 MouseEvent::Press(mouse_event, x, y) => {
-                    self.logger.log(format!("click! {mouse_event:?}, x: {x}, y: {y}")).await;
+                    self.logger.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
                     return;
                 }
                 _ => {
@@ -24,7 +24,7 @@ impl MainUI<'_> {
                 }
             },
             Event::Unsupported(u) => {
-                self.logger.log(format!("Unsupported: {u:?}")).await;
+                self.logger.log(format!("Unsupported: {u:?}"));
                 return;
             }
         }
@@ -73,7 +73,7 @@ impl MainUI<'_> {
             }
             _ => {
                 // Uncomment to log keypresses
-                //self.logger.log(format!("{:?}", key)).await;
+                //self.logger.log(format!("{:?}", key));
             }
         }
         match self.focused {
@@ -127,14 +127,14 @@ impl MainUI<'_> {
                     let lf_lock = fdata.local_file.read().await;
                     let url = format!("https://www.nexusmods.com/{}/mods/{}", &lf_lock.game, &lf_lock.mod_id);
                     if Command::new("xdg-open").arg(url).status().is_err() {
-                        self.logger.log("xdg-open is needed to open URLs in browser.".to_string()).await;
+                        self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
                     }
                 }
             }
             Key::Delete => {
                 if let Some(i) = self.selected_index() {
                     if let Err(e) = self.cache.delete_by_index(i).await {
-                        self.logger.log(format!("Unable to delete file: {}", e)).await;
+                        self.logger.log(format!("Unable to delete file: {}", e));
                     } else {
                         if i == 0 {
                             self.select_widget_index(None);
@@ -180,7 +180,7 @@ impl MainUI<'_> {
                     if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
                         self.input_line.get_file_name(&fd.file_details.name);
                     } else {
-                        self.logger.log("Warn: mod for {file_name} doesn't exist in db").await;
+                        self.logger.log("Warn: mod for {file_name} doesn't exist in db");
                         self.input_line.get_file_name(&file_name);
                     }
                     self.input_mode = InputMode::ReadLine;
@@ -188,7 +188,7 @@ impl MainUI<'_> {
                 }
             }
             Key::Delete => {
-                self.logger.log("Not implemented.").await;
+                self.logger.log("Not implemented.");
             }
             _ => {}
         }

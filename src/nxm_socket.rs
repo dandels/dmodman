@@ -69,7 +69,7 @@ pub async fn listen_for_downloads(nxm_sock: NxmSocketListener, downloads: Downlo
                     } // It doesn't seem like the two else {} paths here require dealing with
                 }
                 Err(e) => {
-                    logger.log(format!("nxm socket was unable to accept connection: {}", e)).await;
+                    logger.log(format!("nxm socket was unable to accept connection: {}", e));
                 }
             }
         }
@@ -86,13 +86,13 @@ async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads, logge
                 }
             }
             Err(e) => {
-                logger.log(format!("nxm socket received invalid UTF-8 sequence: {}", e)).await;
+                logger.log(format!("nxm socket received invalid UTF-8 sequence: {}", e));
             }
         },
         // is_readable returned a false positive
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
         Err(e) => {
-            logger.log(format!("nxm socket encountered error: {}", e)).await;
+            logger.log(format!("nxm socket encountered error: {}", e));
         }
     }
 }

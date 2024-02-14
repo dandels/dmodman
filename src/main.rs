@@ -2,7 +2,7 @@ mod api;
 mod archives;
 mod cache;
 mod config;
-mod messages;
+mod logger;
 mod nxm_socket;
 mod ui;
 mod util;
@@ -15,7 +15,7 @@ use api::{Client, Downloads};
 use archives::Archives;
 use cache::Cache;
 use config::{Config, ConfigBuilder};
-use messages::Messages;
+use logger::Logger;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
@@ -44,9 +44,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    /* We can't println in the TUI. Instead we use Messages which displays messages in the TUI.
+    /* We can't println in the TUI. Instead we use Logger which can log to a file and show messages in the TUI.
      * It calls println!() instead when running as a daemon. */
-    let msgs = Messages::new(is_interactive);
+    let logger = Logger::new(is_interactive);
 
     // TODO config is cloned needlessly in a few places
     let mut config = match ConfigBuilder::load() {
@@ -60,13 +60,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             config.save_apikey()?;
         } else {
             // This program doesn't really do anything without an API key, but continue anyway.
-            msgs.push("No API key configured. API connections are disabled.").await;
+            logger.log("No API key configured. API connections are disabled.");
         }
     }
 
     let cache = Cache::new(&config).await?;
     let client = Client::new(&config).await;
-    let downloads = Downloads::new(&cache, &client, &config, &msgs).await;
+    let downloads = Downloads::new(&cache, &client, &config, &logger).await;
 
     // Try bind to /run/user/$uid. If it already exists then send nexus download links there and quit.
     let nxm_socket;
@@ -99,16 +99,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if is_interactive {
         {
             let downloads = downloads.clone();
-            let msgs = msgs.clone();
+            let msgs = logger.clone();
             tokio::task::spawn(async move {
                 nxm_socket::listen_for_downloads(nxm_socket, downloads, msgs).await;
             });
         }
 
-        let archive = Archives::new(config.clone(), msgs.clone());
-        ui::MainUI::new(cache, client, config, downloads, msgs, archive).await.run().await;
+        let archive = Archives::new(config.clone(), logger.clone());
+        ui::MainUI::new(cache, client, config, downloads, logger, archive).await.run().await;
     } else {
-        nxm_socket::listen_for_downloads(nxm_socket, downloads, msgs).await;
+        nxm_socket::listen_for_downloads(nxm_socket, downloads, logger).await;
     }
 
     Ok(())
