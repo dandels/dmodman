@@ -9,6 +9,18 @@ use super::component::traits::*;
 use super::component::*;
 use super::main_ui::*;
 
+pub const ARCHIVES_KEYS: &[(&str, &str)] = &[("<i>", "install "), ("<Del>", "delete "), ("<q>", "quit ")];
+pub const DOWNLOADS_KEYS: &[(&str, &str)] = &[("<p>", "pause/resume "), ("<Del>", "delete "), ("<q>", "quit ")];
+pub const FILES_KEYS: &[(&str, &str)] = &[
+    ("<u>", "update all "),
+    ("<U>", "update selected "),
+    ("<i>", "ignore update "),
+    ("<v>", "visit on Nexus "),
+    ("<Del>", "delete "),
+    ("<q>", "quit "),
+];
+pub const LOG_KEYS: &[(&str, &str)] = &[("<Del>", "delete "), ("<q>", "quit ")];
+
 impl MainUI<'_> {
     pub async fn handle_events(&mut self, event: Event) {
         let key: Key;
@@ -40,10 +52,10 @@ impl MainUI<'_> {
 
         match key {
             Key::Down | Key::Char('j') => {
-                self.focus_next();
+                self.select_next();
             }
             Key::Up | Key::Char('k') => {
-                self.focus_previous();
+                self.select_previous();
             }
             Key::Left | Key::Char('h') => match self.focused {
                 FocusedWidget::LogList | FocusedWidget::DownloadTable => {
@@ -139,7 +151,7 @@ impl MainUI<'_> {
                         if i == 0 {
                             self.select_widget_index(None);
                         }
-                        self.focus_previous();
+                        self.select_previous();
                     }
                 }
             }
@@ -162,7 +174,7 @@ impl MainUI<'_> {
                     if i == 0 {
                         self.select_widget_index(None);
                     }
-                    self.focus_previous();
+                    self.select_previous();
                 }
             }
             _ => {}
@@ -171,7 +183,7 @@ impl MainUI<'_> {
 
     async fn handle_archives_keys(&mut self, key: Key) {
         match key {
-            Key::Char('\n') => {
+            Key::Char('i') => {
                 if let Some(i) = self.selected_index() {
                     let path = self.archives.files.get(i).unwrap().path();
                     match self.archives.list_contents(path.clone()).await {
@@ -206,7 +218,7 @@ impl MainUI<'_> {
                     if i == 0 {
                         self.select_widget_index(None);
                     }
-                    self.focus_previous();
+                    self.select_previous();
                 }
             }
             _ => {}

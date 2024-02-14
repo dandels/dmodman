@@ -31,7 +31,7 @@ pub struct MainUI<'a> {
     rectangles: Rectangles,
     pub focused: FocusedWidget,
     pub tab_bar: TabBar<'a>,
-    pub key_bar: KeyBar<'a>,
+    pub hotkey_bar: HotkeyBar<'a>,
     pub bottom_bar: BottomBar<'a>,
     pub archives_view: ArchiveTable<'a>,
     pub files_view: FileTable<'a>,
@@ -56,16 +56,16 @@ impl MainUI<'_> {
 
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
+        let focused = FocusedWidget::FileTable;
+
         let tab_bar = TabBar::new(redraw_terminal.clone());
-        let key_bar = KeyBar::new();
+        let hotkey_bar = HotkeyBar::new(focused.clone());
         let bottom_bar = BottomBar::new(redraw_terminal.clone(), client.request_counter);
         let archives_view = ArchiveTable::new(redraw_terminal.clone());
         let files_view = FileTable::new(redraw_terminal.clone(), cache.file_index.clone());
         let downloads_view = DownloadTable::new(redraw_terminal.clone(), downloads.clone());
         let log_view = LogList::new(redraw_terminal.clone(), logger.clone());
         let input_line = InputLine::new(redraw_terminal.clone());
-
-        let focused = FocusedWidget::FileTable;
 
         Self {
             archives,
@@ -74,7 +74,7 @@ impl MainUI<'_> {
             rectangles: Rectangles::new(),
             focused,
             tab_bar,
-            key_bar,
+            hotkey_bar,
             archives_view,
             files_view,
             downloads_view,
@@ -112,7 +112,7 @@ impl MainUI<'_> {
             self.downloads_view.refresh().await;
             self.log_view.refresh().await;
             self.archives_view.refresh(&mut self.archives).await;
-            self.key_bar.refresh().await;
+            self.hotkey_bar.refresh(&self.focused).await;
             self.tab_bar.refresh().await;
             self.bottom_bar.refresh().await;
 
@@ -149,7 +149,7 @@ impl MainUI<'_> {
                         );
 
                         frame.render_widget(&self.tab_bar.widget, self.rectangles.rect_main_vertical[0]);
-                        frame.render_widget(&self.key_bar.widget, self.rectangles.rect_main_vertical[1]);
+                        frame.render_widget(&self.hotkey_bar.widget, self.rectangles.rect_main_vertical[1]);
                         frame.render_widget(&self.bottom_bar.widget, self.rectangles.rect_statcounter[0]);
 
                         if let InputMode::ReadLine = self.input_mode {

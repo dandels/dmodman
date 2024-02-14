@@ -1,6 +1,7 @@
 use super::traits::{Highlight, Select};
 use super::*;
 use crate::ui::main_ui::MainUI;
+use std::sync::atomic::Ordering;
 
 #[derive(Clone)]
 pub enum FocusedWidget {
@@ -34,14 +35,15 @@ impl MainUI<'_> {
         self.focused_widget().unfocus();
         self.inner(selected.clone()).focus();
         self.focused = selected;
+        self.hotkey_bar.needs_redraw.store(true, Ordering::Relaxed);
     }
 
-    pub fn focus_next(&mut self) {
+    pub fn select_next(&mut self) {
         self.focused_widget().next();
         self.focused_widget().needs_redraw();
     }
 
-    pub fn focus_previous(&mut self) {
+    pub fn select_previous(&mut self) {
         self.focused_widget().previous();
         self.focused_widget().needs_redraw();
     }

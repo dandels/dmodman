@@ -1,6 +1,6 @@
 mod component;
 mod event;
-mod key_press;
+mod hotkeys;
 mod main_ui;
 mod rectangles;
 pub mod sso;

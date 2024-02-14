@@ -18,7 +18,7 @@ impl<'a> TabBar<'a> {
     pub fn new(redraw_terminal: Arc<AtomicBool>) -> Self {
         let highlight_style = Style::new().bg(Color::White).fg(Color::Black);
 
-        let tabnames = vec!["Tab1", "Tab2", "Tab3", "Tab4"];
+        let tabnames = vec!["Main", "Archives"];
         let len = tabnames.len();
         let selected_tab = 0;
         let widget = Tabs::new(tabnames).select(selected_tab).highlight_style(highlight_style);
