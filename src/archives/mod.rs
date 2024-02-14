@@ -1,8 +1,8 @@
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::time::UNIX_EPOCH;
 
-use compress_tools::tokio_support::*;
+use compress_tools::*;
+// This module mixes std and tokio fs, be mindful which one we're using
 use std::fs::File;
 use tokio::fs;
 use tokio::fs::DirEntry;
@@ -52,15 +52,29 @@ impl Archives {
         &self.files
     }
 
-    pub fn len(&self) -> usize {
-        self.files.len()
+    pub async fn list_contents(&self, path: PathBuf) -> Result<Vec<String>> {
+        tokio::task::spawn_blocking(move || {
+            let mut file = File::open(path).unwrap();
+            list_archive_files(&mut file)
+        })
+        .await?
     }
 
-    pub async fn list_contents(&self, path: &PathBuf) {
-        let file = File::open(path).unwrap();
-        let list = compress_tools::list_archive_files(&file).unwrap();
-        for l in list {
-            self.msgs.push(l).await;
-        }
+    pub async fn extract(&self, selected_index: usize, dest_dir_name: String) {
+        let src_path = self.files.get(selected_index).unwrap().path();
+        let mut dest_path = self.config.download_dir();
+
+        let logger = self.logger.clone();
+        tokio::task::spawn_blocking(move || match File::open(&src_path) {
+            Ok(src_file) => {
+                dest_path.push(dest_dir_name);
+                if let Err(e) = uncompress_archive(src_file, &dest_path, Ownership::Ignore) {
+                    logger.log(format!("Extract failed with error: {:?}", e));
+                }
+            }
+            Err(e) => {
+                logger.log(format!("Unable to extract: {src_path:?} {:?}", e));
+            }
+        });
     }
 }

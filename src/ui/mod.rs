@@ -21,6 +21,8 @@ use tokio_stream::StreamExt;
 pub fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
     let stdout = std::io::stdout().into_raw_mode()?;
     let stdout = MouseTerminal::from(stdout);
+    /* The alternate screen restores terminal state when dropped.
+     * Disable it if you need to see rust backtraces */
     let stdout = stdout.into_alternate_screen()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;

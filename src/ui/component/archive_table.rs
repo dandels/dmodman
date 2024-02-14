@@ -1,16 +1,15 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::Archives;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
 use tokio_stream::StreamExt;
 
-use crate::archives::Archives;
 use crate::util;
 
 pub struct ArchiveTable<'a> {
-    pub archives: Archives,
     headers: Row<'a>,
     widths: [Constraint; 2],
     pub block: Block<'a>,
@@ -23,13 +22,12 @@ pub struct ArchiveTable<'a> {
 }
 
 impl<'a> ArchiveTable<'a> {
-    pub fn new(redraw_terminal: Arc<AtomicBool>, archives: Archives) -> Self {
+    pub fn new(redraw_terminal: Arc<AtomicBool>) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Archives");
         let headers = Row::new(["Name", "Size"].iter().map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))));
         let widths = [Constraint::Ratio(4, 5), Constraint::Ratio(1, 5)];
 
         Self {
-            archives,
             block,
             headers,
             widths,
@@ -43,9 +41,9 @@ impl<'a> ArchiveTable<'a> {
     }
 
     // TODO use inotify to refresh the directory state only when needed
-    pub async fn refresh(&mut self) {
-        if self.archives.swap_has_changed() {
-            let arch_list = self.archives.list().await;
+    pub async fn refresh(&mut self, archives: &mut Archives) {
+        if archives.swap_has_changed() {
+            let arch_list = archives.list().await;
             let mut stream = tokio_stream::iter(arch_list.iter());
             let mut rows: Vec<Row> = vec![];
             while let Some(direntry) = stream.next().await {

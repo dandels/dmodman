@@ -172,16 +172,20 @@ impl MainUI<'_> {
     async fn handle_archives_keys(&mut self, key: Key) {
         match key {
             Key::Char('\n') => {
-                println!("pressed enter");
                 if let Some(i) = self.selected_index() {
-                    let path = self.archives_view.archives.files.get(i).unwrap().path();
-                    let _contents = self.archives_view.archives.list_contents(&path).await;
+                    let path = self.archives.files.get(i).unwrap().path();
+                    match self.archives.list_contents(path.clone()).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            self.logger.log(format!("{:?}", e));
+                        }
+                    }
                     let file_name = path.file_name().unwrap().to_string_lossy();
                     if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
-                        self.input_line.get_file_name(&fd.file_details.name);
+                        self.input_line.ask_extract_destination(&fd.file_details.name);
                     } else {
                         self.logger.log("Warn: mod for {file_name} doesn't exist in db");
-                        self.input_line.get_file_name(&file_name);
+                        self.input_line.ask_extract_destination(&file_name);
                     }
                     self.input_mode = InputMode::ReadLine;
                     self.redraw_terminal.store(true, Ordering::Relaxed);
@@ -229,15 +233,13 @@ impl MainUI<'_> {
                 self.input_mode = InputMode::Normal;
             }
             Key::Char('\n') => {
-                self.msgs.push(self.input_line.get_contents()).await;
-                if self.input_line.clear() {
-                    self.msgs.push("Succesful delete").await;
-                } else {
-                    self.msgs.push("Failed delete").await;
-                }
+                let dest_dir = self.input_line.get_contents();
+                self.archives.extract(self.archives_view.selected().unwrap(), dest_dir).await;
                 self.input_mode = InputMode::Normal;
                 self.redraw_terminal.store(true, Ordering::Relaxed);
             }
+            // disable tab character
+            Key::Char('\t') => {}
             _ => {
                 self.input_line.textarea.input(key);
             }

@@ -99,7 +99,13 @@ impl MainUI<'_> {
         let signals = Signals::new([SIGWINCH]).unwrap();
         let _handle = signals.handle();
         let _sigwinch_task = task::spawn(handle_sigwinch(signals, got_sigwinch.clone()));
-        let mut terminal = term_setup().unwrap();
+        let mut terminal = match term_setup() {
+            Ok(term) => term,
+            Err(e) => {
+                println!("Failed to initialize terminal: {}", e);
+                return;
+            }
+        };
 
         while self.should_run {
             self.files_view.refresh().await;
@@ -147,7 +153,7 @@ impl MainUI<'_> {
                         frame.render_widget(&self.bottom_bar.widget, self.rectangles.rect_statcounter[0]);
 
                         if let InputMode::ReadLine = self.input_mode {
-                            // Draw on top of the rest of the widgets
+                            // Clear the space first so we can draw on top of the rest of the widgets
                             frame.render_widget(Clear, self.rectangles.rect_inputline[0]);
                             frame.render_widget(self.input_line.widget(), self.rectangles.rect_inputline[0]);
                         }
