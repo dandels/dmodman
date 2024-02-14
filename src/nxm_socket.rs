@@ -6,7 +6,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::task;
 
 use crate::api::Downloads;
-use crate::Messages;
+use crate::Logger;
 
 // Listens for nxm:// urls to queue as downloads
 pub struct NxmSocketListener {
@@ -57,26 +57,26 @@ pub async fn try_bind() -> Result<NxmSocketListener, Error> {
     }
 }
 
-pub async fn listen_for_downloads(nxm_sock: NxmSocketListener, downloads: Downloads, msgs: Messages) {
+pub async fn listen_for_downloads(nxm_sock: NxmSocketListener, downloads: Downloads, logger: Logger) {
     task::spawn(async move {
         loop {
             match nxm_sock.listener.accept().await {
                 Ok((stream, _addr)) => {
                     if let Ok(ready) = stream.ready(Interest::READABLE).await {
                         if ready.is_readable() {
-                            handle_incoming_stream(stream, &downloads, &msgs).await;
+                            handle_incoming_stream(stream, &downloads, &logger).await;
                         }
                     } // It doesn't seem like the two else {} paths here require dealing with
                 }
                 Err(e) => {
-                    msgs.push(format!("nxm socket was unable to accept connection: {}", e)).await;
+                    logger.log(format!("nxm socket was unable to accept connection: {}", e)).await;
                 }
             }
         }
     });
 }
 
-async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads, msgs: &Messages) {
+async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads, logger: &Logger) {
     let mut data = vec![0; 1024];
     match stream.try_read(&mut data) {
         Ok(_bytes) => match str::from_utf8(&data) {
@@ -86,13 +86,13 @@ async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads, msgs:
                 }
             }
             Err(e) => {
-                msgs.push(format!("nxm socket received invalid UTF-8 sequence: {}", e)).await;
+                logger.log(format!("nxm socket received invalid UTF-8 sequence: {}", e)).await;
             }
         },
         // is_readable returned a false positive
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
         Err(e) => {
-            msgs.push(format!("nxm socket encountered error: {}", e)).await;
+            logger.log(format!("nxm socket encountered error: {}", e)).await;
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, MessageList, TabBar};
+use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, LogList, TabBar};
 
 impl Select for TabBar<'_> {
     fn len(&self) -> usize {
@@ -40,7 +40,7 @@ macro_rules! impl_stateful {
 impl_stateful!(ArchiveTable<'_>);
 impl_stateful!(DownloadTable<'_>);
 impl_stateful!(FileTable<'_>);
-impl_stateful!(MessageList<'_>);
+impl_stateful!(LogList<'_>);
 
 pub trait Select {
     fn len(&self) -> usize;

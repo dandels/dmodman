@@ -5,7 +5,7 @@ mod file_table;
 mod focused_widget;
 mod input_line;
 mod keybar;
-mod message_list;
+mod log_list;
 mod tabbar;
 pub mod traits;
 
@@ -16,5 +16,5 @@ pub use file_table::FileTable;
 pub use focused_widget::*;
 pub use input_line::InputLine;
 pub use keybar::KeyBar;
-pub use message_list::MessageList;
+pub use log_list::LogList;
 pub use tabbar::TabBar;

@@ -6,11 +6,11 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
 use tokio_stream::StreamExt;
 
-use crate::Messages;
+use crate::Logger;
 
-pub struct MessageList<'a> {
+pub struct LogList<'a> {
     pub block: Block<'a>,
-    pub msgs: Messages,
+    pub logger: Logger,
     pub state: ListState,
     pub highlight_style: Style,
     pub widget: List<'a>,
@@ -20,21 +20,21 @@ pub struct MessageList<'a> {
     pub len: usize,
 }
 
-impl<'a> MessageList<'a> {
-    pub async fn new(redraw_terminal: Arc<AtomicBool>, msgs: Messages) -> Self {
-        let block = Block::default().borders(Borders::ALL).title("Messages");
+impl<'a> LogList<'a> {
+    pub async fn new(redraw_terminal: Arc<AtomicBool>, logger: Logger) -> Self {
+        let block = Block::default().borders(Borders::ALL).title("Log");
         let highlight_style = Style::default();
 
-        msgs.has_changed.store(true, Ordering::Relaxed);
+        logger.has_changed.store(true, Ordering::Relaxed);
 
         Self {
             block,
-            msgs: msgs.clone(),
+            logger: logger.clone(),
             state: ListState::default(),
             highlight_style,
             widget: List::default(),
             needs_redraw: AtomicBool::new(false),
-            has_data_changed: msgs.has_changed,
+            has_data_changed: logger.has_changed,
             redraw_terminal,
             len: 0,
         }
@@ -46,7 +46,7 @@ impl<'a> MessageList<'a> {
     {
         if self.has_data_changed.swap(false, Ordering::Relaxed) {
             let mut items: Vec<ListItem<'b>> = vec![];
-            let msgs = self.msgs.messages.read().await;
+            let msgs = self.logger.messages.read().await;
 
             let scroll_downwards =
                 (self.state.selected() == Some(self.len) || self.state.selected() == None) && msgs.len() != 0;

@@ -16,7 +16,7 @@ impl MainUI<'_> {
             Event::Key(k) => key = k,
             Event::Mouse(m) => match m {
                 MouseEvent::Press(mouse_event, x, y) => {
-                    self.msgs.push(format!("click! {mouse_event:?}, x: {x}, y: {y}")).await;
+                    self.logger.log(format!("click! {mouse_event:?}, x: {x}, y: {y}")).await;
                     return;
                 }
                 _ => {
@@ -24,7 +24,7 @@ impl MainUI<'_> {
                 }
             },
             Event::Unsupported(u) => {
-                self.msgs.push(format!("Unsupported: {u:?}")).await;
+                self.logger.log(format!("Unsupported: {u:?}")).await;
                 return;
             }
         }
@@ -46,20 +46,20 @@ impl MainUI<'_> {
                 self.focus_previous();
             }
             Key::Left | Key::Char('h') => match self.focused {
-                FocusedWidget::MessageList | FocusedWidget::DownloadTable => {
+                FocusedWidget::LogList | FocusedWidget::DownloadTable => {
                     self.change_focus_to(FocusedWidget::FileTable);
                 }
                 FocusedWidget::FileTable => {
-                    self.change_focus_to(FocusedWidget::MessageList);
+                    self.change_focus_to(FocusedWidget::LogList);
                 }
                 _ => {}
             },
             Key::Right | Key::Char('l') => match self.focused {
-                FocusedWidget::MessageList | FocusedWidget::FileTable => {
+                FocusedWidget::LogList | FocusedWidget::FileTable => {
                     self.change_focus_to(FocusedWidget::DownloadTable);
                 }
                 FocusedWidget::DownloadTable => {
-                    self.change_focus_to(FocusedWidget::MessageList);
+                    self.change_focus_to(FocusedWidget::LogList);
                 }
                 _ => {}
             },
@@ -73,7 +73,7 @@ impl MainUI<'_> {
             }
             _ => {
                 // Uncomment to log keypresses
-                //self.msgs.push(format!("{:?}", key)).await;
+                //self.logger.log(format!("{:?}", key)).await;
             }
         }
         match self.focused {
@@ -86,8 +86,8 @@ impl MainUI<'_> {
             FocusedWidget::ArchiveTable => {
                 self.handle_archives_keys(key).await;
             }
-            FocusedWidget::MessageList => {
-                self.handle_messages_keys(key).await;
+            FocusedWidget::LogList => {
+                self.handle_log_keys(key).await;
             }
         }
     }
@@ -127,14 +127,14 @@ impl MainUI<'_> {
                     let lf_lock = fdata.local_file.read().await;
                     let url = format!("https://www.nexusmods.com/{}/mods/{}", &lf_lock.game, &lf_lock.mod_id);
                     if Command::new("xdg-open").arg(url).status().is_err() {
-                        self.msgs.push("xdg-open is needed to open URLs in browser.".to_string()).await;
+                        self.logger.log("xdg-open is needed to open URLs in browser.".to_string()).await;
                     }
                 }
             }
             Key::Delete => {
                 if let Some(i) = self.selected_index() {
                     if let Err(e) = self.cache.delete_by_index(i).await {
-                        self.msgs.push(format!("Unable to delete file: {}", e)).await;
+                        self.logger.log(format!("Unable to delete file: {}", e)).await;
                     } else {
                         if i == 0 {
                             self.select_widget_index(None);
@@ -180,7 +180,7 @@ impl MainUI<'_> {
                     if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
                         self.input_line.get_file_name(&fd.file_details.name);
                     } else {
-                        self.msgs.push("Warn: mod for {file_name} doesn't exist in db").await;
+                        self.logger.log("Warn: mod for {file_name} doesn't exist in db").await;
                         self.input_line.get_file_name(&file_name);
                     }
                     self.input_mode = InputMode::ReadLine;
@@ -188,17 +188,17 @@ impl MainUI<'_> {
                 }
             }
             Key::Delete => {
-                self.msgs.push("Not implemented.").await;
+                self.logger.log("Not implemented.").await;
             }
             _ => {}
         }
     }
 
-    async fn handle_messages_keys(&mut self, key: Key) {
+    async fn handle_log_keys(&mut self, key: Key) {
         match key {
             Key::Delete => {
                 if let Some(i) = self.selected_index() {
-                    self.msgs_view.msgs.remove(i).await;
+                    self.log_view.logger.remove(i).await;
                     if i == 0 {
                         self.select_widget_index(None);
                     }

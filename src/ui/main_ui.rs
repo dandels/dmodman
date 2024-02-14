@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use ratatui::widgets::Clear;
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use tokio::task;
@@ -14,7 +15,7 @@ use crate::cache::Cache;
 use crate::config::Config;
 use crate::ui::rectangles::Rectangles;
 use crate::ui::*;
-use crate::Messages;
+use crate::Logger;
 
 pub enum InputMode {
     Normal,
@@ -22,8 +23,11 @@ pub enum InputMode {
 }
 
 pub struct MainUI<'a> {
+    pub archives: Archives,
     pub cache: Cache,
     pub downloads: Downloads,
+    pub logger: Logger,
+    pub updater: UpdateChecker,
     rectangles: Rectangles,
     pub focused: FocusedWidget,
     pub tab_bar: TabBar<'a>,
@@ -32,12 +36,10 @@ pub struct MainUI<'a> {
     pub archives_view: ArchiveTable<'a>,
     pub files_view: FileTable<'a>,
     pub downloads_view: DownloadTable<'a>,
-    pub msgs_view: MessageList<'a>,
+    pub log_view: LogList<'a>,
     pub input_line: InputLine<'a>,
     pub input_mode: InputMode,
     pub redraw_terminal: Arc<AtomicBool>,
-    pub updater: UpdateChecker,
-    pub msgs: Messages,
     pub should_run: bool,
 }
 
@@ -47,25 +49,26 @@ impl MainUI<'_> {
         client: Client,
         config: Config,
         downloads: Downloads,
-        msgs: Messages,
+        logger: Logger,
         archives: Archives,
     ) -> Self {
-        let updater = UpdateChecker::new(cache.clone(), client.clone(), config, msgs.clone());
+        let updater = UpdateChecker::new(cache.clone(), client.clone(), config, logger.clone());
 
         let redraw_terminal = Arc::new(AtomicBool::new(true));
 
         let tab_bar = TabBar::new(redraw_terminal.clone());
         let key_bar = KeyBar::new();
         let bottom_bar = BottomBar::new(redraw_terminal.clone(), client.request_counter);
-        let archives_view = ArchiveTable::new(redraw_terminal.clone(), archives);
+        let archives_view = ArchiveTable::new(redraw_terminal.clone());
         let files_view = FileTable::new(redraw_terminal.clone(), cache.file_index.clone());
         let downloads_view = DownloadTable::new(redraw_terminal.clone(), downloads.clone());
-        let msgs_view = MessageList::new(redraw_terminal.clone(), msgs.clone()).await;
+        let log_view = LogList::new(redraw_terminal.clone(), logger.clone()).await;
         let input_line = InputLine::new(redraw_terminal.clone());
 
         let focused = FocusedWidget::FileTable;
 
         Self {
+            archives,
             cache,
             downloads,
             rectangles: Rectangles::new(),
@@ -75,13 +78,13 @@ impl MainUI<'_> {
             archives_view,
             files_view,
             downloads_view,
-            msgs_view,
+            log_view,
             bottom_bar,
             input_line,
             input_mode: InputMode::Normal,
             redraw_terminal,
             updater,
-            msgs,
+            logger,
             should_run: true,
         }
     }
@@ -101,8 +104,8 @@ impl MainUI<'_> {
         while self.should_run {
             self.files_view.refresh().await;
             self.downloads_view.refresh().await;
-            self.msgs_view.refresh().await;
-            self.archives_view.refresh().await;
+            self.log_view.refresh().await;
+            self.archives_view.refresh(&mut self.archives).await;
             self.key_bar.refresh().await;
             self.tab_bar.refresh().await;
             self.bottom_bar.refresh().await;
@@ -134,9 +137,9 @@ impl MainUI<'_> {
                             );
                         }
                         frame.render_stateful_widget(
-                            &self.msgs_view.widget,
+                            &self.log_view.widget,
                             self.rectangles.rect_main_vertical[3],
-                            &mut self.msgs_view.state,
+                            &mut self.log_view.state,
                         );
 
                         frame.render_widget(&self.tab_bar.widget, self.rectangles.rect_main_vertical[0]);
@@ -145,6 +148,7 @@ impl MainUI<'_> {
 
                         if let InputMode::ReadLine = self.input_mode {
                             // Draw on top of the rest of the widgets
+                            frame.render_widget(Clear, self.rectangles.rect_inputline[0]);
                             frame.render_widget(self.input_line.widget(), self.rectangles.rect_inputline[0]);
                         }
                     })

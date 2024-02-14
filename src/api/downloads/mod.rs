@@ -14,7 +14,7 @@ use crate::api::query::{md5_search::*, DownloadLink, FileList, Queriable};
 use crate::api::{ApiError, Client};
 use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
 use crate::config::{Config, PathType};
-use crate::{util, Messages};
+use crate::{util, Logger};
 
 use std::ffi::OsStr;
 use std::io::ErrorKind;
@@ -33,21 +33,21 @@ use url::Url;
 pub struct Downloads {
     pub tasks: Arc<RwLock<IndexMap<u64, DownloadTask>>>,
     pub has_changed: Arc<AtomicBool>,
-    msgs: Messages,
+    logger: Logger,
     cache: Cache,
     client: Client,
     config: Config,
 }
 
 impl Downloads {
-    pub async fn new(cache: &Cache, client: &Client, config: &Config, msgs: &Messages) -> Self {
+    pub async fn new(cache: &Cache, client: &Client, config: &Config, logger: &Logger) -> Self {
         Self {
             tasks: Arc::new(RwLock::new(IndexMap::new())),
             has_changed: Arc::new(AtomicBool::new(true)),
             cache: cache.clone(),
             client: client.clone(),
             config: config.clone(),
-            msgs: msgs.clone(),
+            logger: logger.clone(),
         }
     }
 
@@ -64,11 +64,11 @@ impl Downloads {
             Ok(n) => nxm = n,
             Err(e) => {
                 if let ApiError::Expired = e {
-                    self.msgs.push(format!("nxm url has expired: {nxm_str}")).await;
+                    self.logger.log(format!("nxm url has expired: {nxm_str}")).await;
                     return;
                 } else {
-                    self.msgs.push(format!("Unable to parse string as nxm url: {nxm_str}")).await;
-                    self.msgs.push(format!("{}", e)).await;
+                    self.logger.log(format!("Unable to parse string as nxm url: {nxm_str}")).await;
+                    self.logger.log(format!("{}", e)).await;
                     return;
                 }
             }
@@ -84,12 +84,12 @@ impl Downloads {
         if let Some(task) = self.tasks.write().await.get_mut(&nxm.file_id) {
             match task.dl_info.get_state() {
                 DownloadState::Downloading => {
-                    self.msgs.push(format!("Download of {} is already in progress.", file_name)).await;
+                    self.logger.log(format!("Download of {} is already in progress.", file_name)).await;
                     return;
                 }
                 DownloadState::Done => {
-                    self.msgs
-                        .push(format!(
+                    self.logger
+                        .log(format!(
                             "{} was recently downloaded but no longer exists. Downloading again...",
                             file_name
                         ))
@@ -102,11 +102,11 @@ impl Downloads {
                 _ => {
                     task.dl_info.url = url.clone();
                     if let Err(()) = task.start().await {
-                        self.msgs.push(format!("Failed to restart download for {}", &file_name)).await;
+                        self.logger.log(format!("Failed to restart download for {}", &file_name)).await;
                     }
                     if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&task.dl_info))).await
                     {
-                        self.msgs.push(format!("Couldn't store new download url for {}: {}", &file_name, e)).await;
+                        self.logger.log(format!("Couldn't store new download url for {}: {}", &file_name, e)).await;
                     }
                     return;
                 }
@@ -118,7 +118,7 @@ impl Downloads {
 
     pub async fn add(&self, dl_info: DownloadInfo) {
         let mut task =
-            DownloadTask::new(&self.cache, &self.client, &self.config, &self.msgs, dl_info.clone(), self.clone());
+            DownloadTask::new(&self.cache, &self.client, &self.config, &self.logger, dl_info.clone(), self.clone());
 
         if task.file_exists().await {
             return;
@@ -155,13 +155,13 @@ impl Downloads {
                 match Url::parse(&location.URI) {
                     Ok(url) => Ok(url),
                     Err(e) => {
-                        self.msgs.push(format!("Failed to parse URI in response from Nexus: {}. Please file a bug about this.", &location.URI)).await;
+                        self.logger.log(format!("Failed to parse URI in response from Nexus: {}. Please file a bug about this.", &location.URI)).await;
                         Err(e.into())
                     }
                 }
             }
             Err(e) => {
-                self.msgs.push(format!("Failed to query download links from Nexus: {}", e)).await;
+                self.logger.log(format!("Failed to query download links from Nexus: {}", e)).await;
                 Err(e)
             }
         }
@@ -182,12 +182,12 @@ impl Downloads {
             match FileList::request(&self.client, vec![game, &mod_id.to_string()]).await {
                 Ok(fl) => {
                     if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
-                        self.msgs.push(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e)).await;
+                        self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e)).await;
                     }
                     Some(fl)
                 }
                 Err(e) => {
-                    self.msgs.push(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e)).await;
+                    self.logger.log(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e)).await;
                     None
                 }
             }
@@ -204,7 +204,7 @@ impl Downloads {
                             lf.update_status = UpdateStatus::UpToDate(latest_timestamp);
                             let path = self.config.path_for(PathType::LocalFile(&lf));
                             if let Err(e) = lf.save(path).await {
-                                self.msgs.push(format!("Couldn't set UpdateStatus for {}: {}", lf.file_name, e)).await;
+                                self.logger.log(format!("Couldn't set UpdateStatus for {}: {}", lf.file_name, e)).await;
                             }
                         }
                         // Probably doesn't make sense to do anything in the other cases..?
@@ -241,27 +241,27 @@ impl Downloads {
                         if !(md5.eq(&md5result.file_details.md5)
                             && local_file.file_name.eq(&md5result.file_details.file_name))
                         {
-                            self.msgs
-                                .push(format!(
+                            self.logger
+                                .log(format!(
                                     "Warning: API returned unexpected file when checking hash for {}",
                                     &local_file.file_name
                                 ))
                                 .await;
                             let mi = &md5result.r#mod;
                             let fd = &md5result.file_details;
-                            self.msgs.push(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name)).await;
-                            self.msgs.push("This should be reported as a Nexus bug. See README for details.").await;
+                            self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name)).await;
+                            self.logger.log("This should be reported as a Nexus bug. See README for details.").await;
                         }
                         // Early return if success, else fall through to error reporting.
                         return;
                     }
                 }
-                self.msgs.push(format!("Unable to verify integrity of: {}", &local_file.file_name)).await;
-                self.msgs.push("This could mean the download got corrupted. See README for details.").await;
+                self.logger.log(format!("Unable to verify integrity of: {}", &local_file.file_name)).await;
+                self.logger.log("This could mean the download got corrupted. See README for details.").await;
             }
             Err(e) => {
-                self.msgs.push(format!("Error when checking hash for: {}", local_file.file_name)).await;
-                self.msgs.push(format!("{}", e)).await;
+                self.logger.log(format!("Error when checking hash for: {}", local_file.file_name)).await;
+                self.logger.log(format!("{}", e)).await;
             }
         }
     }
@@ -277,12 +277,12 @@ impl Downloads {
         let mut path = self.config.download_dir();
         path.push(format!("{}.part", &task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            self.msgs.push(format!("Unable to delete {:?}.", &path)).await;
+            self.logger.log(format!("Unable to delete {:?}.", &path)).await;
         }
         path.pop();
         path.push(format!("{}.part.json", &task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            self.msgs.push(format!("Unable to delete {:?}.", &path)).await;
+            self.logger.log(format!("Unable to delete {:?}.", &path)).await;
         }
         self.has_changed.store(true, Ordering::Relaxed);
     }
@@ -299,16 +299,16 @@ impl Downloads {
                         }
                         Err(ref e) => {
                             if e.kind() == ErrorKind::NotFound {
-                                self.msgs
-                                    .push(format!(
+                                self.logger
+                                    .log(format!(
                                         "Metadata for partially downloaded file {:?} is missing.\n
                                          The download needs to be restarted through the Nexus.",
                                         f.file_name()
                                     ))
                                     .await;
                             } else {
-                                self.msgs
-                                    .push(format!(
+                                self.logger
+                                    .log(format!(
                                         "Unable to deserialize metadata from {:?}:\n
                                         {}",
                                         f.file_name(),

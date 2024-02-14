@@ -8,20 +8,20 @@ use tokio::fs;
 use tokio::fs::DirEntry;
 
 use crate::config::Config;
-use crate::messages::Messages;
+use crate::logger::Logger;
 
 pub struct Archives {
     config: Config,
-    msgs: Messages,
+    logger: Logger,
     has_changed: bool,
     pub files: Vec<DirEntry>,
 }
 
 impl Archives {
-    pub fn new(config: Config, msgs: Messages) -> Self {
+    pub fn new(config: Config, logger: Logger) -> Self {
         Self {
             config,
-            msgs,
+            logger,
             has_changed: true,
             files: vec![],
         }

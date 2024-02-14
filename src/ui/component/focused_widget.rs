@@ -6,7 +6,7 @@ use crate::ui::main_ui::MainUI;
 pub enum FocusedWidget {
     DownloadTable,
     FileTable,
-    MessageList,
+    LogList,
     ArchiveTable,
 }
 
@@ -14,7 +14,7 @@ pub trait FocusableWidget: Highlight + Select {}
 impl FocusableWidget for ArchiveTable<'_> {}
 impl FocusableWidget for DownloadTable<'_> {}
 impl FocusableWidget for FileTable<'_> {}
-impl FocusableWidget for MessageList<'_> {}
+impl FocusableWidget for LogList<'_> {}
 
 impl MainUI<'_> {
     fn inner(&mut self, focused: FocusedWidget) -> &mut dyn FocusableWidget {
@@ -22,7 +22,7 @@ impl MainUI<'_> {
             FocusedWidget::ArchiveTable => &mut self.archives_view,
             FocusedWidget::DownloadTable => &mut self.downloads_view,
             FocusedWidget::FileTable => &mut self.files_view,
-            FocusedWidget::MessageList => &mut self.msgs_view,
+            FocusedWidget::LogList => &mut self.log_view,
         }
     }
 
