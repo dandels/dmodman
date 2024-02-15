@@ -2,8 +2,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use ratatui::widgets::Clear;
-use signal_hook::consts::signal::*;
-use signal_hook_tokio::Signals;
 use tokio::task;
 
 use super::component::traits::*;
@@ -95,10 +93,9 @@ impl MainUI<'_> {
         let mut events = Events::new();
         self.files_view.focus();
         // X11 (and maybe Wayland?) sends SIGWINCH when the window is resized
-        let got_sigwinch = Arc::new(AtomicBool::new(false));
-        let signals = Signals::new([SIGWINCH]).unwrap();
-        let _handle = signals.handle();
-        let _sigwinch_task = task::spawn(handle_sigwinch(signals, got_sigwinch.clone()));
+        // Set to true so rectangles are calculated on first loop
+        let got_sigwinch = Arc::new(AtomicBool::new(true));
+        let _sigwinch_task = task::spawn(handle_sigwinch(got_sigwinch.clone()));
         let mut terminal = match term_setup() {
             Ok(term) => term,
             Err(e) => {

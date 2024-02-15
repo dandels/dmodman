@@ -10,9 +10,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 pub use main_ui::*;
+use signal_hook::consts::signal::*;
+use signal_hook_tokio::Signals;
 use ratatui::backend::{Backend, TermionBackend};
 use ratatui::Terminal;
-use signal_hook_tokio::Signals;
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
 use termion::screen::IntoAlternateScreen;
@@ -30,7 +31,8 @@ pub fn term_setup() -> Result<Terminal<impl Backend>, Box<dyn Error>> {
     Ok(terminal)
 }
 
-pub async fn handle_sigwinch(mut signals: Signals, is_window_resized: Arc<AtomicBool>) {
+pub async fn handle_sigwinch(is_window_resized: Arc<AtomicBool>) {
+    let mut signals = Signals::new([SIGWINCH]).unwrap();
     while signals.next().await.is_some() {
         is_window_resized.store(true, Ordering::Relaxed);
     }
