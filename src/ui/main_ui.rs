@@ -35,7 +35,7 @@ pub struct MainUI<'a> {
     pub files_view: FileTable<'a>,
     pub downloads_view: DownloadTable<'a>,
     pub log_view: LogList<'a>,
-    pub input_line: InputLine<'a>,
+    pub popup_dialog: PopupDialog<'a>,
     pub input_mode: InputMode,
     pub redraw_terminal: Arc<AtomicBool>,
     pub should_run: bool,
@@ -63,7 +63,7 @@ impl MainUI<'_> {
         let files_view = FileTable::new(redraw_terminal.clone(), cache.file_index.clone());
         let downloads_view = DownloadTable::new(redraw_terminal.clone(), downloads.clone());
         let log_view = LogList::new(redraw_terminal.clone(), logger.clone());
-        let input_line = InputLine::new(redraw_terminal.clone());
+        let popup_dialog = PopupDialog::new(redraw_terminal.clone());
 
         Self {
             archives,
@@ -78,7 +78,7 @@ impl MainUI<'_> {
             downloads_view,
             log_view,
             bottom_bar,
-            input_line,
+            popup_dialog,
             input_mode: InputMode::Normal,
             redraw_terminal,
             updater,

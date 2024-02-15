@@ -190,11 +190,12 @@ impl MainUI<'_> {
                         }
                     }
                     let file_name = path.file_name().unwrap().to_string_lossy();
+                    let dialog_title = "Target directory".to_string();
                     if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
-                        self.input_line.ask_extract_destination(&fd.file_details.name);
+                        self.popup_dialog.show(&fd.file_details.name, dialog_title);
                     } else {
                         self.logger.log("Warn: mod for {file_name} doesn't exist in db");
-                        self.input_line.ask_extract_destination(&file_name);
+                        self.popup_dialog.show(&file_name, dialog_title);
                     }
                     self.input_mode = InputMode::ReadLine;
                     self.redraw_terminal.store(true, Ordering::Relaxed);
@@ -245,7 +246,7 @@ impl MainUI<'_> {
                     self.input_mode = InputMode::Normal;
                 }
                 Key::Char('\n') => {
-                    let dest_dir = self.input_line.get_contents();
+                    let dest_dir = self.popup_dialog.get_contents();
                     self.archives.extract(self.archives_view.selected().unwrap(), dest_dir).await;
                     self.input_mode = InputMode::Normal;
                     self.redraw_terminal.store(true, Ordering::Relaxed);
@@ -253,7 +254,7 @@ impl MainUI<'_> {
                 // disable tab character
                 Key::Char('\t') => {}
                 _ => {
-                    self.input_line.textarea.input(key);
+                    self.popup_dialog.textarea.input(key);
                 }
             }
             self.redraw_terminal.store(true, Ordering::Relaxed);

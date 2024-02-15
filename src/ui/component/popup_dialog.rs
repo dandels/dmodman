@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tui_textarea::{CursorMove, TextArea};
 
-pub struct InputLine<'a> {
+pub struct PopupDialog<'a> {
     pub textarea: TextArea<'a>,
     pub needs_redraw: AtomicBool,
     redraw_terminal: Arc<AtomicBool>,
 }
 
-impl InputLine<'_> {
+impl PopupDialog<'_> {
     pub fn new(redraw_terminal: Arc<AtomicBool>) -> Self {
         let mut textarea = TextArea::default();
         textarea.set_block(Block::default().borders(Borders::ALL).title("Target directory"));
@@ -30,14 +30,13 @@ impl InputLine<'_> {
         self.textarea.lines()[0].clone()
     }
 
-    pub fn ask_extract_destination(&mut self, suggested_name: &str) {
+    pub fn show(&mut self, suggested_value: &str, title: String) {
         let input_style = Style::default().fg(Color::Black).bg(Color::White);
         let border_style = Style::default().fg(Color::Yellow).bg(Color::Black);
-        self.textarea = TextArea::from([suggested_name]);
-        self.textarea
-            .set_block(Block::default().borders(Borders::ALL).title("Target directory").border_style(border_style));
+        self.textarea = TextArea::from([suggested_value]);
+        self.textarea.set_block(Block::default().borders(Borders::ALL).title(title).border_style(border_style));
         self.textarea.set_cursor_line_style(input_style);
         self.textarea.move_cursor(CursorMove::End);
-        self.textarea.set_placeholder_text("Target directory");
+        self.textarea.set_placeholder_text(suggested_value);
     }
 }
