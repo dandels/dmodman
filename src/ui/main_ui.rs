@@ -11,7 +11,7 @@ use crate::api::{Client, Downloads, UpdateChecker};
 use crate::archives::Archives;
 use crate::cache::Cache;
 use crate::config::Config;
-use crate::ui::rectangles::Rectangles;
+use crate::ui::rectangles::{Layouts, Rectangles};
 use crate::ui::*;
 use crate::Logger;
 
@@ -26,7 +26,6 @@ pub struct MainUI<'a> {
     pub downloads: Downloads,
     pub logger: Logger,
     pub updater: UpdateChecker,
-    rectangles: Rectangles,
     pub focused: FocusedWidget,
     pub tab_bar: TabBar<'a>,
     pub hotkey_bar: HotkeyBar<'a>,
@@ -69,7 +68,6 @@ impl MainUI<'_> {
             archives,
             cache,
             downloads,
-            rectangles: Rectangles::new(),
             focused,
             tab_bar,
             hotkey_bar,
@@ -104,6 +102,9 @@ impl MainUI<'_> {
             }
         };
 
+        let layouts = Layouts::new();
+        let mut rectangles = Rectangles::default();
+
         while self.should_run {
             self.files_view.refresh().await;
             self.downloads_view.refresh().await;
@@ -119,40 +120,40 @@ impl MainUI<'_> {
                 terminal
                     .draw(|frame| {
                         if recalculate_rects {
-                            self.rectangles.recalculate(frame.size());
+                            rectangles.recalculate(&layouts, frame.size());
                         }
                         if self.tab_bar.selected().unwrap() == 0 {
                             frame.render_stateful_widget(
                                 &self.files_view.widget,
-                                self.rectangles.rect_main_horizontal[0],
+                                rectangles.main_horizontal[0],
                                 &mut self.files_view.state,
                             );
                             frame.render_stateful_widget(
                                 &self.downloads_view.widget,
-                                self.rectangles.rect_main_horizontal[1],
+                                rectangles.main_horizontal[1],
                                 &mut self.downloads_view.state,
                             );
                         } else if self.tab_bar.selected().unwrap() == 1 {
                             frame.render_stateful_widget(
                                 &self.archives_view.widget,
-                                self.rectangles.rect_main_vertical[2],
+                                rectangles.main_vertical[2],
                                 &mut self.archives_view.state,
                             );
                         }
                         frame.render_stateful_widget(
                             &self.log_view.widget,
-                            self.rectangles.rect_main_vertical[3],
+                            rectangles.main_vertical[3],
                             &mut self.log_view.state,
                         );
 
-                        frame.render_widget(&self.tab_bar.widget, self.rectangles.rect_main_vertical[0]);
-                        frame.render_widget(&self.hotkey_bar.widget, self.rectangles.rect_main_vertical[1]);
-                        frame.render_widget(&self.bottom_bar.widget, self.rectangles.rect_statcounter[0]);
+                        frame.render_widget(&self.tab_bar.widget, rectangles.main_vertical[0]);
+                        frame.render_widget(&self.hotkey_bar.widget, rectangles.main_vertical[1]);
+                        frame.render_widget(&self.bottom_bar.widget, rectangles.statcounter[0]);
 
                         if let InputMode::ReadLine = self.input_mode {
-                            // Clear the space first so we can draw on top of the rest of the widgets
-                            frame.render_widget(Clear, self.rectangles.rect_inputline[0]);
-                            frame.render_widget(self.input_line.widget(), self.rectangles.rect_inputline[0]);
+                            // Clear the area so we can render on top of it
+                            frame.render_widget(Clear, rectangles.dialogpopup[0]);
+                            frame.render_widget(self.popup_dialog.widget(), rectangles.dialogpopup[0]);
                         }
                     })
                     .unwrap();
