@@ -3,7 +3,7 @@ use super::*;
 use crate::ui::main_ui::MainUI;
 use std::sync::atomic::Ordering;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum FocusedWidget {
     DownloadTable,
     FileTable,

@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use std::sync::atomic::Ordering;
-use termion::event::{Event, Key, MouseEvent};
+use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 //use tui_textarea::{Input, Key};
 //use tui_textarea::{Input, Key, TextArea};
@@ -23,41 +23,32 @@ pub const LOG_KEYS: &[(&str, &str)] = &[("<Del>", "delete "), ("<q>", "quit ")];
 
 impl MainUI<'_> {
     pub async fn handle_events(&mut self, event: Event) {
-        let key: Key;
-        match event {
-            Event::Key(k) => key = k,
-            Event::Mouse(m) => match m {
-                MouseEvent::Press(mouse_event, x, y) => {
-                    self.logger.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
-                    return;
-                }
-                _ => {
-                    return;
-                }
-            },
-            Event::Unsupported(u) => {
-                self.logger.log(format!("Unsupported: {u:?}"));
-                return;
-            }
-        }
+        //MouseEvent::Press(mouse_event, x, y) => {
+        //self.logger.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
+        //Event::Unsupported(u) => {
+        //self.logger.log(format!("Unsupported: {u:?}"));
         if let InputMode::ReadLine = self.input_mode {
-            self.read_input_line(key).await;
+            self.read_input_line(event).await;
             return;
         }
 
-        if let Key::Char('q') | Key::Ctrl('c') = key {
+        if let Event::Key(Key::Char('q')) | Event::Key(Key::Ctrl('c')) = event {
             self.should_run = false;
             return;
         }
 
-        match key {
-            Key::Down | Key::Char('j') => {
+        match event {
+            Event::Key(Key::Down)
+            | Event::Key(Key::Char('j'))
+            | Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
                 self.select_next();
             }
-            Key::Up | Key::Char('k') => {
+            Event::Key(Key::Up)
+            | Event::Key(Key::Char('k'))
+            | Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
                 self.select_previous();
             }
-            Key::Left | Key::Char('h') => match self.focused {
+            Event::Key(Key::Left) | Event::Key(Key::Char('h')) => match self.focused {
                 FocusedWidget::LogList | FocusedWidget::DownloadTable => {
                     self.change_focus_to(FocusedWidget::FileTable);
                 }
@@ -66,7 +57,7 @@ impl MainUI<'_> {
                 }
                 _ => {}
             },
-            Key::Right | Key::Char('l') => match self.focused {
+            Event::Key(Key::Right) | Event::Key(Key::Char('l')) => match self.focused {
                 FocusedWidget::LogList | FocusedWidget::FileTable => {
                     self.change_focus_to(FocusedWidget::DownloadTable);
                 }
@@ -75,11 +66,11 @@ impl MainUI<'_> {
                 }
                 _ => {}
             },
-            Key::Char('\t') => {
+            Event::Key(Key::Char('\t')) => {
                 self.tab_bar.next_tab();
                 self.change_focused_tab().await;
             }
-            Key::BackTab => {
+            Event::Key(Key::BackTab) => {
                 self.tab_bar.prev_tab();
                 self.change_focused_tab().await;
             }
@@ -90,21 +81,23 @@ impl MainUI<'_> {
         }
         match self.focused {
             FocusedWidget::FileTable => {
-                self.handle_files_keys(key).await;
+                self.handle_files_keys(event).await;
             }
             FocusedWidget::DownloadTable => {
-                self.handle_downloads_keys(key).await;
+                self.handle_downloads_keys(event).await;
             }
             FocusedWidget::ArchiveTable => {
-                self.handle_archives_keys(key).await;
+                self.handle_archives_keys(event).await;
             }
             FocusedWidget::LogList => {
-                self.handle_log_keys(key).await;
+                self.handle_log_keys(event).await;
             }
         }
     }
 
-    async fn handle_files_keys(&mut self, key: Key) {
+    async fn handle_files_keys(&mut self, event: Event) {
+        let key = if let Event::Key(key) = event { key } else { return };
+
         match key {
             Key::Char('i') => {
                 if let FocusedWidget::FileTable = self.focused {
@@ -159,7 +152,9 @@ impl MainUI<'_> {
         }
     }
 
-    async fn handle_downloads_keys(&mut self, key: Key) {
+    async fn handle_downloads_keys(&mut self, event: Event) {
+        let key = if let Event::Key(key) = event { key } else { return };
+
         match key {
             Key::Char('p') => {
                 if let FocusedWidget::DownloadTable = self.focused {
@@ -181,7 +176,9 @@ impl MainUI<'_> {
         }
     }
 
-    async fn handle_archives_keys(&mut self, key: Key) {
+    async fn handle_archives_keys(&mut self, event: Event) {
+        let key = if let Event::Key(key) = event { key } else { return };
+
         match key {
             Key::Char('i') => {
                 if let Some(i) = self.selected_index() {
@@ -210,7 +207,9 @@ impl MainUI<'_> {
         }
     }
 
-    async fn handle_log_keys(&mut self, key: Key) {
+    async fn handle_log_keys(&mut self, event: Event) {
+        let key = if let Event::Key(key) = event { key } else { return };
+
         match key {
             Key::Delete => {
                 if let Some(i) = self.selected_index() {
@@ -239,23 +238,25 @@ impl MainUI<'_> {
         }
     }
 
-    async fn read_input_line(&mut self, key: Key) {
-        match key {
-            Key::Ctrl('c') | Key::Esc => {
-                self.input_mode = InputMode::Normal;
+    async fn read_input_line(&mut self, event: Event) {
+        if let Event::Key(key) = event {
+            match key {
+                Key::Ctrl('c') | Key::Esc => {
+                    self.input_mode = InputMode::Normal;
+                }
+                Key::Char('\n') => {
+                    let dest_dir = self.input_line.get_contents();
+                    self.archives.extract(self.archives_view.selected().unwrap(), dest_dir).await;
+                    self.input_mode = InputMode::Normal;
+                    self.redraw_terminal.store(true, Ordering::Relaxed);
+                }
+                // disable tab character
+                Key::Char('\t') => {}
+                _ => {
+                    self.input_line.textarea.input(key);
+                }
             }
-            Key::Char('\n') => {
-                let dest_dir = self.input_line.get_contents();
-                self.archives.extract(self.archives_view.selected().unwrap(), dest_dir).await;
-                self.input_mode = InputMode::Normal;
-                self.redraw_terminal.store(true, Ordering::Relaxed);
-            }
-            // disable tab character
-            Key::Char('\t') => {}
-            _ => {
-                self.input_line.textarea.input(key);
-            }
+            self.redraw_terminal.store(true, Ordering::Relaxed);
         }
-        self.redraw_terminal.store(true, Ordering::Relaxed);
     }
 }
