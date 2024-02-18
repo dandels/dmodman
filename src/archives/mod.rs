@@ -1,7 +1,7 @@
-use std::ffi::OsStr;
 use std::path::PathBuf;
 
 use compress_tools::*;
+use std::ffi::OsStr;
 // This module mixes std and tokio fs, be mindful which one we're using
 use std::fs::File;
 use tokio::fs;
@@ -35,14 +35,13 @@ impl Archives {
 
     pub async fn list(&mut self) -> &Vec<DirEntry> {
         let mut ret: Vec<DirEntry> = vec![];
-        if let Ok(mut dir_entries) = fs::read_dir(self.config.download_dir()).await {
-            // TODO log errors since this shouldn't fail
+        if let Ok(mut dir_entries) = fs::read_dir(&self.config.download_dir()).await {
             while let Ok(Some(f)) = dir_entries.next_entry().await {
-                if f.path().is_file() {
-                    let path = f.path();
+                let path = f.path();
+                if path.is_file() {
+                    // TODO more rigorous filetype checking
                     let ext = path.extension().and_then(OsStr::to_str);
-                    // TODO case sensitivity
-                    if matches!(ext, Some("7z") | Some("zip") | Some("rar")) {
+                    if !matches!(ext, Some("json")) {
                         ret.push(f);
                     }
                 }

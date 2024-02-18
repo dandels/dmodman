@@ -1,30 +1,33 @@
-mod cache_error;
+pub mod cache_error;
 mod cacheable;
 mod file_data;
 mod file_index;
 mod file_lists;
 mod local_file;
-pub use cache_error::*;
-pub use cacheable::*;
+
+pub use cache_error::CacheError;
+pub use cacheable::Cacheable;
 pub use file_data::FileData;
 pub use file_index::*;
 pub use file_lists::*;
 pub use local_file::*;
 
-//use self::{CacheError, Cacheable, FileIndex, FileListCache, LocalFile};
 use crate::api::{DownloadLink, FileList};
 use crate::config::{Config, PathType};
-
-use tokio::fs;
-use tokio::io;
-
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use tokio::fs;
+use tokio::fs::File;
+use tokio::io;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Clone)]
 pub struct Cache {
     pub file_lists: FileLists,
     pub file_index: FileIndex,
     config: Config,
+    pub last_update_check: Arc<AtomicU64>,
 }
 
 impl Cache {
@@ -37,21 +40,17 @@ impl Cache {
      * - file_id        -> FileDetails
      */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
-        let file_lists = FileLists::new(config).await?;
-        let file_index = FileIndex::new(config, file_lists.clone()).await?;
+        let file_lists = FileLists::new(&config).await?;
+        let file_index = FileIndex::new(&config, file_lists.clone()).await?;
 
         Ok(Self {
             config: config.clone(),
             file_lists,
             file_index,
+            last_update_check: load_last_updated(&config),
         })
     }
 
-    /* TODO: when adding LocalFile,
-     * - Check if FileDetails is required (probably yes)
-     * - Send request for FileList if not present(?)
-     * - Add the FileDetails to FileDetailsCache
-     */
     pub async fn save_download_links(
         &self,
         dl: &DownloadLink,
@@ -75,6 +74,14 @@ impl Cache {
         lf.save(self.config.path_for(PathType::LocalFile(&lf))).await?;
         self.file_index.add(lf).await;
         Ok(())
+    }
+
+    pub async fn save_last_updated(&self, time: u64) -> Result<(), io::Error> {
+        let mut path = self.config.cache_dir();
+        fs::create_dir_all(&path).await?;
+        path.push("last_updated");
+        let mut file = File::create(path).await?;
+        file.write_all(&format!("{}", time).as_bytes()).await
     }
 
     // Delete a file and its metadata based on its index in file_index.files_sorted.
@@ -106,6 +113,14 @@ impl Cache {
     }
 }
 
+// Loads timestamp from $XDG_CACHE_DIR/dmodman/last_updated
+fn load_last_updated(config: &Config) -> Arc<AtomicU64> {
+    let mut path = config.cache_dir();
+    path.push("last_updated");
+    let contents = std::fs::read_to_string(path).unwrap();
+    AtomicU64::new(contents.parse::<u64>().unwrap_or_default()).into()
+}
+
 #[cfg(test)]
 mod test {
     use super::Cache;
@@ -114,14 +129,14 @@ mod test {
 
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
-        let game = "morrowind";
-        let config = ConfigBuilder::default().profile(game).build().unwrap();
+        let profile = "morrowind";
+        let config = ConfigBuilder::default().profile(profile).build().unwrap();
         let cache = Cache::new(&config).await?;
 
         let lock = cache.file_index.file_id_map.read().await;
         let fdata = lock.get(&82041).unwrap();
         println!("{:?}", fdata);
-        assert_eq!(fdata.local_file.read().await.game, game);
+        assert_eq!(fdata.local_file.read().await.game, profile);
         Ok(())
     }
 }
