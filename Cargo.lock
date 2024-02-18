@@ -272,6 +272,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "shellexpand",
  "signal-hook",
  "signal-hook-tokio",
  "termion 2.0.3",
@@ -1131,6 +1132,15 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "shellexpand"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da03fa3b94cc19e3ebfc88c4229c49d8f08cdbd1228870a45f0ffdf84988e14b"
+dependencies = [
+ "dirs",
 ]
 
 [[package]]

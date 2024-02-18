@@ -29,30 +29,30 @@ impl Config {
 
         match path_type {
             PathType::DownloadLink(game, mod_id, file_id) => {
-                path = self.cache_dir();
+                path = self.data_dir();
                 path.push(game);
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id, file_id));
             }
             // The game needs to be specified to support cross-game modding, reading the config doesn't work.
             PathType::FileList(game, mod_id) => {
-                path = self.cache_dir();
+                path = self.data_dir();
                 path.push(game);
                 path.push(FILE_LISTS);
                 path.push(format!("{}.json", mod_id));
             }
             PathType::GameInfo(game) => {
-                path = self.cache_dir();
+                path = self.data_dir();
                 path.push(format!("{}.json", game));
             }
             PathType::Md5Search(game, mod_id, file_id) => {
-                path = self.cache_dir();
+                path = self.data_dir();
                 path.push(game);
                 path.push(MD5_SEARCH);
                 path.push(format!("{}-{}.json", mod_id, file_id));
             }
             PathType::ModInfo(game, mod_id) => {
-                path = self.cache_dir();
+                path = self.data_dir();
                 path.push(game);
                 path.push(MOD_INFO);
                 path.push(format!("{}.json", mod_id));

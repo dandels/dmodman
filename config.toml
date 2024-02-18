@@ -1,12 +1,13 @@
 ## dmodman example config
-##
-## Relative paths like ~/ and environment variables like $HOME are not supported.
 
-## The base download directory as an absolute path.
-## Default: $XDG_DOWNLOAD_DIR/dmodman
-#download_dir = "/home/user/Downloads/dmodman/"
-
-## If set, appends a subdirectory to the download_dir path.
-## For example "morrowind" would set the download dir to $XDG_DOWNLOAD_DIR/dmodman/morrowind.
+## Modding profile.
+## You should set this to something different for each game or mod loadout.
+## It appends a subdirectory to download_dir and install_dir.
 ## Default: none
 #profile = "morrowind"
+
+## Download directory. Default: $XDG_DOWNLOAD_DIR/dmodman
+#download_dir = "~/Downloads/dmodman/"
+
+## Directory to extract mods to. Default: $XDG_DATA_HOME/dmodman/
+#install_dir = "~/.local/share/dmodman/"

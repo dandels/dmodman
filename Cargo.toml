@@ -14,6 +14,7 @@ percent-encoding = "2.3"
 reqwest = { version = "0.11", features = ["json", "stream"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
+shellexpand = "3.1"
 signal-hook = "0.3"
 signal-hook-tokio = { version = "0.3", features = [ "futures-v0_3" ] }
 tokio = { version = "1", features = ["fs", "macros", "net", "sync", "rt-multi-thread"] }
@@ -21,7 +22,7 @@ tokio-stream = { version = "0.1", features = ["fs"] }
 tokio-tungstenite = { version = "*", features = ["native-tls"] }
 toml = "0.8"
 url = { version = "2", features = [ "serde" ] }
-termion = "2" # upgrading to version 3 breaks tui-textarea's input()
+termion = "2" # v3 breaks tui-textarea's input()
 tui-textarea = { version = "0.4", default-features = false, features = ["termion"] }
 ratatui = { version = "0.26", default-features = false, features = ["termion"] }
 uuid = { version = "1.7", features = ["v4", "fast-rng"] }

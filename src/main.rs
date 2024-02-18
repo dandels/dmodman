@@ -48,18 +48,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
      * It calls println!() instead when running as a daemon. */
     let logger = Logger::new(is_interactive);
 
-    // TODO config is cloned needlessly in a few places
-    let mut config = match ConfigBuilder::load() {
-        Ok(cb) => cb,
-        Err(_) => ConfigBuilder::default(),
-    }
-    .build()?;
+    let mut config: Config = ConfigBuilder::load().unwrap_or_default().build()?;
     if config.apikey.is_none() {
         if let Some(apikey) = ui::sso::start_apikey_flow().await {
             config.apikey = Some(apikey);
             config.save_apikey()?;
         } else {
-            // This program doesn't really do anything without an API key, but continue anyway.
             logger.log("No API key configured. API connections are disabled.");
         }
     }
@@ -68,12 +62,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::new(&config).await;
     let downloads = Downloads::new(&cache, &client, &config, &logger).await;
 
-    // Try bind to /run/user/$uid. If it already exists then send nexus download links there and quit.
-    let nxm_socket;
-    match nxm_socket::try_bind().await {
-        Ok(sock) => {
-            nxm_socket = sock;
-        }
+    // Try bind to /run/user/$uid. If it already exists then send any nxm:// link through the socket and quit.
+    let nxm_socket = match nxm_socket::try_bind().await {
+        Ok(nxm_socket) => nxm_socket,
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             println!("Another instance of dmodman is already running.");
             if let Some(nxm_str) = nxm_str_opt {
@@ -94,8 +85,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         downloads.try_queue(nxm_str).await;
     }
 
-    /* Only start the UI if running interactively. Otherwise we block the main thread with the listen loop so the
-     * program doesn't exit. */
+    /* Start UI only if running interactively.
+     * Otherwise we block the main thread with the listen loop so the program doesn't exit. */
     if is_interactive {
         {
             let downloads = downloads.clone();
