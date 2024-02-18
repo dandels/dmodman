@@ -5,7 +5,6 @@ authors = ["dandels <dandels (at) hotmail.com>"]
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1"
 compress-tools = { version = "0.13", features = ["tokio_support"] }
 dirs = "5.0"
 futures-util = "0.3"

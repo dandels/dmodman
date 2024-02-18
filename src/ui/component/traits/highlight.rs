@@ -1,13 +1,11 @@
 use std::sync::atomic::Ordering;
 
-use async_trait::async_trait;
 use ratatui::style::{Color, Modifier, Style};
 
 use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, LogList};
 
 macro_rules! impl_highlight {
     ($T:ty) => {
-        #[async_trait]
         impl Highlight for $T {
             fn focus(&mut self) {
                 self.block =
@@ -34,7 +32,6 @@ impl_highlight!(DownloadTable<'_>);
 impl_highlight!(FileTable<'_>);
 impl_highlight!(LogList<'_>);
 
-#[async_trait]
 pub trait Highlight {
     fn focus(&mut self);
     fn unfocus(&mut self);

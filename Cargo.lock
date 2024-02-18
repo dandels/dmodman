@@ -262,7 +262,6 @@ dependencies = [
 name = "dmodman"
 version = "0.3.0"
 dependencies = [
- "async-trait",
  "compress-tools",
  "dirs",
  "futures-util",
