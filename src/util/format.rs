@@ -1,4 +1,4 @@
-pub fn vec_with_format_string(format_string: &str, params: Vec<&str>) -> String {
+pub fn vec_with_format_string(format_string: &str, params: &[&str]) -> String {
     let parts: Vec<&str> = format_string.split("{}").collect();
 
     let mut ret = String::new();
@@ -44,7 +44,7 @@ mod tests {
     #[test]
     fn endpoint_format() {
         let arg = "games/{}/mods/{}/files.json";
-        let params = vec!["morrowind", "46599"];
+        let params = &["morrowind", "46599"];
 
         assert_eq!("games/morrowind/mods/46599/files.json", format::vec_with_format_string(arg, params));
     }

@@ -3,6 +3,8 @@ use crate::api::Client;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
+// This is not used, but it should work in case it's needed
+
 #[derive(Serialize, Deserialize)]
 pub struct Search {
     pub terms: Vec<String>,
@@ -79,7 +81,7 @@ impl SearchQuery {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::search::SearchQuery;
+    use crate::api::SearchQuery;
 
     #[test]
     fn search_query_format() {

@@ -1,5 +1,5 @@
-use super::{FileDetails, Queriable};
-use async_trait::async_trait;
+use crate::api::Queriable;
+use crate::cache::Cacheable;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -20,7 +20,27 @@ pub struct FileUpdate {
     pub uploaded_time: String,
 }
 
-#[async_trait]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FileDetails {
+    pub id: (u64, u32), // file_id and game_id
+    pub file_id: u64,
+    pub name: String,
+    pub version: Option<String>,
+    pub category_id: u32,
+    pub category_name: Option<String>,
+    pub is_primary: bool,
+    pub size: u64,
+    pub file_name: String,
+    pub uploaded_timestamp: u64,
+    pub uploaded_time: String,
+    pub mod_version: Option<String>,
+    pub external_virus_scan_url: Option<String>,
+    pub description: String,
+    pub size_kb: u64,
+    pub changelog_html: Option<String>,
+}
+
+impl Cacheable for FileList {}
 impl Queriable for FileList {
     const FORMAT_STRING: &'static str = "games/{}/mods/{}/files.json";
 }

@@ -1,4 +1,5 @@
 use super::DownloadProgress;
+use crate::cache::Cacheable;
 use super::FileInfo;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -78,3 +79,5 @@ impl fmt::Display for DownloadState {
         }
     }
 }
+
+impl Cacheable for DownloadInfo {}

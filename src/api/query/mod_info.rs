@@ -1,5 +1,6 @@
 use super::Queriable;
 use serde::{Deserialize, Serialize};
+use crate::cache::Cacheable;
 
 // TODO several of these should probably be Options
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,6 +41,8 @@ pub struct UserInfo {
     pub member_id: u32,
     pub name: String,
 }
+
+impl Cacheable for ModInfo {}
 
 impl Queriable for ModInfo {
     const FORMAT_STRING: &'static str = "games/{}/mods/{}.json";

@@ -1,4 +1,5 @@
 use crate::api::downloads::FileInfo;
+use crate::cache::Cacheable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -24,11 +25,13 @@ impl LocalFile {
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum UpdateStatus {
-    UpToDate(u64),     // time of your newest file,
-    HasNewFile(u64),   // time of your newest file
-    OutOfDate(u64),    // time of your newest file
+    UpToDate(u64),     // time of user's newest file,
+    HasNewFile(u64),   // time of user's newest file
+    OutOfDate(u64),    // time of user's newest file
     IgnoredUntil(u64), // time of latest file in update list
 }
+
+impl Cacheable for LocalFile {}
 
 impl UpdateStatus {
     pub fn time(&self) -> u64 {

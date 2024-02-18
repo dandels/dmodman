@@ -1,4 +1,6 @@
-use super::{ModInfo, Queriable};
+use super::ModInfo;
+use crate::cache::Cacheable;
+use crate::api::Queriable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,6 +36,7 @@ pub struct Md5FileDetails {
     pub md5: String,
 }
 
+impl Cacheable for Md5Search {}
 impl Queriable for Md5Search {
     const FORMAT_STRING: &'static str = "games/{}/mods/md5_search/{}.json";
 }

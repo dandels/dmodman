@@ -10,7 +10,7 @@ use self::download_task::*;
 pub use self::file_info::*;
 pub use self::nxm_url::*;
 
-use crate::api::query::{md5_search::*, DownloadLink, FileList, Queriable};
+use crate::api::query::{DownloadLink, FileList, Md5Search, Queriable};
 use crate::api::{ApiError, Client};
 use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
 use crate::config::{Config, PathType};
@@ -132,8 +132,8 @@ impl Downloads {
     async fn request_download_link(&self, nxm: &NxmUrl) -> Result<Url, ApiError> {
         match DownloadLink::request(
             &self.client,
-            // TODO get rid of passing a vec as argument
-            vec![
+            // TODO get rid of passing an array as argument
+            &[
                 &nxm.domain_name,
                 &nxm.mod_id.to_string(),
                 &nxm.file_id.to_string(),
@@ -181,7 +181,7 @@ impl Downloads {
                     break 'fl Some(fl);
                 }
             }
-            match FileList::request(&self.client, vec![game, &mod_id.to_string()]).await {
+            match FileList::request(&self.client, &[game, &mod_id.to_string()]).await {
                 Ok(fl) => {
                     if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
                         self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
@@ -227,7 +227,7 @@ impl Downloads {
         path.push(&local_file.file_name);
         match util::md5sum(path).await {
             Ok(md5) => {
-                if let Ok(query_res) = Md5Search::request(&self.client, vec![&local_file.game, &md5]).await {
+                if let Ok(query_res) = Md5Search::request(&self.client, &[&local_file.game, &md5]).await {
                     // Uncomment to save API response
                     //let _ = query_res
                     //    .save(self.config.path_for(PathType::Md5Search(

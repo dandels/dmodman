@@ -1,7 +1,3 @@
-use crate::api::downloads::DownloadInfo;
-use crate::api::query::{DownloadLink, FileDetails, FileList, GameInfo, Md5Search, ModInfo};
-use crate::cache::LocalFile;
-use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::io::{AsyncWriteExt, Error};
@@ -9,7 +5,6 @@ use tokio::{fs, fs::File};
 
 use std::path::PathBuf;
 
-#[async_trait]
 pub trait Cacheable: Serialize + DeserializeOwned {
     async fn save(&self, path: PathBuf) -> Result<(), Error> {
         fs::create_dir_all(path.parent().unwrap().to_str().unwrap()).await?;
@@ -27,19 +22,10 @@ pub trait Cacheable: Serialize + DeserializeOwned {
     }
 }
 
-impl Cacheable for DownloadInfo {}
-impl Cacheable for DownloadLink {}
-impl Cacheable for FileDetails {}
-impl Cacheable for FileList {}
-impl Cacheable for GameInfo {}
-impl Cacheable for LocalFile {}
-impl Cacheable for Md5Search {}
-impl Cacheable for ModInfo {}
-
 #[cfg(test)]
 mod tests {
+    use super::Cacheable;
     use crate::api::{ApiError, FileList, ModInfo};
-    use crate::cache::cacheable::Cacheable;
     use crate::config::ConfigBuilder;
     use crate::config::PathType;
 
