@@ -1,26 +1,32 @@
 use super::{CacheError, Cacheable, FileData, FileLists, LocalFile};
 use crate::config::Config;
 
+use indexmap::IndexMap;
 use std::collections::BinaryHeap;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::fs;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
 use std::time::UNIX_EPOCH;
-
-use std::fs;
 use tokio::sync::RwLock;
 
-// Contains various data structures to efficiently look up FileData
+/* This is the struct to query if you want to find out something about a file.
+ *
+ * - LocalFile: a metadata file with the filename, game, mod_id, file_id, and update status
+ * - FileDetails: an API response containing information about a specific file
+ * - FileData: a struct that maps a file_id to a LocalFile and its FileDetails.
+ */
+
 #[derive(Clone)]
 pub struct FileIndex {
     // maps file_id to FileData
     pub file_id_map: Arc<RwLock<HashMap<u64, Arc<FileData>>>>,
     // (game, mod_id) -> BinaryHeap that keeps the modfiles sorted by timestamp. Used by the update checker.
     #[allow(clippy::type_complexity)]
-    pub mod_file_map: Arc<RwLock<HashMap<(String, u32), BinaryHeap<Arc<FileData>>>>>,
+    pub game_to_mods_map: Arc<RwLock<HashMap<String, IndexMap<u32, BinaryHeap<Arc<FileData>>>>>>,
     // used by the UI
     pub files_sorted: Arc<RwLock<Vec<Arc<FileData>>>>,
     // should the list be re-rendered
@@ -33,7 +39,7 @@ impl FileIndex {
     pub async fn new(config: &Config, file_lists: FileLists) -> Result<Self, CacheError> {
         // It's unexpected but possible that FileDetails is missing
         let mut file_index: HashMap<u64, Arc<FileData>> = HashMap::new();
-        let mut mod_files: HashMap<(String, u32), BinaryHeap<Arc<FileData>>> = HashMap::new();
+        let mut game_mods_map: HashMap<String, IndexMap<u32, BinaryHeap<Arc<FileData>>>> = HashMap::new();
         let mut files_sorted: Vec<Arc<FileData>> = vec![];
 
         /* 1. Iterates through all <mod_file>.json files in the download directory for the current game, skipping those
@@ -61,14 +67,20 @@ impl FileIndex {
                         let file_data = Arc::new(FileData::new(lf.clone(), file_details.clone()));
                         file_index.insert(lf.file_id, file_data.clone());
                         files_sorted.push(file_data.clone());
-                        match mod_files.get_mut(&(lf.game.to_string(), lf.mod_id)) {
-                            Some(heap) => {
-                                heap.push(file_data);
+
+                        match game_mods_map.get_mut(&lf.game) {
+                            Some(mods_map) => {
+                                match mods_map.get_mut(&lf.mod_id) {
+                                    Some(heap) => heap.push(file_data),
+                                    None => {
+                                        mods_map.insert(lf.mod_id, BinaryHeap::from([file_data]));
+                                    }
+                                }
                             }
                             None => {
-                                let mut heap = BinaryHeap::new();
-                                heap.push(file_data);
-                                mod_files.insert((lf.game.to_string(), lf.mod_id), heap);
+                                let mut map = IndexMap::new();
+                                map.insert(lf.mod_id, BinaryHeap::from([file_data]));
+                                game_mods_map.insert(lf.game, map);
                             }
                         }
                     }
@@ -78,9 +90,9 @@ impl FileIndex {
 
         Ok(Self {
             file_id_map: Arc::new(RwLock::new(file_index)),
-            mod_file_map: Arc::new(RwLock::new(mod_files)),
+            game_to_mods_map: Arc::new(RwLock::new(game_mods_map)),
             files_sorted: Arc::new(RwLock::new(files_sorted)),
-            has_changed: Arc::new(AtomicBool::new(false)),
+            has_changed: Arc::new(AtomicBool::new(true)),
             file_lists,
         })
     }
@@ -90,17 +102,24 @@ impl FileIndex {
         let file_details = self.file_lists.filedetails_for(&lf).await.unwrap();
         let fdata: Arc<FileData> = FileData::new(lf.clone(), file_details).into();
         self.file_id_map.write().await.insert(lf.file_id, fdata.clone());
-        let mut mfm_lock = self.mod_file_map.write().await;
-        match mfm_lock.get_mut(&(lf.game.to_owned(), lf.mod_id)) {
-            Some(heap) => {
-                heap.push(fdata.clone());
-            }
+
+        let mut game_map_lock = self.game_to_mods_map.write().await;
+        match game_map_lock.get_mut(&lf.game) {
+            Some(mods_map) => match mods_map.get_mut(&lf.mod_id) {
+                Some(heap) => {
+                    heap.push(fdata.clone());
+                }
+                None => {
+                    mods_map.insert(lf.mod_id, BinaryHeap::from([fdata.clone()]));
+                }
+            },
             None => {
-                let mut heap = BinaryHeap::new();
-                heap.push(fdata.clone());
-                mfm_lock.insert((lf.game, lf.mod_id), heap);
+                let mut mods_map = IndexMap::new();
+                mods_map.insert(lf.mod_id, BinaryHeap::from([fdata.clone()]));
+                game_map_lock.insert(lf.game, mods_map);
             }
         }
+
         self.files_sorted.write().await.push(fdata);
         self.has_changed.store(true, Ordering::Relaxed);
     }

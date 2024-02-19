@@ -12,7 +12,7 @@ pub use file_index::*;
 pub use file_lists::*;
 pub use local_file::*;
 
-use crate::api::{DownloadLink, FileList};
+use crate::api::{DownloadLink, FileList, Updated};
 use crate::config::{Config, PathType};
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -77,6 +77,7 @@ impl Cache {
     }
 
     pub async fn save_last_updated(&self, time: u64) -> Result<(), io::Error> {
+        self.last_update_check.store(time, Ordering::Relaxed);
         let mut path = self.config.cache_dir();
         fs::create_dir_all(&path).await?;
         path.push("last_updated");
@@ -87,7 +88,7 @@ impl Cache {
     // Delete a file and its metadata based on its index in file_index.files_sorted.
     pub async fn delete_by_index(&self, i: usize) -> Result<(), io::Error> {
         let mut fs_lock = self.file_index.files_sorted.write().await;
-        let mut mf_lock = self.file_index.mod_file_map.write().await;
+        let mut game_mods_lock = self.file_index.game_to_mods_map.write().await;
         let mut files_lock = self.file_index.file_id_map.write().await;
         let fd = fs_lock.get(i).unwrap().clone();
         let lf_lock = fd.local_file.write().await;
@@ -97,10 +98,14 @@ impl Cache {
 
         fs_lock.remove(i);
 
-        let heap = mf_lock.get_mut(&(lf_lock.game.to_owned(), lf_lock.mod_id)).unwrap();
+        let mods_map = game_mods_lock.get_mut(&lf_lock.game).unwrap();
+        let heap = mods_map.get_mut(&lf_lock.mod_id).unwrap();
         heap.retain(|fdata| fdata.file_id != id_to_delete);
         if heap.is_empty() {
-            mf_lock.remove(&(lf_lock.game.to_owned(), lf_lock.mod_id));
+            mods_map.shift_remove(&lf_lock.mod_id);
+        }
+        if mods_map.is_empty() {
+            game_mods_lock.remove(&lf_lock.game);
         }
 
         let mut path = self.config.path_for(PathType::LocalFile(&lf_lock));
@@ -117,8 +122,10 @@ impl Cache {
 fn load_last_updated(config: &Config) -> Arc<AtomicU64> {
     let mut path = config.cache_dir();
     path.push("last_updated");
-    let contents = std::fs::read_to_string(path).unwrap();
-    AtomicU64::new(contents.parse::<u64>().unwrap_or_default()).into()
+    match std::fs::read_to_string(path) {
+        Ok(contents) => AtomicU64::new(contents.parse::<u64>().unwrap_or_default()).into(),
+        Err(_) => AtomicU64::new(0).into(),
+    }
 }
 
 #[cfg(test)]

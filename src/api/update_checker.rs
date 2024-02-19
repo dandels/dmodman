@@ -1,5 +1,6 @@
 use super::ApiError;
 use super::{Client, FileList, FileUpdate, Queriable};
+use crate::api::Updated;
 use crate::cache::{Cache, Cacheable, FileData, UpdateStatus};
 use crate::config::PathType;
 use crate::Config;
@@ -8,6 +9,7 @@ use crate::Logger;
 use std::collections::BinaryHeap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::task;
 
@@ -46,23 +48,79 @@ impl UpdateChecker {
     }
 
     pub async fn update_all(&self) {
-        let mods;
-        {
-            let lock = self.cache.file_index.mod_file_map.read().await;
-            mods = lock.clone().into_keys();
-        }
-        for (game, mod_id) in mods {
-            self.update_mod(game, mod_id).await;
-        }
+        let mods_by_game = {
+            let lock = self.cache.file_index.game_to_mods_map.read().await;
+            lock.clone()
+        };
+
+        match SystemTime::now().duration_since(UNIX_EPOCH) {
+            // If less than a month has passed since previous update we can use the API endpoint for mod updates
+            Ok(time) => {
+                let t_diff = time.as_secs() - self.cache.last_update_check.load(Ordering::Relaxed);
+                self.logger.log(format!("t_diff is {}", t_diff));
+                // this is how many seconds are in 28 days
+                if t_diff < 2419200 {
+                    self.logger.log(format!("Less than a month after last update check: using update lists."));
+                    if let Err(e) = self.cache.save_last_updated(time.as_secs()).await {
+                        self.logger.log(format!("Failed to save last updated status: {}", e));
+                    }
+
+                    /* The updated mod lists are provided per game and sorted by mod id
+                     * The cache has already pre-grouped files by game and mod id */
+
+                    for (game, mut mod_map) in mods_by_game {
+                        self.logger.log(format!("Checking updates for {game}."));
+                        match Updated::request(&self.client, &[&game]).await {
+                            Ok(updated_mods) => {
+                                if let Err(e) = updated_mods.save(self.config.path_for(PathType::Updated(&game))).await
+                                {
+                                    self.logger.log(format!("Unable to save update list for {game}: {}", e));
+                                }
+                                let mut i = 0;
+                                mod_map.sort_keys();
+                                for (mod_id, files) in &mod_map {
+                                    while let Some(upd) = updated_mods.updates.get(i) {
+                                        // Both ids are sorted so we can iterate in parallel
+                                        if upd.mod_id < *mod_id {
+                                            i += 1;
+                                            continue;
+                                        } else if upd.mod_id == *mod_id {
+                                            self.logger.log(format!("Found in update list: {mod_id}"));
+                                            self.update_mod(game.clone(), *mod_id, files.clone()).await;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.logger.log(format!("Unable to fetch update lists for {game}: {}", e));
+                                return;
+                            }
+                        }
+                    }
+                    if let Err(e) = self.cache.save_last_updated(time.as_secs()).await {
+                        self.logger.log(format!("Failed to save last_updated: {e}"));
+                    }
+                } else {
+                    self.logger.log("Over a month since last update check, checking each mod.");
+                    for (game, mods) in mods_by_game {
+                        for (mod_id, files) in mods {
+                            self.update_mod(game.clone(), mod_id, files).await;
+                        }
+                    }
+                }
+            }
+            // This is a ridiculous error case to handle, but avoids an unwrap()
+            Err(e) => {
+                self.logger.log(format!("WARNING: Refusing to update, system time is before Unix epoch: {}", e));
+            }
+        };
         self.logger.log("Finished checking updates.");
     }
 
-    pub async fn update_mod(&self, game: String, mod_id: u32) {
+    pub async fn update_mod(&self, game: String, mod_id: u32, files_in_mod: BinaryHeap<Arc<FileData>>) {
         let me = self.clone();
         task::spawn(async move {
-            let lock = me.cache.file_index.mod_file_map.read().await;
-            let files = lock.get(&(game.to_owned(), mod_id)).unwrap();
-
             let mut needs_refresh = false;
             let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
             /* First try to check updates with cached values.
@@ -70,7 +128,7 @@ impl UpdateChecker {
              * Only query the API if a file is still reported as UpToDate.
              */
             if let Some(fl) = me.cache.file_lists.get((&game, mod_id)).await {
-                checked = me.check_mod(files, &fl).await;
+                checked = me.check_mod(&files_in_mod, &fl).await;
                 for (_fdata, status) in &checked {
                     if let UpdateStatus::UpToDate(_) = status {
                         needs_refresh = true;
@@ -85,7 +143,7 @@ impl UpdateChecker {
                  * that mod. */
                 match me.refresh_filelist(&game, mod_id).await {
                     Ok(fl) => {
-                        checked = me.check_mod(files, &fl).await;
+                        checked = me.check_mod(&files_in_mod, &fl).await;
                     }
                     Err(e) => {
                         me.logger.log(format!("Error when refresh filelist for {mod_id}: {}", e));
@@ -279,8 +337,9 @@ mod tests {
         let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        let lock = cache.file_index.mod_file_map.read().await;
-        let files = lock.get(&(game.to_string(), mod_id)).unwrap();
+        let lock = cache.file_index.game_to_mods_map.read().await;
+        let mod_map = lock.get(game).unwrap();
+        let files = mod_map.get(&mod_id).unwrap();
         let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
 
@@ -314,8 +373,9 @@ mod tests {
         let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, msgs);
 
-        let lock = cache.file_index.mod_file_map.read().await;
-        let files = lock.get(&(game.to_string(), mod_id)).unwrap();
+        let lock = cache.file_index.game_to_mods_map.read().await;
+        let mod_map = lock.get(game).unwrap();
+        let files = mod_map.get(&mod_id).unwrap();
         let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
 

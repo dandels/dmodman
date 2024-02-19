@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 #[derive(Debug)]
 pub struct FileData {
     pub file_id: u64,
+    // TODO only the enum is ever changed, if we use atomic enums we can avoid the rwlock
     pub local_file: RwLock<LocalFile>,
     pub file_details: FileDetails,
 }
