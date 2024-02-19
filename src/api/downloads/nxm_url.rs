@@ -20,6 +20,7 @@ pub struct NxmUrl {
 impl FromStr for NxmUrl {
     type Err = ApiError;
 
+    // Example: nxm://SkyrimSE/mods/8850/files/27772?key=XnbXtdAspojLzUAn7x-Grw&expires=1583065790&user_id=1234321
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let url = Url::parse(s)?;
 
