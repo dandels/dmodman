@@ -4,17 +4,21 @@ use compress_tools::*;
 use std::ffi::OsStr;
 // This module mixes std and tokio fs, be mindful which one we're using
 use std::fs::File;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::fs;
 use tokio::fs::DirEntry;
+use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::logger::Logger;
 
+#[derive(Clone)]
 pub struct Archives {
     config: Config,
     logger: Logger,
-    has_changed: bool,
-    pub files: Vec<DirEntry>,
+    pub has_changed: Arc<AtomicBool>, // used by UI to ask if error list needs to be redrawn
+    pub files: Arc<RwLock<Vec<DirEntry>>>,
 }
 
 impl Archives {
@@ -22,19 +26,13 @@ impl Archives {
         Self {
             config,
             logger,
-            has_changed: true,
-            files: vec![],
+            has_changed: AtomicBool::new(true).into(),
+            files: Arc::new(vec![].into()),
         }
     }
 
-    pub fn swap_has_changed(&mut self) -> bool {
-        let ret = self.has_changed;
-        self.has_changed = false;
-        ret
-    }
-
-    pub async fn list(&mut self) -> &Vec<DirEntry> {
-        let mut ret: Vec<DirEntry> = vec![];
+    pub async fn update_list(&self) {
+        let mut files: Vec<DirEntry> = vec![];
         if let Ok(mut dir_entries) = fs::read_dir(&self.config.download_dir()).await {
             while let Ok(Some(f)) = dir_entries.next_entry().await {
                 let path = f.path();
@@ -42,13 +40,13 @@ impl Archives {
                     // TODO more rigorous filetype checking
                     let ext = path.extension().and_then(OsStr::to_str);
                     if !matches!(ext, Some("json")) {
-                        ret.push(f);
+                        files.push(f);
                     }
                 }
             }
         }
-        self.files = ret;
-        &self.files
+        *self.files.write().await = files;
+        self.has_changed.store(true, Ordering::Relaxed);
     }
 
     pub async fn list_contents(&self, path: PathBuf) -> Result<Vec<String>> {

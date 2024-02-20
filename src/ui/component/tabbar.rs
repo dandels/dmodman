@@ -1,6 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
 use crate::ui::component::traits::Select;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Tabs;
@@ -9,13 +6,12 @@ pub struct TabBar<'a> {
     pub widget: Tabs<'a>,
     pub highlight_style: Style,
     pub selected_tab: usize,
-    pub needs_redraw: AtomicBool,
-    redraw_terminal: Arc<AtomicBool>,
+    needs_redraw: bool,
     pub len: usize,
 }
 
 impl<'a> TabBar<'a> {
-    pub fn new(redraw_terminal: Arc<AtomicBool>) -> Self {
+    pub fn new() -> Self {
         let highlight_style = Style::new().bg(Color::White).fg(Color::Black);
 
         let tabnames = vec!["Main", "Archives"];
@@ -28,25 +24,26 @@ impl<'a> TabBar<'a> {
             highlight_style,
             selected_tab,
             len,
-            needs_redraw: AtomicBool::new(false),
-            redraw_terminal,
+            needs_redraw: true,
         }
     }
 
-    pub async fn refresh(&mut self) {
-        if self.needs_redraw.swap(false, Ordering::Relaxed) {
+    pub async fn refresh(&mut self) -> bool {
+        if self.needs_redraw {
             self.widget = self.widget.clone().select(self.selected_tab);
-            self.redraw_terminal.store(true, Ordering::Relaxed);
+            self.needs_redraw = false;
+            return true;
         }
+        false
     }
 
     pub fn next_tab(&mut self) {
         self.next();
-        self.needs_redraw.store(true, Ordering::Relaxed);
+        self.needs_redraw = true;
     }
 
     pub fn prev_tab(&mut self) {
         self.previous();
-        self.needs_redraw.store(true, Ordering::Relaxed);
+        self.needs_redraw = true;
     }
 }

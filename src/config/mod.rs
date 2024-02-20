@@ -59,8 +59,7 @@ impl ConfigBuilder {
         if self.apikey.is_none() {
             self.apikey = try_read_apikey().ok();
         }
-
-        Ok(Config::new(self)?)
+        Config::new(self)
     }
 }
 
@@ -86,12 +85,12 @@ impl Config {
         };
 
         let install_dir = match config.install_dir {
-            Some(ins_dir) => shellexpand::full(&ins_dir)?.to_string().into(),
+            Some(ins_dir) => shellexpand::full(&ins_dir)?.to_string(),
             None => {
                 if cfg!(test) {
-                    format!("{}/test/data/{}", env!("CARGO_MANIFEST_DIR"), env!("CARGO_CRATE_NAME")).into()
+                    format!("{}/test/data/{}", env!("CARGO_MANIFEST_DIR"), env!("CARGO_CRATE_NAME"))
                 } else {
-                    format!("{}/{}", dirs::data_dir().unwrap().to_string_lossy(), env!("CARGO_CRATE_NAME")).into()
+                    format!("{}/{}", dirs::data_dir().unwrap().to_string_lossy(), env!("CARGO_CRATE_NAME"))
                 }
             }
         };

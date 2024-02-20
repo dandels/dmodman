@@ -182,7 +182,7 @@ impl MainUI<'_> {
         match key {
             Key::Char('i') => {
                 if let Some(i) = self.selected_index() {
-                    let path = self.archives.files.get(i).unwrap().path();
+                    let path = self.archives.files.read().await.get(i).unwrap().path();
                     match self.archives.list_contents(path.clone()).await {
                         Ok(_) => {}
                         Err(e) => {
@@ -194,11 +194,11 @@ impl MainUI<'_> {
                     if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
                         self.popup_dialog.show(&fd.file_details.name, dialog_title);
                     } else {
-                        self.logger.log("Warn: mod for {file_name} doesn't exist in db");
+                        self.logger.log(format!("Warn: mod for {file_name} doesn't exist in db"));
                         self.popup_dialog.show(&file_name, dialog_title);
                     }
                     self.input_mode = InputMode::ReadLine;
-                    self.redraw_terminal.store(true, Ordering::Relaxed);
+                    self.redraw_terminal = true;
                 }
             }
             Key::Delete => {
@@ -249,7 +249,6 @@ impl MainUI<'_> {
                     let dest_dir = self.popup_dialog.get_contents();
                     self.archives.extract(self.archives_view.selected().unwrap(), dest_dir).await;
                     self.input_mode = InputMode::Normal;
-                    self.redraw_terminal.store(true, Ordering::Relaxed);
                 }
                 // disable tab character
                 Key::Char('\t') => {}
@@ -257,7 +256,7 @@ impl MainUI<'_> {
                     self.popup_dialog.textarea.input(key);
                 }
             }
-            self.redraw_terminal.store(true, Ordering::Relaxed);
+            self.redraw_terminal = true;
         }
     }
 }

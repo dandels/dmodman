@@ -18,6 +18,7 @@ impl Logger {
     pub fn new(is_interactive: bool) -> Self {
         Self {
             is_interactive,
+            has_changed: AtomicBool::new(true).into(),
             ..Default::default()
         }
     }
@@ -35,24 +36,25 @@ impl Logger {
         let mut path = config::config_dir();
         path.push("dmodman.log");
         let mut logfile = File::options().create(true).append(true).open(path).unwrap();
-        logfile.write(format!("{}\n", msg).as_bytes()).unwrap();
+        // TODO maybe only do this if configured to
+        logfile.write_all(format!("{}\n", msg).as_bytes()).unwrap();
 
         // TODO timestamp instead of number messages, but might require external crate to be sane
         lock.push(format!("{:?}: {}", len, msg.into()));
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
-    // Useful for testing UI code without causing re-rendering
-    #[allow(dead_code)]
-    pub fn log_to_file<S: Into<String> + Debug + Display>(&self, msg: S) {
-        let mut path = config::config_dir();
-        path.push("dmodman.log");
-        let mut logfile = File::options().create(true).append(true).open(path).unwrap();
-        logfile.write(format!("{}\n", msg).as_bytes()).unwrap();
-    }
-
     pub async fn remove(&self, i: usize) {
         self.messages.write().unwrap().remove(i);
         self.has_changed.store(true, Ordering::Relaxed);
     }
+}
+
+// Useful for testing UI code without causing re-rendering
+#[allow(dead_code)]
+pub fn log_to_file<S: Into<String> + Debug + Display>(msg: S) {
+    let mut path = config::config_dir();
+    path.push("dmodman.log");
+    let mut logfile = File::options().create(true).append(true).open(path).unwrap();
+    logfile.write_all(format!("{}\n", msg).as_bytes()).unwrap();
 }

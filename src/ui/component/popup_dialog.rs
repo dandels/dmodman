@@ -1,24 +1,20 @@
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Widget;
 use ratatui::widgets::{Block, Borders};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use tui_textarea::{CursorMove, TextArea};
 
 pub struct PopupDialog<'a> {
     pub textarea: TextArea<'a>,
-    pub needs_redraw: AtomicBool,
-    redraw_terminal: Arc<AtomicBool>,
+    pub needs_redraw: bool,
 }
 
 impl PopupDialog<'_> {
-    pub fn new(redraw_terminal: Arc<AtomicBool>) -> Self {
+    pub fn new() -> Self {
         let mut textarea = TextArea::default();
         textarea.set_block(Block::default().borders(Borders::ALL).title("Target directory"));
         Self {
             textarea,
-            needs_redraw: AtomicBool::new(false),
-            redraw_terminal,
+            needs_redraw: true,
         }
     }
 

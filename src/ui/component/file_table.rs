@@ -1,6 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
+use std::sync::atomic::Ordering;
 use ratatui::layout::Constraint;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
@@ -16,14 +14,11 @@ pub struct FileTable<'a> {
     pub highlight_style: Style,
     pub state: TableState,
     pub widget: Table<'a>,
-    pub needs_redraw: AtomicBool,
-    has_data_changed: Arc<AtomicBool>,
-    redraw_terminal: Arc<AtomicBool>,
     pub len: usize,
 }
 
 impl<'a> FileTable<'a> {
-    pub fn new(redraw_terminal: Arc<AtomicBool>, file_index: FileIndex) -> Self {
+    pub fn new(file_index: FileIndex) -> Self {
         let block = Block::default().borders(Borders::ALL).title("Files");
         let headers = Row::new(
             ["Name", "Category", "ModId", "Flags", "Version"]
@@ -38,9 +33,6 @@ impl<'a> FileTable<'a> {
             Constraint::Ratio(2, 12),
         ];
 
-        let has_data_changed = file_index.has_changed.clone();
-        has_data_changed.store(true, Ordering::Relaxed);
-
         Self {
             file_index: file_index.clone(),
             block,
@@ -49,18 +41,12 @@ impl<'a> FileTable<'a> {
             highlight_style: Style::default(),
             state: TableState::default(),
             widget: Table::default().widths(widths),
-            needs_redraw: AtomicBool::new(true),
-            has_data_changed: file_index.has_changed,
-            redraw_terminal,
             len: 0,
         }
     }
 
-    pub async fn refresh<'b>(&mut self)
-    where
-        'b: 'a,
-    {
-        if self.has_data_changed.swap(false, Ordering::Relaxed) {
+    pub async fn refresh(&mut self) -> bool {
+        if self.file_index.has_changed.swap(false, Ordering::Relaxed) {
             let files = self.file_index.files_sorted.read().await;
             let mut stream = tokio_stream::iter(files.iter());
             let mut rows: Vec<Row> = vec![];
@@ -90,12 +76,8 @@ impl<'a> FileTable<'a> {
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())
                 .highlight_style(self.highlight_style.to_owned());
-            self.needs_redraw.store(false, Ordering::Relaxed);
-            self.redraw_terminal.store(true, Ordering::Relaxed);
-        } else if self.needs_redraw.swap(false, Ordering::Relaxed) {
-            self.widget =
-                self.widget.clone().block(self.block.to_owned()).highlight_style(self.highlight_style.to_owned());
-            self.redraw_terminal.store(true, Ordering::Relaxed);
+            return true
         }
+        false
     }
 }

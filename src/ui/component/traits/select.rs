@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, LogList, TabBar};
 
 impl Select for TabBar<'_> {
@@ -11,7 +9,6 @@ impl Select for TabBar<'_> {
         let i = index.unwrap();
         self.widget = self.widget.clone().select(i);
         self.selected_tab = i;
-        self.needs_redraw.store(true, Ordering::Relaxed);
     }
 
     fn selected(&self) -> Option<usize> {

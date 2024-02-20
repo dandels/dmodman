@@ -36,8 +36,8 @@ pub struct MainUI<'a> {
     pub log_view: LogList<'a>,
     pub popup_dialog: PopupDialog<'a>,
     pub input_mode: InputMode,
-    pub redraw_terminal: Arc<AtomicBool>,
     pub should_run: bool,
+    pub redraw_terminal: bool,
 }
 
 impl MainUI<'_> {
@@ -51,18 +51,16 @@ impl MainUI<'_> {
     ) -> Self {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config, logger.clone());
 
-        let redraw_terminal = Arc::new(AtomicBool::new(true));
-
         let focused = FocusedWidget::FileTable;
 
-        let tab_bar = TabBar::new(redraw_terminal.clone());
+        let tab_bar = TabBar::new();
         let hotkey_bar = HotkeyBar::new(focused.clone());
-        let bottom_bar = BottomBar::new(redraw_terminal.clone(), client.request_counter);
-        let archives_view = ArchiveTable::new(redraw_terminal.clone());
-        let files_view = FileTable::new(redraw_terminal.clone(), cache.file_index.clone());
-        let downloads_view = DownloadTable::new(redraw_terminal.clone(), downloads.clone());
-        let log_view = LogList::new(redraw_terminal.clone(), logger.clone());
-        let popup_dialog = PopupDialog::new(redraw_terminal.clone());
+        let bottom_bar = BottomBar::new(client.request_counter);
+        let archives_view = ArchiveTable::new(archives.clone()).await;
+        let files_view = FileTable::new(cache.file_index.clone());
+        let downloads_view = DownloadTable::new(downloads.clone());
+        let log_view = LogList::new(logger.clone());
+        let popup_dialog = PopupDialog::new();
 
         Self {
             archives,
@@ -78,10 +76,10 @@ impl MainUI<'_> {
             bottom_bar,
             popup_dialog,
             input_mode: InputMode::Normal,
-            redraw_terminal,
             updater,
             logger,
             should_run: true,
+            redraw_terminal: true,
         }
     }
 
@@ -106,19 +104,24 @@ impl MainUI<'_> {
         let mut rectangles = Rectangles::default();
 
         while self.should_run {
-            self.files_view.refresh().await;
-            self.downloads_view.refresh().await;
-            self.log_view.refresh().await;
-            self.archives_view.refresh(&mut self.archives).await;
-            self.hotkey_bar.refresh(&self.focused).await;
-            self.tab_bar.refresh().await;
-            self.bottom_bar.refresh().await;
+            // set redraw_terminal to true if any of the widgets have changed
+            if self.tab_bar.selected().unwrap() == 0 {
+                self.redraw_terminal |= self.files_view.refresh().await;
+                self.redraw_terminal |= self.downloads_view.refresh().await;
+            } else if self.tab_bar.selected().unwrap() == 1 {
+                self.redraw_terminal |= self.archives_view.refresh().await;
+            }
+            self.redraw_terminal |= self.hotkey_bar.refresh(&self.focused).await;
+            self.redraw_terminal |= self.tab_bar.refresh().await;
+            self.redraw_terminal |= self.bottom_bar.refresh().await;
+            self.redraw_terminal |= self.log_view.refresh().await;
 
             let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
 
-            if self.redraw_terminal.swap(false, Ordering::Relaxed) || recalculate_rects {
+            if self.redraw_terminal || recalculate_rects {
                 terminal
                     .draw(|frame| {
+                        self.redraw_terminal = false;
                         if recalculate_rects {
                             rectangles.recalculate(&layouts, frame.size());
                         }
@@ -150,6 +153,7 @@ impl MainUI<'_> {
                         frame.render_widget(&self.hotkey_bar.widget, rectangles.main_vertical[1]);
                         frame.render_widget(&self.bottom_bar.widget, rectangles.statcounter[0]);
 
+                        // TODO use same rendering logic as other widgets
                         if let InputMode::ReadLine = self.input_mode {
                             // Clear the area so we can render on top of it
                             frame.render_widget(Clear, rectangles.dialogpopup[0]);
