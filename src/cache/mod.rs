@@ -47,7 +47,7 @@ impl Cache {
             config: config.clone(),
             file_lists,
             file_index,
-            last_update_check: load_last_updated(&config),
+            last_update_check: load_last_updated(config),
         })
     }
 
@@ -82,7 +82,7 @@ impl Cache {
         fs::create_dir_all(&path).await?;
         path.push("last_updated");
         let mut file = File::create(path).await?;
-        file.write_all(&format!("{}", time).as_bytes()).await
+        file.write_all(format!("{}", time).as_bytes()).await
     }
 
     // Delete a file and its metadata based on its index in file_index.files_sorted.

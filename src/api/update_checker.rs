@@ -60,7 +60,7 @@ impl UpdateChecker {
                 self.logger.log(format!("t_diff is {}", t_diff));
                 // this is how many seconds are in 28 days
                 if t_diff < 2419200 {
-                    self.logger.log(format!("Less than a month after last update check: using update lists."));
+                    self.logger.log("Less than a month after last update check: using update lists.");
                     if let Err(e) = self.cache.save_last_updated(time.as_secs()).await {
                         self.logger.log(format!("Failed to save last updated status: {}", e));
                     }

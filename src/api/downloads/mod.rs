@@ -73,11 +73,10 @@ impl Downloads {
             }
         }
 
-        let url;
-        match self.request_download_link(&nxm).await {
-            Ok(u) => url = u,
+        let url = match self.request_download_link(&nxm).await {
+            Ok(url) => url,
             Err(_e) => return,
-        }
+        };
         let file_name = util::file_name_from_url(&url);
 
         if let Some(task) = self.tasks.write().await.get_mut(&nxm.file_id) {
@@ -198,7 +197,8 @@ impl Downloads {
         // TODO this should be done by the cache, not downloads
         let latest_timestamp = file_list.and_then(|fl| fl.files.iter().last().cloned()).unwrap().uploaded_timestamp;
         {
-            if let Some(filedata_heap) = self.cache.file_index.game_to_mods_map.read().await.get(game).and_then(|mods_map| mods_map.get(&mod_id))
+            if let Some(filedata_heap) =
+                self.cache.file_index.game_to_mods_map.read().await.get(game).and_then(|mods_map| mods_map.get(&mod_id))
             {
                 for fdata in filedata_heap.iter() {
                     let mut lf = fdata.local_file.write().await;
