@@ -71,7 +71,7 @@ impl Config {
             PathType::Updated(game) => {
                 path = self.data_dir();
                 path.push(game);
-                path.push(format!("updated-{game}.json"));
+                path.push("updated.json");
             }
         }
         path
