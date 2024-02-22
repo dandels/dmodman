@@ -79,6 +79,7 @@ impl Cache {
     pub async fn save_last_updated(&self, time: u64) -> Result<(), io::Error> {
         self.last_update_check.store(time, Ordering::Relaxed);
         let mut path = self.config.cache_dir();
+        path.push(self.config.profile.clone());
         fs::create_dir_all(&path).await?;
         path.push("last_updated");
         let mut file = File::create(path).await?;

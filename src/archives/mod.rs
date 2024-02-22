@@ -58,8 +58,8 @@ impl Archives {
     }
 
     pub async fn extract(&self, selected_index: usize, dest_dir_name: String) {
-        let src_path = self.files.get(selected_index).unwrap().path();
-        let mut dest_path = self.config.download_dir();
+        let src_path = self.files.read().await.get(selected_index).unwrap().path();
+        let mut dest_path = self.config.install_dir();
 
         let logger = self.logger.clone();
         std::thread::spawn(move || match File::open(&src_path) {

@@ -26,15 +26,15 @@ pub trait Cacheable: Serialize + DeserializeOwned {
 mod tests {
     use super::Cacheable;
     use crate::api::{ApiError, FileList, ModInfo};
-    use crate::config::ConfigBuilder;
-    use crate::config::PathType;
+    use crate::config::{ConfigBuilder, PathType};
+    use crate::Logger;
 
     #[tokio::test]
     async fn read_cached_mod_info() -> Result<(), ApiError> {
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = ConfigBuilder::load().unwrap().profile(game).build().unwrap();
+        let config = ConfigBuilder::load(Logger::default()).unwrap().profile(game).build().unwrap();
         let path = config.path_for(PathType::ModInfo(game, &mod_id));
         println!("{:?}", path);
 

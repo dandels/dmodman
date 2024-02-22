@@ -4,100 +4,197 @@ pub mod paths;
 pub use config_error::ConfigError;
 pub use paths::PathType;
 
+use super::Logger;
 use crate::util;
-
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::io::prelude::Write;
 use std::io::Read;
 use std::path::PathBuf;
 use std::{fs, fs::File};
 
-use serde::Deserialize;
-
 /* The ConfigBuilder is loaded based on the config file, or initialized with empty values. It's used for deserializing
  * and setting config values that might be missing. We then turn it into a proper Config, which let's us avoid wrapping
- * most settings inside an Option. */
+ * most settings inside an Option.
+ *
+ * Download_dir and install_dir have default values but can be overriden per profile.
+ * install_dir does not have a configurable global setting because appending $profile to it would be a nuisance to
+ * the user, and extracting all mods to the same directory leads to a mess.
+ *
+ * The original behavior of download_dir is to append $profile to its path in case $profile is set.
+ * This behavior is kept for backwards compatibility reasons in case profiles is None, or the active Profile does not
+ * specify a download directory. */
 #[derive(Default, Deserialize)]
 pub struct ConfigBuilder {
-    // API key can be stored in either config or separate file (when generated for user). Config takes precedence.
     pub apikey: Option<String>,
     pub profile: Option<String>,
+    #[serde(alias = "global_download_dir")]
+    pub download_dir: Option<String>,
+    #[serde(alias = "global_install_dir")]
+    pub install_dir: Option<String>,
+    pub profiles: HashMap<String, Profile>,
+    #[serde(skip)]
+    logger: Logger,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Profile {
     pub download_dir: Option<String>,
     pub install_dir: Option<String>,
 }
 
-#[allow(dead_code)]
 impl ConfigBuilder {
-    pub fn load() -> Result<Self, ConfigError> {
+    pub fn load(logger: Logger) -> Result<Self, ConfigError> {
         let mut contents = String::new();
         let mut f = File::open(config_file())?;
         f.read_to_string(&mut contents)?;
-        Ok(toml::from_str(&contents)?)
+
+        let mut loaded: ConfigBuilder = toml::from_str(&contents)?;
+        loaded.apply_settings_from_profile();
+
+        Ok(Self { logger, ..loaded })
     }
 
+    fn apply_settings_from_profile(&mut self) {
+        if let Some(selected_profile) = &self.profile {
+            if let Some(profile) = self.profiles.get(selected_profile) {
+                if let Some(dls_dir) = &profile.download_dir {
+                    self.download_dir = Some(dls_dir.to_owned());
+                };
+                if let Some(ins_dir) = &profile.install_dir {
+                    self.install_dir = Some(ins_dir.to_owned());
+                };
+            }
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn apikey<S: Into<String>>(mut self, apikey: S) -> Self {
         self.apikey = Some(apikey.into());
         self
     }
 
+    #[allow(dead_code)]
     pub fn profile<S: Into<String>>(mut self, profile: S) -> Self {
         self.profile = Some(profile.into());
+        self.apply_settings_from_profile();
         self
     }
 
+    #[allow(dead_code)]
     pub fn download_dir<S: Into<String>>(mut self, dir: S) -> Self {
         self.download_dir = Some(dir.into());
         self
     }
 
+    #[allow(dead_code)]
     pub fn install_dir<S: Into<String>>(mut self, dir: S) -> Self {
         self.install_dir = Some(dir.into());
         self
     }
 
     pub fn build(mut self) -> Result<Config, ConfigError> {
+        // API key can be stored in the config or a separate file (default). Config takes precedence.
         if self.apikey.is_none() {
             self.apikey = try_read_apikey().ok();
         }
-        Config::new(self)
+
+        // Fallback behavior for missing settings.
+        match &self.profile {
+            Some(selected_profile) => {
+                // Selected profile has no matching Profile. Append $profile to paths.
+                if let None = self.profiles.get(selected_profile) {
+                    self.download_dir = match self.download_dir {
+                        Some(dls) => Some(format!("{dls}/{selected_profile}")),
+                        None => Some(format!("{}/{}", default_download_dir(), selected_profile)),
+                    };
+                    self.install_dir = match self.install_dir {
+                        Some(ins) => Some(format!("{ins}/{selected_profile}")),
+                        None => Some(format!("{}/{}", default_install_dir(), selected_profile)),
+                    }
+                }
+            }
+            None => {
+                if let None = self.download_dir {
+                    self.download_dir = Some(format!("{}", default_download_dir()));
+                }
+                if let None = self.install_dir {
+                    self.install_dir = Some(format!("{}", default_install_dir()));
+                }
+            }
+        }
+
+        self.download_dir = Some(shellexpand::full(&self.download_dir.unwrap())?.to_string());
+        self.install_dir = Some(shellexpand::full(&self.install_dir.unwrap())?.to_string());
+
+        Config::new(self.logger.clone(), self)
     }
+}
+
+// The dirs crate reads ~/.confg/user-dirs.dirs directly and ignores environment variables. This messes up tests.
+pub fn xdg_download_dir() -> String {
+    match env::var("XDG_DOWNLOAD_DIR") {
+        Ok(val) if val.starts_with("$HOME") || val.starts_with("/") => val,
+        _ => dirs::download_dir().unwrap().to_string_lossy().to_string(),
+    }
+}
+
+pub fn xdg_data_dir() -> String {
+    match env::var("XDG_DATA_DIR") {
+        Ok(val) if val.starts_with("$HOME") || val.starts_with("/") => val,
+        _ => dirs::data_dir().unwrap().to_string_lossy().to_string(),
+    }
+}
+
+pub fn default_download_dir() -> String {
+    format!("{}/{}", xdg_download_dir(), env!("CARGO_CRATE_NAME"))
+}
+
+pub fn default_install_dir() -> String {
+    format!("{}/{}/install/", xdg_data_dir(), env!("CARGO_CRATE_NAME"))
 }
 
 #[derive(Clone)]
 pub struct Config {
     pub apikey: Option<String>,
-    pub profile: Option<String>,
-    download_dir: String,
-    install_dir: String,
+    pub profile: String,
+    download_dir: PathBuf,
+    install_dir: PathBuf,
 }
 
 impl Config {
-    fn new(config: ConfigBuilder) -> Result<Self, ConfigError> {
-        let download_dir = match config.download_dir {
-            Some(dl_dir) => shellexpand::full(&dl_dir)?.to_string(),
-            None => {
-                if cfg!(test) {
-                    format!("{}/test/downloads/{}", env!("CARGO_MANIFEST_DIR"), env!("CARGO_CRATE_NAME"))
-                } else {
-                    format!("{}/{}", dirs::download_dir().unwrap().to_string_lossy(), env!("CARGO_CRATE_NAME"))
+    fn new(logger: Logger, config: ConfigBuilder) -> Result<Self, ConfigError> {
+        let download_dir = {
+            let path =
+                PathBuf::from(config.download_dir.expect("Config was passed Builder with missing download dir."));
+            match path.is_absolute() {
+                true => path,
+                false => {
+                    logger.log("Download dir is not an absolute path. Using path relative to $HOME.");
+                    let mut home = dirs::home_dir().unwrap();
+                    home.push(path);
+                    home
                 }
             }
         };
 
-        let install_dir = match config.install_dir {
-            Some(ins_dir) => shellexpand::full(&ins_dir)?.to_string(),
-            None => {
-                if cfg!(test) {
-                    format!("{}/test/data/{}", env!("CARGO_MANIFEST_DIR"), env!("CARGO_CRATE_NAME"))
-                } else {
-                    format!("{}/{}", dirs::data_dir().unwrap().to_string_lossy(), env!("CARGO_CRATE_NAME"))
+        let install_dir = {
+            let path = PathBuf::from(config.install_dir.expect("Config was passed Builder with missing install dir."));
+            match path.is_absolute() {
+                true => path,
+                false => {
+                    logger.log("Install dir is not an absolute path. Using path relative to $HOME.");
+                    let mut home = dirs::home_dir().unwrap();
+                    home.push(path);
+                    home
                 }
             }
         };
 
         Ok(Self {
             apikey: config.apikey,
-            profile: config.profile,
+            profile: config.profile.unwrap_or("default".to_string()),
             download_dir,
             install_dir,
         })
@@ -121,21 +218,11 @@ impl Config {
     }
 
     pub fn download_dir(&self) -> PathBuf {
-        let mut path = PathBuf::from(&self.download_dir);
-        if let Some(profile) = &self.profile {
-            path.push(profile);
-        }
-        path
+        self.download_dir.clone()
     }
 
     pub fn install_dir(&self) -> PathBuf {
-        let mut path = PathBuf::from(&self.install_dir);
-        match &self.profile {
-            Some(profile) => path.push(profile),
-            // Maybe generate an error instead if this is unconfigured
-            None => path.push("default"),
-        }
-        path
+        self.install_dir.clone()
     }
 
     pub fn save_apikey(&self) -> Result<(), std::io::Error> {
@@ -178,20 +265,28 @@ pub fn try_read_apikey() -> Result<String, std::io::Error> {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::config::{ConfigBuilder, ConfigError};
+pub mod tests {
+    use crate::config::*;
     use std::env;
     use std::path::PathBuf;
 
+    pub fn setup_env() {
+        env::set_var("HOME", format!("{}/test/", env!("CARGO_MANIFEST_DIR")));
+        env::set_var("XDG_DATA_DIR", "$HOME/data");
+        env::set_var("XDG_DOWNLOAD_DIR", "$HOME/downloads");
+    }
+
     #[test]
     fn read_apikey() -> Result<(), ConfigError> {
-        let config = ConfigBuilder::load().unwrap().build()?;
+        setup_env();
+        let config = ConfigBuilder::load(Logger::default()).unwrap().build()?;
         assert_eq!(config.apikey, Some("1234".to_string()));
         Ok(())
     }
 
     #[test]
     fn modfile_exists() -> Result<(), ConfigError> {
+        setup_env();
         let profile = "morrowind";
         let modfile = "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z";
         let config = ConfigBuilder::default().profile(profile).build()?;
@@ -225,6 +320,55 @@ mod tests {
         let config =
             ConfigBuilder::default().download_dir("~/secret$FOO_VAR").profile("?!\"¤%😀 my profile").build()?;
         assert_eq!(PathBuf::from("/root/subdir/secretfoo/bar/?!\"¤%😀 my profile"), config.download_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn default_config() -> Result<(), ConfigError> {
+        env::set_var("HOME", "/home/dmodman_test");
+        env::set_var("XDG_DATA_DIR", "$HOME/.local/share");
+        env::set_var("XDG_DOWNLOAD_DIR", "$HOME/Downloads");
+        let config = ConfigBuilder::default().build()?;
+        println!("dirs {:?}", dirs::download_dir());
+        assert_eq!(PathBuf::from("/home/dmodman_test/Downloads/dmodman"), config.download_dir());
+        assert_eq!(PathBuf::from("/home/dmodman_test/.local/share/dmodman/install"), config.install_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn append_profile_to_dirs() -> Result<(), ConfigError> {
+        setup_env();
+        env::set_var("HOME", "/home/dmodman_test");
+        let config = ConfigBuilder::load(Logger::default())?.profile("append").build()?;
+        assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_dls/append"), config.download_dir());
+        assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_ins/append"), config.install_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn relative_paths() -> Result<(), ConfigError> {
+        env::set_var("HOME", "/home/dmodman_test");
+        let config = ConfigBuilder::load(Logger::default())?.profile("relative_test").build()?;
+        assert_eq!(PathBuf::from("/home/dmodman_test/relative_dls/"), config.download_dir());
+        assert_eq!(PathBuf::from("/home/dmodman_test/relative_ins/"), config.install_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn absolute_paths() -> Result<(), ConfigError> {
+        env::set_var("HOME", "/home/dmodman_test");
+        let config = ConfigBuilder::load(Logger::default())?.profile("absolute_test").build()?;
+        assert_eq!(PathBuf::from("/absolute_dls"), config.download_dir());
+        assert_eq!(PathBuf::from("/absolute_ins"), config.install_dir());
+        Ok(())
+    }
+
+    #[test]
+    fn profile_specific_install_dir() -> Result<(), ConfigError> {
+        env::set_var("HOME", "/home/dmodman_test");
+        let config = ConfigBuilder::load(Logger::default())?.profile("insdir_only_test").build()?;
+        assert_eq!(PathBuf::from("/home/dmodman_test/insdir_only"), config.install_dir());
+        assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_dls"), config.download_dir());
         Ok(())
     }
 }

@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
      * It calls println!() instead when running as a daemon. */
     let logger = Logger::new(is_interactive);
 
-    let mut config: Config = ConfigBuilder::load().unwrap_or_default().build()?;
+    let mut config: Config = ConfigBuilder::load(logger.clone())?.build()?;
     if config.apikey.is_none() {
         if let Some(apikey) = ui::sso::start_apikey_flow().await {
             config.apikey = Some(apikey);

@@ -1,1 +1,15 @@
 # download_dir = "/foo/bar"
+profile = "testings"
+download_dir = "~/toplevel_dls"
+install_dir = "~/toplevel_ins"
+
+[profiles.relative_test]
+download_dir = "relative_dls"
+install_dir = "relative_ins"
+
+[profiles.absolute_test]
+download_dir = "/absolute_dls/"
+install_dir = "/absolute_ins/"
+
+[profiles.insdir_only_test]
+install_dir = "~/insdir_only/"

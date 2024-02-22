@@ -299,6 +299,7 @@ mod tests {
     use crate::api::{ApiError, Client, UpdateChecker};
     use crate::cache::Cache;
     use crate::cache::UpdateStatus;
+    use crate::config::tests::setup_env;
     use crate::ConfigBuilder;
     use crate::Logger;
 
@@ -326,6 +327,7 @@ mod tests {
 
     #[tokio::test]
     async fn up_to_date() -> Result<(), ApiError> {
+        setup_env();
         let game = "morrowind";
         let upload_time = 1310405800;
         let mod_id = 39350;
@@ -359,6 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn out_of_date() -> Result<(), ApiError> {
+        setup_env();
         let game = "morrowind";
         let mod_id = 46599;
         let _graphic_herbalism_file_id = 1000014314;

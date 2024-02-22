@@ -1,13 +1,24 @@
 ## dmodman example config
+## Environment variables and ~/ are evaluated.
 
-## Modding profile.
-## You should set this to something different for each game or mod loadout.
-## It appends a subdirectory to download_dir and install_dir.
+## The active profile. Used to separate files from different games and mod lists.
+## Setting this adds a per-profile subdirectory under the global dirs.
+## You can also override the global values per profile.
 ## Default: none
 #profile = "morrowind"
 
-## Download directory. Default: $XDG_DOWNLOAD_DIR/dmodman
-#download_dir = "~/Downloads/dmodman/"
+## Global download directory.
+## Default: $XDG_DOWNLOAD_DIR/dmodman
+global_download_dir = "~/Downloads/dmodman/"
 
-## Directory to extract mods to. Default: $XDG_DATA_HOME/dmodman/
-#install_dir = "~/.local/share/dmodman/"
+## Global install directory.
+## Default: $XDG_DATA_HOME/dmodman/
+global_install_dir = "~/.local/share/dmodman/install/"
+
+#[profiles.morrowind]
+#download_dir = "~/Games/morrowind/downloads"
+#install_dir = "/home/user/foo/install"
+
+#[profiles.foobar]
+#download_dir = "~/foo/downloads"
+#install_dir = "~/bar/installs"
