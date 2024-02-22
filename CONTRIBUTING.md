@@ -1,14 +1,12 @@
+Contributors welcome!
+I'm open to ideas, feedback, and kind words.
+
 ## Technical
 * [Nexus API reference](https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0#/).
 * dmodman uses [ratatui](https://github.com/tui-rs-revival/ratatui) for the TUI.
 * API responses are stored in `$XDG_DATA_HOME/dmodman/` (default `~/.local/share/dmodman`).
-    * The cache logic needs some work. A lot of data is kept around needlessly.
-    * There is currently no automatic cache deletion.
-* While the program is written for Linux, supporting other OS's will be considered upon request.
 
 ## Things to do
-Contributors welcome!
-I'm open to ideas, feedback, and kind words.
 
 ### General
 - [x] Contextual keybinds
@@ -19,26 +17,28 @@ I'm open to ideas, feedback, and kind words.
 - [ ] Implement Home, End and Page Up/Down keys.
 
 ### File updates
-- [ ] Important: use the API to query mods that have been updated in the past 1 month, combined with a timestamp for last update check
+- [x] Important: use the API to query mods that have been updated in the past 1 month, combined with a timestamp for last update check
+    - Freezes UI, Needs threading a bit earlier in the code
 - [ ] The displayed columns are arbitrary and not so relevant
 - [ ] Show details of currently selected file in the UI. The border of the UI block can be rendered on.
 - [ ] Permanently ignore updates (trivial to implement with a new enum variant)
-- [ ] Show archive connected to mod
+- [ ] Show archive connected to mod and vice versa
 - [ ] Delete metadata if file is no longer tracked
 - [ ] The update lists can be quite long (13k lines in one case) and shouldn't be loaded to memory all the time.
+    - Needs compression on disk
 
 ### Archives
 - [x] Extraction using libarchive
 - [x] Popup dialog that asks for directory name
-- [ ] Configurable extract location
+- [x] Configurable extract location
 - [ ] Confirmation dialog (for overwriting when extracting and file deletion).
 - [ ] Show which mod a file belongs to
 - [ ] Import archives to dmodman using md5search.
 - [ ] Fomod installer support
 - [ ] Integrate into the tracked mods/updating UI
+- [ ] Create metadata files into extracted directories (high prio)
 
 ###  Downloads
-- [ ] Decide between regular and/or fuse overlayfs
 - [ ] Daemon that (un)mounts the overlayfs automatically
 - [ ] Delete cached download links when no longer valid/needed
 - [ ] Query download urls without visiting the Nexus (Premium users only).
@@ -62,4 +62,5 @@ I'm open to ideas, feedback, and kind words.
 ### Other things
 - [ ] Overlayfs support? This is needed by complex mod setups where files can overwrite each other.
     - [ ] Requires a way to reorder UI items (or implement as a text file with rows for directory order).
+    - [ ] Decide between regular and/or fuse overlayfs
 - [ ] In-app mod search, display and downloading (downloads for premium users only)?
