@@ -102,9 +102,16 @@ impl ConfigBuilder {
 
         // Fallback behavior for missing settings.
         match &self.profile {
-            Some(selected_profile) => {
-                // Selected profile has no matching Profile. Append $profile to paths.
-                if let None = self.profiles.get(selected_profile) {
+            Some(selected_profile) => match self.profiles.get(selected_profile) {
+                Some(profile) => {
+                    if let None = profile.download_dir {
+                        self.download_dir = Some(format!("{}/{}", default_download_dir(), selected_profile));
+                    }
+                    if let None = profile.install_dir {
+                        self.install_dir = Some(format!("{}/{}", default_install_dir(), selected_profile));
+                    }
+                }
+                None => {
                     self.download_dir = match self.download_dir {
                         Some(dls) => Some(format!("{dls}/{selected_profile}")),
                         None => Some(format!("{}/{}", default_download_dir(), selected_profile)),
@@ -114,7 +121,7 @@ impl ConfigBuilder {
                         None => Some(format!("{}/{}", default_install_dir(), selected_profile)),
                     }
                 }
-            }
+            },
             None => {
                 if let None = self.download_dir {
                     self.download_dir = Some(format!("{}", default_download_dir()));
@@ -132,7 +139,7 @@ impl ConfigBuilder {
     }
 }
 
-// The dirs crate reads ~/.confg/user-dirs.dirs directly and ignores environment variables. This messes up tests.
+// The dirs crate reads ~/.config/user-dirs.dirs directly and ignores environment variables. This messes up tests.
 pub fn xdg_download_dir() -> String {
     match env::var("XDG_DOWNLOAD_DIR") {
         Ok(val) if val.starts_with("$HOME") || val.starts_with("/") => val,
