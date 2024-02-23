@@ -107,20 +107,22 @@ impl MainUI<'_> {
                 }
             }
             Key::Char('U') => {
-                let game: String;
-                let mod_id: u32;
-                {
-                    if let Some(i) = self.selected_index() {
-                        let files_lock = self.files_view.file_index.files_sorted.read().await;
+                if let Some(i) = self.selected_index() {
+                    let game: String;
+                    let mod_id: u32;
+                    let files;
+                    {
+                        let files_lock = self.cache.file_index.files_sorted.read().await;
                         let fdata = files_lock.get(i).unwrap();
                         let lf_lock = fdata.local_file.read().await;
                         game = lf_lock.game.clone();
                         mod_id = lf_lock.mod_id;
-                    } else {
-                        return;
+                        let map_lock = self.cache.file_index.game_to_mods_map.read().await;
+                        let mods = map_lock.get(&game).unwrap();
+                        files = mods.get(&mod_id).unwrap().clone();
                     }
+                    self.updater.update_mod(game, mod_id, files).await;
                 }
-                self.updater.update_mod(game, mod_id).await;
             }
             Key::Char('u') => {
                 self.updater.update_all().await;
