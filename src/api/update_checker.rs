@@ -60,47 +60,49 @@ impl UpdateChecker {
                 self.logger.log(format!("t_diff is {}", t_diff));
                 // this is how many seconds are in 28 days
                 if t_diff < 2419200 {
-                    self.logger.log("Less than a month after last update check: using update lists.");
-                    if let Err(e) = self.cache.save_last_updated(time.as_secs()).await {
-                        self.logger.log(format!("Failed to save last updated status: {}", e));
-                    }
+                    let me = self.clone();
+                    task::spawn(async move {
+                        me.logger.log("Less than a month after last update check: using update lists.");
+                        if let Err(e) = me.cache.save_last_updated(time.as_secs()).await {
+                            me.logger.log(format!("Failed to save last updated status: {}", e));
+                        }
 
-                    /* The updated mod lists are provided per game and sorted by mod id
-                     * The cache has already pre-grouped files by game and mod id */
+                        /* The updated mod lists are provided per game and sorted by mod id
+                         * FileIndex.game_to_mods_map  */
 
-                    for (game, mut mod_map) in mods_by_game {
-                        self.logger.log(format!("Checking updates for {game}."));
-                        match Updated::request(&self.client, &[&game]).await {
-                            Ok(updated_mods) => {
-                                if let Err(e) = updated_mods.save(self.config.path_for(PathType::Updated(&game))).await
-                                {
-                                    self.logger.log(format!("Unable to save update list for {game}: {}", e));
-                                }
-                                let mut i = 0;
-                                mod_map.sort_keys();
-                                for (mod_id, files) in &mod_map {
-                                    while let Some(upd) = updated_mods.updates.get(i) {
-                                        // Both ids are sorted so we can iterate in parallel
-                                        if upd.mod_id < *mod_id {
-                                            i += 1;
-                                            continue;
-                                        } else if upd.mod_id == *mod_id {
-                                            self.logger.log(format!("Found in update list: {mod_id}"));
-                                            self.update_mod(game.clone(), *mod_id, files.clone()).await;
+                        for (game, mut mod_map) in mods_by_game {
+                            match Updated::request(&me.client, &[&game]).await {
+                                Ok(updated_mods) => {
+                                    if let Err(e) =
+                                        updated_mods.save(me.config.path_for(PathType::Updated(&game))).await
+                                    {
+                                        me.logger.log(format!("Unable to save update list for {game}: {}", e));
+                                    }
+                                    let mut i = 0;
+                                    mod_map.sort_keys();
+                                    for (mod_id, files) in &mod_map {
+                                        while let Some(upd) = updated_mods.updates.get(i) {
+                                            // Both ids are sorted so we can iterate in parallel
+                                            if upd.mod_id < *mod_id {
+                                                i += 1;
+                                                continue;
+                                            } else if upd.mod_id == *mod_id {
+                                                me.update_mod(game.clone(), *mod_id, files.clone()).await;
+                                            }
+                                            break;
                                         }
-                                        break;
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                self.logger.log(format!("Unable to fetch update lists for {game}: {}", e));
-                                return;
+                                Err(e) => {
+                                    me.logger.log(format!("Unable to fetch update lists for {game}: {}", e));
+                                    return;
+                                }
                             }
                         }
-                    }
-                    if let Err(e) = self.cache.save_last_updated(time.as_secs()).await {
-                        self.logger.log(format!("Failed to save last_updated: {e}"));
-                    }
+                        if let Err(e) = me.cache.save_last_updated(time.as_secs()).await {
+                            me.logger.log(format!("Failed to save last_updated: {e}"));
+                        }
+                    });
                 } else {
                     self.logger.log("Over a month since last update check, checking each mod.");
                     for (game, mods) in mods_by_game {
