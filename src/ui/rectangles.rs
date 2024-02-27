@@ -6,8 +6,6 @@ pub struct Layouts {
     main_vertical: Layout,
     tables: Layout,
     statcounter: Layout,
-    dialog_horizontal: Layout,
-    dialog_vertical: Layout,
 }
 
 pub struct Rectangles {
@@ -44,18 +42,10 @@ impl Layouts {
         let statcounter =
             Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(1)]).flex(Flex::End);
 
-        let dialog_horizontal =
-            Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(3)]).flex(Flex::Center);
-
-        let dialog_vertical =
-            Layout::default().direction(Direction::Horizontal).constraints([Constraint::Max(50)]).flex(Flex::Center);
-
         Self {
             main_vertical,
             tables,
             statcounter,
-            dialog_horizontal,
-            dialog_vertical,
         }
     }
 }
@@ -65,6 +55,17 @@ impl Rectangles {
         self.main_vertical = layout.main_vertical.split(window_size);
         self.main_horizontal = layout.tables.split(self.main_vertical[2]);
         self.statcounter = layout.statcounter.split(window_size);
-        self.dialogpopup = layout.dialog_vertical.split(layout.dialog_horizontal.split(window_size)[0]);
+    }
+
+    pub fn recalculate_popup(&mut self, list_height: usize, window_size: Rect) {
+        let dialog_vertical = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length((list_height + 2).try_into().unwrap()), Constraint::Length(3)])
+            .flex(Flex::Center);
+
+        let dialog_horizontal =
+            Layout::default().direction(Direction::Horizontal).constraints([Constraint::Max(50)]).flex(Flex::Center);
+
+        self.dialogpopup = dialog_vertical.split(dialog_horizontal.split(window_size)[0]);
     }
 }

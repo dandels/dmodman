@@ -1,4 +1,4 @@
-use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, LogList, TabBar};
+use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, LogList, TabBar, PopupDialog};
 
 impl Select for TabBar<'_> {
     fn len(&self) -> usize {
@@ -38,6 +38,7 @@ impl_stateful!(ArchiveTable<'_>);
 impl_stateful!(DownloadTable<'_>);
 impl_stateful!(FileTable<'_>);
 impl_stateful!(LogList<'_>);
+impl_stateful!(PopupDialog<'_>);
 
 pub trait Select {
     fn len(&self) -> usize;

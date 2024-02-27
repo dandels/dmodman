@@ -21,7 +21,6 @@ pub enum InputMode {
 }
 
 pub struct MainUI<'a> {
-    pub archives: Archives,
     pub cache: Cache,
     pub downloads: Downloads,
     pub logger: Logger,
@@ -56,14 +55,13 @@ impl MainUI<'_> {
         let tab_bar = TabBar::new();
         let hotkey_bar = HotkeyBar::new(focused.clone());
         let bottom_bar = BottomBar::new(client.request_counter);
-        let archives_view = ArchiveTable::new(archives.clone()).await;
+        let archives_view = ArchiveTable::new(archives).await;
         let files_view = FileTable::new(cache.file_index.clone());
         let downloads_view = DownloadTable::new(downloads.clone());
         let log_view = LogList::new(logger.clone());
-        let popup_dialog = PopupDialog::new();
+        let popup_dialog = PopupDialog::default();
 
         Self {
-            archives,
             cache,
             downloads,
             focused,
@@ -125,6 +123,9 @@ impl MainUI<'_> {
                         if recalculate_rects {
                             rectangles.recalculate(&layouts, frame.size());
                         }
+                        if let InputMode::ReadLine = self.input_mode {
+                            rectangles.recalculate_popup(self.popup_dialog.len, frame.size());
+                        }
                         if self.tab_bar.selected().unwrap() == 0 {
                             frame.render_stateful_widget(
                                 &self.files_view.widget,
@@ -157,7 +158,13 @@ impl MainUI<'_> {
                         if let InputMode::ReadLine = self.input_mode {
                             // Clear the area so we can render on top of it
                             frame.render_widget(Clear, rectangles.dialogpopup[0]);
-                            frame.render_widget(self.popup_dialog.widget(), rectangles.dialogpopup[0]);
+                            frame.render_widget(Clear, rectangles.dialogpopup[1]);
+                            frame.render_stateful_widget(
+                                &self.popup_dialog.list,
+                                rectangles.dialogpopup[0],
+                                &mut self.popup_dialog.state,
+                            );
+                            frame.render_widget(self.popup_dialog.widget(), rectangles.dialogpopup[1]);
                         }
                     })
                     .unwrap();

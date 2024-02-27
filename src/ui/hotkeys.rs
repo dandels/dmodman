@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use std::sync::atomic::Ordering;
+use crate::archives::InstallError;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 //use tui_textarea::{Input, Key};
@@ -184,21 +184,23 @@ impl MainUI<'_> {
         match key {
             Key::Char('i') => {
                 if let Some(i) = self.selected_index() {
-                    let path = self.archives.files.read().await.get(i).unwrap().path();
-                    match self.archives.list_contents(path.clone()).await {
+                    let path = self.archives_view.archives.files.read().await.get(i).unwrap().path();
+                    match self.archives_view.archives.list_contents(path.clone()).await {
                         Ok(_) => {}
                         Err(e) => {
                             self.logger.log(format!("{:?}", e));
                         }
                     }
-                    let file_name = path.file_name().unwrap().to_string_lossy();
+                    let file_name = path.file_name().unwrap().to_string_lossy().to_string();
                     let dialog_title = "Target directory".to_string();
+                    let mut suggested_values = vec![];
                     if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
-                        self.popup_dialog.show(&fd.file_details.name, dialog_title);
+                        suggested_values.push(fd.file_details.name.clone());
                     } else {
                         self.logger.log(format!("Warn: mod for {file_name} doesn't exist in db"));
-                        self.popup_dialog.show(&file_name, dialog_title);
                     }
+                    suggested_values.push(file_name);
+                    self.popup_dialog = PopupDialog::new(suggested_values, dialog_title);
                     self.input_mode = InputMode::ReadLine;
                     self.redraw_terminal = true;
                 }
@@ -213,6 +215,7 @@ impl MainUI<'_> {
     async fn handle_log_keys(&mut self, event: Event) {
         let key = if let Event::Key(key) = event { key } else { return };
 
+        #[allow(clippy::single_match)]
         match key {
             Key::Delete => {
                 if let Some(i) = self.selected_index() {
@@ -249,13 +252,19 @@ impl MainUI<'_> {
                 }
                 Key::Char('\n') => {
                     let dest_dir = self.popup_dialog.get_contents();
-                    self.archives.extract(self.archives_view.selected().unwrap(), dest_dir).await;
-                    self.input_mode = InputMode::Normal;
+                    let index = self.archives_view.selected().unwrap();
+                    match self.archives_view.archives.extract(index, dest_dir.clone(), false).await {
+                        Ok(()) => self.input_mode = InputMode::Normal,
+                        Err(InstallError::AlreadyExists) => {
+                            // TODO
+                        }
+                        Err(e) => {
+                            self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));
+                        }
+                    }
                 }
-                // disable tab character
-                Key::Char('\t') => {}
                 _ => {
-                    self.popup_dialog.textarea.input(key);
+                    self.popup_dialog.input(Event::Key(key));
                 }
             }
             self.redraw_terminal = true;

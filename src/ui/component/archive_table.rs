@@ -9,7 +9,7 @@ use tokio_stream::StreamExt;
 pub struct ArchiveTable<'a> {
     headers: Row<'a>,
     widths: [Constraint; 2],
-    archives: Archives,
+    pub archives: Archives,
     pub block: Block<'a>,
     pub highlight_style: Style,
     pub state: TableState,
