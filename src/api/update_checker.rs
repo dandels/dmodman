@@ -38,9 +38,17 @@ impl UpdateChecker {
         if let Some(latest_remote_file) =
             self.cache.file_lists.get((&lf_lock.game, lf_lock.mod_id)).await.unwrap().file_updates.peek()
         {
-            lf_lock.update_status = UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp);
+            match lf_lock.update_status {
+                UpdateStatus::OutOfDate(_) => {
+                    lf_lock.update_status = UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp);
+                }
+                UpdateStatus::HasNewFile(_) => {
+                    lf_lock.update_status = UpdateStatus::UpToDate(latest_remote_file.uploaded_timestamp);
+                }
+                _ => {}
+            }
 
-            if let Err(e) = lf_lock.save(self.config.path_for(PathType::LocalFile(&lf_lock))).await {
+            if let Err(e) = lf_lock.save(self.config.path_for(DataType::LocalFile(&lf_lock))).await {
                 self.logger.log(format!("Unable save ignore status for: {e}."));
             }
             self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
@@ -74,22 +82,22 @@ impl UpdateChecker {
                             match Updated::request(&me.client, &[&game]).await {
                                 Ok(updated_mods) => {
                                     if let Err(e) =
-                                        updated_mods.save(me.config.path_for(PathType::Updated(&game))).await
+                                        updated_mods.save(me.config.path_for(DataType::Updated(&game))).await
                                     {
                                         me.logger.log(format!("Unable to save update list for {game}: {}", e));
                                     }
                                     let mut i = 0;
                                     mod_map.sort_keys();
+                                    // Local and updated mods are sorted so we can iterate in parallel
                                     for (mod_id, files) in &mod_map {
                                         while let Some(upd) = updated_mods.updates.get(i) {
-                                            // Both ids are sorted so we can iterate in parallel
-                                            if upd.mod_id < *mod_id {
-                                                i += 1;
-                                                continue;
-                                            } else if upd.mod_id == *mod_id {
+                                            if upd.mod_id == *mod_id {
                                                 me.update_mod(game.clone(), *mod_id, files.clone()).await;
                                             }
-                                            break;
+                                            i += 1;
+                                            if upd.mod_id > *mod_id {
+                                                break;
+                                            }
                                         }
                                     }
                                 }
