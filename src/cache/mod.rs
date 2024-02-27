@@ -22,6 +22,7 @@ use tokio::fs::File;
 use tokio::io;
 use tokio::io::AsyncWriteExt;
 
+// The Cache is a basic file storage. There's a case to be made for using a relational database instead.
 #[derive(Clone)]
 pub struct Cache {
     pub file_lists: FileLists,
@@ -31,17 +32,9 @@ pub struct Cache {
 }
 
 impl Cache {
-    /* For each json file in downloads directory, serializes it to a LocalFile.
-     * For each LocalFile, checks $cache/$mod/$mod_id.json for the FileList.
-     *
-     * Creates maps for:
-     * - file_id        -> LocalFile
-     * - (game, mod_id) -> FileList
-     * - file_id        -> FileDetails
-     */
     pub async fn new(config: &Config) -> Result<Self, CacheError> {
-        let file_lists = FileLists::new(&config).await?;
-        let file_index = FileIndex::new(&config, file_lists.clone()).await?;
+        let file_lists = FileLists::new(config.clone()).await?;
+        let file_index = FileIndex::new(config, file_lists.clone()).await?;
 
         Ok(Self {
             config: config.clone(),
@@ -55,8 +48,8 @@ impl Cache {
         &self,
         dl: &DownloadLink,
         game: &str,
-        mod_id: &u32,
-        file_id: &u64,
+        mod_id: u32,
+        file_id: u64,
     ) -> Result<(), CacheError> {
         let path = self.config.path_for(PathType::DownloadLink(game, mod_id, file_id));
         dl.save(path).await?;

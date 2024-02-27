@@ -62,7 +62,7 @@ impl FileIndex {
             if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) != Some("json") {
                 let json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
                 if let Ok(lf) = LocalFile::load(json_file).await {
-                    if let Some(file_list) = file_lists.get((&lf.game, lf.mod_id)).await {
+                    if let Some(file_list) = file_lists.get(lf.game.clone(), lf.mod_id).await {
                         let file_details = file_list.files.iter().find(|fd| fd.file_id == lf.file_id).unwrap();
                         let file_data = Arc::new(FileData::new(lf.clone(), file_details.clone()));
                         file_index.insert(lf.file_id, file_data.clone());

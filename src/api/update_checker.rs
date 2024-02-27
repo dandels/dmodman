@@ -2,7 +2,7 @@ use super::ApiError;
 use super::{Client, FileList, FileUpdate, Queriable};
 use crate::api::Updated;
 use crate::cache::{Cache, Cacheable, FileData, UpdateStatus};
-use crate::config::PathType;
+use crate::config::DataType;
 use crate::Config;
 use crate::Logger;
 
@@ -36,7 +36,7 @@ impl UpdateChecker {
         let fd = f_lock.get(i).unwrap();
         let mut lf_lock = fd.local_file.write().await;
         if let Some(latest_remote_file) =
-            self.cache.file_lists.get((&lf_lock.game, lf_lock.mod_id)).await.unwrap().file_updates.peek()
+            self.cache.file_lists.get(lf_lock.game.clone(), lf_lock.mod_id).await.unwrap().file_updates.peek()
         {
             match lf_lock.update_status {
                 UpdateStatus::OutOfDate(_) => {
@@ -137,7 +137,7 @@ impl UpdateChecker {
              * If the UpdateStatus is already OutOfDate or HasNewFile, there's no reason to query the API.
              * Only query the API if a file is still reported as UpToDate.
              */
-            if let Some(fl) = me.cache.file_lists.get((&game, mod_id)).await {
+            if let Some(fl) = me.cache.file_lists.get(game.clone(), mod_id).await {
                 checked = me.check_mod(&files_in_mod, &fl).await;
                 for (_fdata, status) in &checked {
                     if let UpdateStatus::UpToDate(_) = status {
@@ -165,7 +165,7 @@ impl UpdateChecker {
                 if lf.update_status != new_status {
                     me.logger.log(format!("Setting {} status to {:?}", file.file_details.name, new_status));
                     lf.update_status = new_status;
-                    lf.save(me.config.path_for(PathType::LocalFile(&lf))).await.unwrap();
+                    lf.save(me.config.path_for(DataType::LocalFile(&lf))).await.unwrap();
                 }
             }
             me.cache.file_index.has_changed.store(true, Ordering::Relaxed);
@@ -352,7 +352,7 @@ mod tests {
         let lock = cache.file_index.game_to_mods_map.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
-        let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
+        let file_list = cache.file_lists.get(game, mod_id).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
 
         match checked.first().unwrap().1 {
@@ -389,7 +389,7 @@ mod tests {
         let lock = cache.file_index.game_to_mods_map.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
-        let file_list = cache.file_lists.get((game, mod_id)).await.unwrap();
+        let file_list = cache.file_lists.get(game, mod_id).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
 
         for f in checked {
