@@ -2,7 +2,7 @@ pub mod config_error;
 pub mod paths;
 
 pub use config_error::ConfigError;
-pub use paths::PathType;
+pub use paths::DataType;
 
 use super::Logger;
 use crate::util;

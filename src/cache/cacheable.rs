@@ -1,24 +1,51 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use tokio::io::{AsyncWriteExt, Error};
-use tokio::{fs, fs::File};
-
+use std::io::{BufReader, Error, Write};
 use std::path::PathBuf;
+use std::{fs, fs::File};
 
-pub trait Cacheable: Serialize + DeserializeOwned {
+pub trait Cacheable: Serialize + DeserializeOwned + Send
+where
+    Self: 'static,
+{
     async fn save(&self, path: PathBuf) -> Result<(), Error> {
-        fs::create_dir_all(path.parent().unwrap().to_str().unwrap()).await?;
         let data = serde_json::to_string_pretty(&self)?;
-        let mut file = File::create(&path).await?;
-        file.write_all(data.as_bytes()).await?;
-        Ok(())
+        tokio::task::spawn_blocking(move || {
+            fs::create_dir_all(path.parent().unwrap().to_str().unwrap())?;
+            let mut file = File::create(path)?;
+            file.write_all(data.as_bytes())?;
+            Ok(())
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn save_compressed(&self, path: PathBuf) -> Result<(), Error> {
+        let data = serde_json::to_string_pretty(&self)?;
+        tokio::task::spawn_blocking(move || {
+            fs::create_dir_all(path.parent().unwrap().to_str().unwrap())?;
+            let file = File::create(path.with_extension("json.zst"))?;
+            let mut encoder = zstd::Encoder::new(file, 0)?;
+            encoder.write_all(data.as_bytes())?;
+            encoder.finish()?;
+            Ok(())
+        })
+        .await
+        .unwrap()
     }
 
     async fn load(path: PathBuf) -> Result<Self, Error> {
-        tokio::task::spawn_blocking(move || async move { Ok(serde_json::from_str(&fs::read_to_string(&path).await?)?) })
-            .await
-            .unwrap()
-            .await
+        tokio::task::spawn_blocking(move || {
+            if let Ok(zst_file) = File::open(path.with_extension("json.zst")) {
+                let decoder = zstd::Decoder::new(zst_file)?;
+                let mut reader = BufReader::new(decoder);
+                Ok(serde_json::from_reader(&mut reader)?)
+            } else {
+                Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
+            }
+        })
+        .await
+        .unwrap()
     }
 }
 
@@ -26,7 +53,7 @@ pub trait Cacheable: Serialize + DeserializeOwned {
 mod tests {
     use super::Cacheable;
     use crate::api::{ApiError, FileList, ModInfo};
-    use crate::config::{ConfigBuilder, PathType};
+    use crate::config::{ConfigBuilder, DataType};
     use crate::Logger;
 
     #[tokio::test]
@@ -35,7 +62,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::load(Logger::default()).unwrap().profile(game).build().unwrap();
-        let path = config.path_for(PathType::ModInfo(game, &mod_id));
+        let path = config.path_for(DataType::ModInfo(game, mod_id));
         println!("{:?}", path);
 
         let mi: ModInfo = ModInfo::load(path).await?;
@@ -49,7 +76,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::default().profile(game).build().unwrap();
-        let path = config.path_for(PathType::FileList(game, &mod_id));
+        let path = config.path_for(DataType::FileList(game, mod_id));
 
         let fl = FileList::load(path).await?;
         let mut upds = fl.file_updates.clone();
@@ -58,7 +85,7 @@ mod tests {
         }
         assert_eq!(1000014198, fl.files.first().unwrap().id.0);
         assert_eq!(fl.files.first().unwrap().name, "Graphic Herbalism MWSE");
-        assert_eq!(fl.file_updates.peek().unwrap().old_file_name, "GH TR - PT Meshes-46599-1-01-1556986716.7z");
+        assert_eq!(fl.file_updates.last().unwrap().old_file_name, "GH TR - PT Meshes-46599-1-01-1556986716.7z");
         Ok(())
     }
 }

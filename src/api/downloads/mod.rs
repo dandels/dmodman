@@ -13,7 +13,7 @@ pub use self::nxm_url::*;
 use crate::api::query::{DownloadLink, FileList, Md5Search, Queriable};
 use crate::api::{ApiError, Client};
 use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
-use crate::config::{Config, PathType};
+use crate::config::{Config, DataType};
 use crate::{util, Logger};
 
 use std::ffi::OsStr;
@@ -100,7 +100,7 @@ impl Downloads {
                     if let Err(()) = task.start().await {
                         self.logger.log(format!("Failed to restart download for {}", &file_name));
                     }
-                    if let Err(e) = task.dl_info.save(self.config.path_for(PathType::DownloadInfo(&task.dl_info))).await
+                    if let Err(e) = task.dl_info.save(self.config.path_for(DataType::DownloadInfo(&task.dl_info))).await
                     {
                         self.logger.log(format!("Couldn't store new download url for {}: {}", &file_name, e));
                     }

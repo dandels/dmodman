@@ -26,6 +26,7 @@ termion = "2" # v3 breaks tui-textarea's input()
 tui-textarea = { version = "0.4", default-features = false, features = ["termion"] }
 ratatui = { version = "0.26", default-features = false, features = ["termion"] }
 uuid = { version = "1.7", features = ["v4", "fast-rng"] }
+zstd = "0.13"
 
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.
