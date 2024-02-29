@@ -1,27 +1,41 @@
 use super::LocalFile;
-use crate::api::FileDetails;
+use crate::api::{FileDetails, Md5Results};
 
-use std::cmp::{Ord, Ordering, PartialOrd};
+use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
-
-use tokio::sync::RwLock;
 
 // Precomputed pairings of LocalFiles with the FileDetails found in FileLists
 #[derive(Debug)]
 pub struct FileData {
     pub file_id: u64,
-    // TODO only the enum is ever changed, if we use atomic enums we can avoid the rwlock
-    pub local_file: RwLock<LocalFile>,
-    pub file_details: FileDetails,
+    pub game: String,
+    pub mod_id: u32,
+    pub file_name: String,
+    pub local_file: LocalFile,
+    pub file_details: Option<FileDetails>,
+    pub md5results: Option<Md5Results>,
 }
 
 impl FileData {
-    pub fn new(lf: LocalFile, file_details: FileDetails) -> Self {
+    pub fn new(local_file: LocalFile, file_details: Option<FileDetails>, md5results: Option<Md5Results>) -> Self {
         Self {
-            file_id: lf.file_id,
-            local_file: RwLock::new(lf),
+            file_id: local_file.file_id,
+            game: local_file.game.clone(),
+            mod_id: local_file.mod_id,
+            file_name: local_file.file_name.clone(),
+            local_file,
             file_details,
+            md5results,
         }
+    }
+
+    pub fn uploaded_timestamp(&self) -> Option<u64> {
+        if let Some(fd) = &self.file_details {
+            return Some(fd.uploaded_timestamp)
+        } else if let Some(res) = &self.md5results {
+            return Some(res.file_details.uploaded_timestamp)
+        }
+        None
     }
 }
 
@@ -39,7 +53,7 @@ impl Hash for FileData {
 
 impl Ord for FileData {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.file_details.uploaded_timestamp.cmp(&other.file_details.uploaded_timestamp)
+        self.uploaded_timestamp().cmp(&other.uploaded_timestamp())
     }
 }
 

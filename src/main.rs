@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let cache = Cache::new(&config).await?;
+    let cache = Cache::new(config.clone(), logger.clone()).await?;
     let client = Client::new(&config).await;
     let downloads = Downloads::new(&cache, &client, &config, &logger).await;
 

@@ -1,6 +1,6 @@
-use super::{CacheError, Cacheable, LocalFile};
+use super::{CacheError, Cacheable};
 use crate::api::{FileDetails, FileList};
-use crate::config::{paths, Config};
+use crate::config::{DataType, Config};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::fs;
@@ -35,7 +35,7 @@ impl FileLists {
         let mut lock = self.map.write().await;
         match lock.get(&(game.clone(), mod_id)).cloned() {
             Some(fl) => fl,
-            None => match FileList::load(self.config.path_for(paths::DataType::FileList(&game, mod_id))).await {
+            None => match FileList::load(self.config.path_for(DataType::FileList(&game, mod_id))).await {
                 Ok(fl) => {
                     lock.insert((game, mod_id), Some(fl.clone()));
                     Some(fl)
@@ -49,9 +49,9 @@ impl FileLists {
         }
     }
 
-    pub async fn filedetails_for(&self, local_file: &LocalFile) -> Option<FileDetails> {
-        self.get(local_file.game.clone(), local_file.mod_id)
-            .await
-            .and_then(|list| list.files.iter().find(|fd| fd.file_id == local_file.file_id).cloned())
+    pub async fn filedetails_for(&self, game: String, mod_id: u32, file_id: u64) -> Option<FileDetails> {
+        self.get(game, mod_id).await .and_then(|list| list.files.get(
+                    list.files.binary_search_by(|fd| fd.file_id.cmp(&file_id)).unwrap())
+                .cloned())
     }
 }

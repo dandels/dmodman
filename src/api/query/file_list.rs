@@ -2,12 +2,11 @@ use crate::api::Queriable;
 use crate::cache::Cacheable;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileList {
     pub files: Vec<FileDetails>,
-    pub file_updates: BinaryHeap<FileUpdate>,
+    pub file_updates: Vec<FileUpdate>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,15 +33,38 @@ pub struct FileDetails {
     pub uploaded_timestamp: u64,
     pub uploaded_time: String,
     pub mod_version: Option<String>,
+    #[serde(skip)]
     pub external_virus_scan_url: Option<String>,
-    pub description: String,
+    #[serde(skip)]
+    pub description: Option<String>,
     pub size_kb: u64,
+    #[serde(skip)]
     pub changelog_html: Option<String>,
 }
 
 impl Cacheable for FileList {}
 impl Queriable for FileList {
     const FORMAT_STRING: &'static str = "games/{}/mods/{}/files.json";
+}
+
+impl Eq for FileDetails {}
+
+impl PartialEq for FileDetails {
+    fn eq(&self, other: &Self) -> bool {
+        self.file_id == other.file_id
+    }
+}
+
+impl Ord for FileDetails {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.file_id.cmp(&other.file_id)
+    }
+}
+
+impl PartialOrd for FileDetails {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Eq for FileUpdate {}

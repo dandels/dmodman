@@ -142,7 +142,7 @@ impl Downloads {
         .await
         {
             Ok(dl_links) => {
-                self.cache.save_download_links(&dl_links, &nxm.domain_name, &nxm.mod_id, &nxm.file_id).await?;
+                self.cache.save_download_links(&dl_links, &nxm.domain_name, nxm.mod_id, nxm.file_id).await?;
                 /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
                  * global CDN, unless the user has selected a preferred download location.
                  * For small files the download URL is the same regardless of location choice.
@@ -170,18 +170,17 @@ impl Downloads {
 
     async fn update_metadata(&self, fi: &FileInfo) -> Result<(), ApiError> {
         let (game, mod_id) = (&fi.game, fi.mod_id);
-        /* TODO: If the FileList isn't found handle this as a foreign file, however they're going to be dealt with.
-         * TODO: Should we just do an Md5Search instead? It would allows us to validate the file while getting its
-         * metadata.
-         * However, md5 searching might still be broken: https://github.com/Nexus-Mods/web-issues/issues/1312 */
+
+        // Try use cached value for this mod, otherwise query API
         let file_list: Option<FileList> = 'fl: {
-            if let Some(fl) = self.cache.file_lists.get((game, mod_id)).await {
+            if let Some(fl) = self.cache.file_lists.get(game, mod_id).await {
                 if fl.files.iter().any(|fd| fd.file_id == fi.file_id) {
                     break 'fl Some(fl);
                 }
             }
             match FileList::request(&self.client, &[game, &mod_id.to_string()]).await {
-                Ok(fl) => {
+                Ok(mut fl) => {
+                    self.cache.format_file_list(&mut fl, &game, mod_id).await;
                     if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
                         self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
                     }
@@ -194,20 +193,19 @@ impl Downloads {
             }
         };
 
-        // TODO this should be done by the cache, not downloads
-        let latest_timestamp = file_list.and_then(|fl| fl.files.iter().last().cloned()).unwrap().uploaded_timestamp;
+        /* Assume the user has noticed the other files in this mod.
+         * For files that aren't out of date, clear the HasNewFile flag and set UpdateStatus to UpToDate(time) where
+         * time is the timestamp of the newest file in the mod. */
+        let latest_timestamp = file_list.and_then(|fl| fl.files.last().cloned()).unwrap().uploaded_timestamp;
         {
-            if let Some(filedata_heap) =
-                self.cache.file_index.game_to_mods_map.read().await.get(game).and_then(|mods_map| mods_map.get(&mod_id))
-            {
+            if let Some(filedata_heap) = self.cache.file_index.get_modfiles(game, &mod_id).await {
                 for fdata in filedata_heap.iter() {
-                    let mut lf = fdata.local_file.write().await;
-                    match lf.update_status {
+                    match fdata.local_file.update_status() {
                         UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) => {
-                            lf.update_status = UpdateStatus::UpToDate(latest_timestamp);
-                            let path = self.config.path_for(PathType::LocalFile(&lf));
-                            if let Err(e) = lf.save(path).await {
-                                self.logger.log(format!("Couldn't set UpdateStatus for {}: {}", lf.file_name, e));
+                            fdata.local_file.set_update_status(UpdateStatus::UpToDate(latest_timestamp));
+                            let path = self.config.path_for(DataType::LocalFile(&fdata.local_file));
+                            if let Err(e) = fdata.local_file.save(path).await {
+                                self.logger.log(format!("Couldn't set UpdateStatus for {}: {}", fdata.local_file.file_name, e));
                             }
                         }
                         // Probably doesn't make sense to do anything in the other cases..?
@@ -219,7 +217,7 @@ impl Downloads {
 
         let lf = LocalFile::new(fi.clone(), UpdateStatus::UpToDate(latest_timestamp));
         self.verify_hash(&lf).await;
-        self.cache.save_local_file(lf.clone()).await?;
+        self.cache.save_local_file(lf).await?;
         Ok(())
     }
 
@@ -227,42 +225,43 @@ impl Downloads {
         let mut path = self.config.download_dir();
         path.push(&local_file.file_name);
         match util::md5sum(path).await {
-            Ok(md5) => {
-                if let Ok(query_res) = Md5Search::request(&self.client, &[&local_file.game, &md5]).await {
-                    // Uncomment to save API response
-                    //let _ = query_res
-                    //    .save(self.config.path_for(PathType::Md5Search(
-                    //        &local_file.game,
-                    //        &local_file.mod_id,
-                    //        &local_file.file_id,
-                    //    )))
-                    //    .await;
-
-                    if let Some(md5result) =
-                        query_res.results.iter().find(|fd| fd.file_details.file_id == local_file.file_id)
-                    {
-                        if !(md5.eq(&md5result.file_details.md5)
-                            && local_file.file_name.eq(&md5result.file_details.file_name))
-                        {
-                            self.logger.log(format!(
-                                "Warning: API returned unexpected file when checking hash for {}",
-                                &local_file.file_name
-                            ));
-                            let mi = &md5result.r#mod;
-                            let fd = &md5result.file_details;
-                            self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name));
-                            self.logger.log("This should be reported as a Nexus bug. See README for details.");
+            Ok(md5) => match Md5Search::request(&self.client, &[&local_file.game, &md5]).await {
+                Ok(query_res) => {
+                    match query_res.results.iter().find(|fd| fd.file_details.file_id == local_file.file_id) {
+                        Some(md5result) => {
+                            self.cache.save_md5result(md5result).await;
+                            if !(md5.eq(&md5result.file_details.md5)
+                                && local_file.file_name.eq(&md5result.file_details.file_name))
+                            {
+                                self.logger.log(format!(
+                                    "Warning: API returned unexpected response when checking hash for {}",
+                                    &local_file.file_name
+                                ));
+                                let mi = &md5result.r#mod;
+                                let fd = &md5result.file_details;
+                                self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name));
+                            }
                         }
-                        // Early return if success, else fall through to error reporting.
-                        return;
+                        None => {
+                            self.logger.log(format!(
+                                "Failed to verify hash for {}. Found this instead:",
+                                local_file.file_name
+                            ));
+                            for res in query_res.results {
+                                let mi = &res.r#mod;
+                                let fd = &res.file_details;
+                                self.logger.log(format!("\t{:?}: {} ({})", mi.name, fd.name, fd.file_name));
+                            }
+                        }
                     }
                 }
-                self.logger.log(format!("Unable to verify integrity of: {}", &local_file.file_name));
-                self.logger.log("This could mean the download got corrupted. See README for details.");
-            }
+                Err(e) => {
+                    self.logger.log(format!("Unable to verify integrity of {}: {e}", &local_file.file_name));
+                    self.logger.log("This could mean the download got corrupted. See README for details.");
+                }
+            },
             Err(e) => {
-                self.logger.log(format!("Error when checking hash for: {}", local_file.file_name));
-                self.logger.log(format!("{}", e));
+                self.logger.log(format!("Error when checking hash for {}. {e}", local_file.file_name));
             }
         }
     }

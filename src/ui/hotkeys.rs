@@ -108,19 +108,7 @@ impl MainUI<'_> {
             }
             Key::Char('U') => {
                 if let Some(i) = self.selected_index() {
-                    let game: String;
-                    let mod_id: u32;
-                    let files;
-                    {
-                        let files_lock = self.cache.file_index.files_sorted.read().await;
-                        let fdata = files_lock.get(i).unwrap();
-                        let lf_lock = fdata.local_file.read().await;
-                        game = lf_lock.game.clone();
-                        mod_id = lf_lock.mod_id;
-                        let map_lock = self.cache.file_index.game_to_mods_map.read().await;
-                        let mods = map_lock.get(&game).unwrap();
-                        files = mods.get(&mod_id).unwrap().clone();
-                    }
+                    let (game, mod_id, files) = self.cache.file_index.get_game_mod_files_by_index(i).await;
                     self.updater.update_mod(game, mod_id, files).await;
                 }
             }
@@ -129,10 +117,8 @@ impl MainUI<'_> {
             }
             Key::Char('v') => {
                 if let Some(i) = self.selected_index() {
-                    let files_lock = self.files_view.file_index.files_sorted.read().await;
-                    let fdata = files_lock.get(i).unwrap();
-                    let lf_lock = fdata.local_file.read().await;
-                    let url = format!("https://www.nexusmods.com/{}/mods/{}", &lf_lock.game, &lf_lock.mod_id);
+                    let fd = self.cache.file_index.get_by_index(i).await;
+                    let url = format!("https://www.nexusmods.com/{}/mods/{}", fd.game, fd.mod_id);
                     if Command::new("xdg-open").arg(url).status().is_err() {
                         self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
                     }
@@ -140,7 +126,7 @@ impl MainUI<'_> {
             }
             Key::Delete => {
                 if let Some(i) = self.selected_index() {
-                    if let Err(e) = self.cache.delete_by_index(i).await {
+                    if let Err(e) = self.cache.file_index.delete_by_index(i).await {
                         self.logger.log(format!("Unable to delete file: {}", e));
                     } else {
                         if i == 0 {
@@ -194,8 +180,15 @@ impl MainUI<'_> {
                     let file_name = path.file_name().unwrap().to_string_lossy().to_string();
                     let dialog_title = "Target directory".to_string();
                     let mut suggested_values = vec![];
-                    if let Some(fd) = self.cache.file_index.get_by_filename(&file_name).await {
-                        suggested_values.push(fd.file_details.name.clone());
+                    if let Some(fdata) = self.cache.file_index.get_by_filename(&file_name).await {
+                        if let Some(fd) = &fdata.file_details {
+                            suggested_values.push(fd.name.clone());
+                        }
+                        if let Some(modname) =
+                            self.cache.md5result.get(&fdata.game, fdata.file_id).await.and_then(|res| res.r#mod.name)
+                        {
+                            suggested_values.push(modname);
+                        }
                     } else {
                         self.logger.log(format!("Warn: mod for {file_name} doesn't exist in db"));
                     }
