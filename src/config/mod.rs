@@ -104,10 +104,10 @@ impl ConfigBuilder {
         match &self.profile {
             Some(selected_profile) => match self.profiles.get(selected_profile) {
                 Some(profile) => {
-                    if profile.download_dir.is_none() {
+                    if profile.download_dir.is_none() && self.download_dir.is_none() {
                         self.download_dir = Some(format!("{}/{}", default_download_dir(), selected_profile));
                     }
-                    if profile.install_dir.is_none() {
+                    if profile.install_dir.is_none() && self.install_dir.is_none() {
                         self.install_dir = Some(format!("{}/{}", default_install_dir(), selected_profile));
                     }
                 }
@@ -165,9 +165,15 @@ pub fn default_install_dir() -> String {
 #[derive(Clone)]
 pub struct Config {
     pub apikey: Option<String>,
-    pub profile: String,
+    profile: String,
     download_dir: PathBuf,
     install_dir: PathBuf,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        ConfigBuilder::default().build().unwrap()
+    }
 }
 
 impl Config {
@@ -207,9 +213,10 @@ impl Config {
         })
     }
 
-    pub fn cache_dir(&self) -> PathBuf {
+    pub fn cache_for_profile(&self) -> PathBuf {
         let mut path = dirs::cache_dir().unwrap();
         path.push(env!("CARGO_CRATE_NAME"));
+        path.push(&self.profile);
         path
     }
 
