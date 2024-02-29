@@ -19,7 +19,6 @@ use crate::api::ApiError;
 use crate::api::Client;
 use crate::util::format;
 use serde::de::DeserializeOwned;
-use tokio::task;
 
 pub trait Queriable: DeserializeOwned {
     const FORMAT_STRING: &'static str;
@@ -31,11 +30,6 @@ pub trait Queriable: DeserializeOwned {
         let resp = client.send_api_request(&endpoint).await?.error_for_status()?;
         client.request_counter.push(resp.headers()).await;
 
-        task::spawn_blocking(
-            move || async move { Ok(serde_json::from_value::<Self>(resp.json().await.unwrap()).unwrap()) },
-        )
-        .await
-        .unwrap()
-        .await
+        Ok(serde_json::from_value::<Self>(resp.json().await?)?)
     }
 }

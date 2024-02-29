@@ -47,6 +47,7 @@ pub trait Select {
 
     fn selected(&self) -> Option<usize>;
 
+    #[allow(dead_code)]
     fn deselect(&mut self) {
         self.select(None);
     }

@@ -86,7 +86,7 @@ impl DownloadTask {
         self.downloads.has_changed.store(true, Ordering::Relaxed);
     }
 
-    pub async fn file_exists(&mut self) -> bool {
+    pub async fn file_exists(&self) -> bool {
         let file_name = &self.dl_info.file_info.file_name;
 
         let mut path = self.config.download_dir();

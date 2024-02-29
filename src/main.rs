@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let cache = Cache::new(config.clone(), logger.clone()).await?;
     let client = Client::new(&config).await;
-    let downloads = Downloads::new(&cache, &client, &config, &logger).await;
+    let downloads = Downloads::new(cache.clone(), client.clone(), config.clone(), logger.clone()).await;
 
     // Try bind to /run/user/$uid. If it already exists then send any nxm:// link through the socket and quit.
     let nxm_socket = match nxm_socket::try_bind().await {
@@ -96,8 +96,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             });
         }
 
-        let archive = Archives::new(config.clone(), logger.clone());
-        ui::MainUI::new(cache, client, config, downloads, logger, archive).await.run().await;
+        let archives = Archives::new(config.clone(), logger.clone());
+        ui::MainUI::new(cache, client, config, downloads, logger, archives).await.run().await;
     } else {
         nxm_socket::listen_for_downloads(nxm_socket, downloads, logger).await;
     }

@@ -1,9 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
 use ratatui::widgets::Clear;
 use tokio::task;
-
 use super::component::traits::*;
 use super::component::*;
 use super::event::{Events, TickEvent};

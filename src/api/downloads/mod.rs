@@ -40,14 +40,14 @@ pub struct Downloads {
 }
 
 impl Downloads {
-    pub async fn new(cache: &Cache, client: &Client, config: &Config, logger: &Logger) -> Self {
+    pub async fn new(cache: Cache, client: Client, config: Config, logger: Logger) -> Self {
         Self {
             tasks: Arc::new(RwLock::new(IndexMap::new())),
             has_changed: Arc::new(AtomicBool::new(true)),
-            cache: cache.clone(),
-            client: client.clone(),
-            config: config.clone(),
-            logger: logger.clone(),
+            cache,
+            client,
+            config,
+            logger,
         }
     }
 
@@ -107,7 +107,7 @@ impl Downloads {
                     return;
                 }
             }
-        } // Important to drop the lock here or self.add() deadlocks
+        } // an else {} branch wouldn't drop the lock here, causing self.add() to deadlock
         let f_info = FileInfo::new(nxm.domain_name, nxm.mod_id, nxm.file_id, file_name);
         self.add(DownloadInfo::new(f_info, url)).await;
     }
@@ -290,7 +290,6 @@ impl Downloads {
     pub async fn resume_on_startup(&self) {
         if let Ok(mut file_stream) = fs::read_dir(&self.config.download_dir()).await {
             while let Some(f) = file_stream.next_entry().await.unwrap() {
-                // Resume incomplete downloads
                 if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) == Some("part") {
                     let part_json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
                     match DownloadInfo::load(part_json_file).await {

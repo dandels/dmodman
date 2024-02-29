@@ -104,10 +104,10 @@ impl ConfigBuilder {
         match &self.profile {
             Some(selected_profile) => match self.profiles.get(selected_profile) {
                 Some(profile) => {
-                    if let None = profile.download_dir {
+                    if profile.download_dir.is_none() {
                         self.download_dir = Some(format!("{}/{}", default_download_dir(), selected_profile));
                     }
-                    if let None = profile.install_dir {
+                    if profile.install_dir.is_none() {
                         self.install_dir = Some(format!("{}/{}", default_install_dir(), selected_profile));
                     }
                 }
@@ -123,11 +123,11 @@ impl ConfigBuilder {
                 }
             },
             None => {
-                if let None = self.download_dir {
-                    self.download_dir = Some(format!("{}", default_download_dir()));
+                if self.download_dir.is_none() {
+                    self.download_dir = Some(default_download_dir());
                 }
-                if let None = self.install_dir {
-                    self.install_dir = Some(format!("{}", default_install_dir()));
+                if self.install_dir.is_none() {
+                    self.install_dir = Some(default_install_dir());
                 }
             }
         }
@@ -142,14 +142,14 @@ impl ConfigBuilder {
 // The dirs crate reads ~/.config/user-dirs.dirs directly and ignores environment variables. This messes up tests.
 pub fn xdg_download_dir() -> String {
     match env::var("XDG_DOWNLOAD_DIR") {
-        Ok(val) if val.starts_with("$HOME") || val.starts_with("/") => val,
+        Ok(val) if val.starts_with("$HOME") || val.starts_with('/') => val,
         _ => dirs::download_dir().unwrap().to_string_lossy().to_string(),
     }
 }
 
 pub fn xdg_data_dir() -> String {
     match env::var("XDG_DATA_DIR") {
-        Ok(val) if val.starts_with("$HOME") || val.starts_with("/") => val,
+        Ok(val) if val.starts_with("$HOME") || val.starts_with('/') => val,
         _ => dirs::data_dir().unwrap().to_string_lossy().to_string(),
     }
 }
@@ -275,7 +275,6 @@ pub fn try_read_apikey() -> Result<String, std::io::Error> {
 pub mod tests {
     use crate::config::*;
     use std::env;
-    use std::path::PathBuf;
 
     pub fn setup_env() {
         env::set_var("HOME", format!("{}/test/", env!("CARGO_MANIFEST_DIR")));
