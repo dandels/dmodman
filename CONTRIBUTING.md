@@ -24,8 +24,9 @@ I'm open to ideas, feedback, and kind words.
 - [ ] Permanently ignore updates (trivial to implement with a new enum variant)
 - [ ] Show archive connected to mod and vice versa
 - [ ] Delete metadata if file is no longer tracked
-- [ ] The update lists can be quite long (13k lines in one case) and shouldn't be loaded to memory all the time.
-    - Needs compression on disk
+- [x] The update lists can be quite long (13k lines in one case) and shouldn't be loaded to memory all the time.
+    - [x] Needs compression on disk
+    - Fixed. Unnecessary data is no longer kept.
 
 ### Archives
 - [x] Extraction using libarchive
@@ -44,11 +45,10 @@ I'm open to ideas, feedback, and kind words.
 - [ ] Query download urls without visiting the Nexus (Premium users only).
 
 ### Cache
-- [ ] Compression (zstd?) for the cache, easy to implement
+- [x] Compression (zstd?) for the cache, easy to implement
 - [ ] A lot of stuff is needlessly kept around
     - Prune old data from update lists when downloading them
-    - Only a fraction of the fields of FileDetails are ever read
-    - Cached md5 searches have no use, and are nearly duplicates of FileDetails
+    - [x] Only a fraction of the fields of FileDetails are ever read
 
 ### Log
 - [ ] Needs line wrapping. Depends on a WIP issue in the TUI library.
