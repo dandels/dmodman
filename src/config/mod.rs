@@ -30,9 +30,9 @@ pub struct ConfigBuilder {
     pub apikey: Option<String>,
     pub profile: Option<String>,
     #[serde(alias = "global_download_dir")]
-    pub download_dir: Option<String>,
+    pub download_dir: Option<PathBuf>,
     #[serde(alias = "global_install_dir")]
-    pub install_dir: Option<String>,
+    pub install_dir: Option<PathBuf>,
     pub profiles: HashMap<String, Profile>,
     #[serde(skip)]
     logger: Logger,
@@ -40,13 +40,14 @@ pub struct ConfigBuilder {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Profile {
-    pub download_dir: Option<String>,
-    pub install_dir: Option<String>,
+    pub download_dir: Option<PathBuf>,
+    pub install_dir: Option<PathBuf>,
 }
 
 impl ConfigBuilder {
     pub fn load(logger: Logger) -> Result<Self, ConfigError> {
         let mut contents = String::new();
+
         let mut f = File::open(config_file())?;
         f.read_to_string(&mut contents)?;
 
@@ -84,13 +85,13 @@ impl ConfigBuilder {
 
     #[allow(dead_code)]
     pub fn download_dir<S: Into<String>>(mut self, dir: S) -> Self {
-        self.download_dir = Some(dir.into());
+        self.download_dir = Some(PathBuf::from(dir.into()));
         self
     }
 
     #[allow(dead_code)]
     pub fn install_dir<S: Into<String>>(mut self, dir: S) -> Self {
-        self.install_dir = Some(dir.into());
+        self.install_dir = Some(PathBuf::from(dir.into()));
         self
     }
 
@@ -105,20 +106,20 @@ impl ConfigBuilder {
             Some(selected_profile) => match self.profiles.get(selected_profile) {
                 Some(profile) => {
                     if profile.download_dir.is_none() && self.download_dir.is_none() {
-                        self.download_dir = Some(format!("{}/{}", default_download_dir(), selected_profile));
+                        self.download_dir = Some(default_download_dir().join(selected_profile));
                     }
                     if profile.install_dir.is_none() && self.install_dir.is_none() {
-                        self.install_dir = Some(format!("{}/{}", default_install_dir(), selected_profile));
+                        self.install_dir = Some(default_install_dir().join(selected_profile));
                     }
                 }
                 None => {
                     self.download_dir = match self.download_dir {
-                        Some(dls) => Some(format!("{dls}/{selected_profile}")),
-                        None => Some(format!("{}/{}", default_download_dir(), selected_profile)),
+                        Some(dls) => Some(dls.join(selected_profile)),
+                        None => Some(default_download_dir().join(selected_profile)),
                     };
                     self.install_dir = match self.install_dir {
-                        Some(ins) => Some(format!("{ins}/{selected_profile}")),
-                        None => Some(format!("{}/{}", default_install_dir(), selected_profile)),
+                        Some(ins) => Some(ins.join(selected_profile)),
+                        None => Some(default_install_dir().join(selected_profile)),
                     }
                 }
             },
@@ -132,34 +133,34 @@ impl ConfigBuilder {
             }
         }
 
-        self.download_dir = Some(shellexpand::full(&self.download_dir.unwrap())?.to_string());
-        self.install_dir = Some(shellexpand::full(&self.install_dir.unwrap())?.to_string());
+        self.download_dir = Some(shellexpand::full(&self.download_dir.unwrap().to_string_lossy())?.to_string().into());
+        self.install_dir = Some(shellexpand::full(&self.install_dir.unwrap().to_string_lossy())?.to_string().into());
 
         Config::new(self.logger.clone(), self)
     }
 }
 
 // The dirs crate reads ~/.config/user-dirs.dirs directly and ignores environment variables. This messes up tests.
-pub fn xdg_download_dir() -> String {
+pub fn xdg_download_dir() -> PathBuf {
     match env::var("XDG_DOWNLOAD_DIR") {
-        Ok(val) if val.starts_with("$HOME") || val.starts_with('/') => val,
-        _ => dirs::download_dir().unwrap().to_string_lossy().to_string(),
+        Ok(val) if val.starts_with("$HOME") || val.starts_with('/') => PathBuf::from(val),
+        _ => dirs::download_dir().unwrap(),
     }
 }
 
-pub fn xdg_data_dir() -> String {
+pub fn xdg_data_dir() -> PathBuf {
     match env::var("XDG_DATA_DIR") {
-        Ok(val) if val.starts_with("$HOME") || val.starts_with('/') => val,
-        _ => dirs::data_dir().unwrap().to_string_lossy().to_string(),
+        Ok(val) if val.starts_with("$HOME") || val.starts_with('/') => PathBuf::from(val),
+        _ => dirs::data_dir().unwrap(),
     }
 }
 
-pub fn default_download_dir() -> String {
-    format!("{}/{}", xdg_download_dir(), env!("CARGO_CRATE_NAME"))
+pub fn default_download_dir() -> PathBuf {
+    xdg_download_dir().join(env!("CARGO_CRATE_NAME"))
 }
 
-pub fn default_install_dir() -> String {
-    format!("{}/{}/install/", xdg_data_dir(), env!("CARGO_CRATE_NAME"))
+pub fn default_install_dir() -> PathBuf {
+    xdg_data_dir().join(env!("CARGO_CRATE_NAME")).join("install")
 }
 
 #[derive(Clone)]
@@ -180,7 +181,7 @@ impl Config {
     fn new(logger: Logger, config: ConfigBuilder) -> Result<Self, ConfigError> {
         let download_dir = {
             let path =
-                PathBuf::from(config.download_dir.expect("Config was passed Builder with missing download dir."));
+                config.download_dir.expect("Config was passed Builder with missing download dir.");
             match path.is_absolute() {
                 true => path,
                 false => {
@@ -193,7 +194,7 @@ impl Config {
         };
 
         let install_dir = {
-            let path = PathBuf::from(config.install_dir.expect("Config was passed Builder with missing install dir."));
+            let path = config.install_dir.expect("Config was passed Builder with missing install dir.");
             match path.is_absolute() {
                 true => path,
                 false => {
@@ -223,7 +224,7 @@ impl Config {
     pub fn data_dir(&self) -> PathBuf {
         let mut path;
         if cfg!(test) {
-            path = PathBuf::from(format!("{}/test/data", env!("CARGO_MANIFEST_DIR")));
+            path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/data");
         } else {
             path = dirs::data_local_dir().unwrap();
         }
@@ -251,7 +252,7 @@ pub fn config_dir() -> PathBuf {
     let mut path;
 
     if cfg!(test) {
-        path = PathBuf::from(format!("{}/test/config", env!("CARGO_MANIFEST_DIR")));
+        path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/config");
     } else {
         path = dirs::config_dir().unwrap();
     }
