@@ -140,14 +140,13 @@ impl MainUI<'_> {
                 }
             }
             Key::Delete => {
+                // TODO handle deletion inside widget or something
                 if let Some(i) = self.focused_widget().selected() {
                     if let Err(e) = self.cache.file_index.delete_by_index(i).await {
                         self.logger.log(format!("Unable to delete file: {}", e));
                     } else {
-                        if i == 0 {
-                            self.focused_widget_mut().select(None);
-                        }
-                        self.focused_widget_mut().previous();
+                        self.focused_widget_mut().next();
+                        self.files_view.len = self.files_view.len.checked_sub(1).unwrap_or(0);
                     }
                 }
             }
@@ -167,12 +166,11 @@ impl MainUI<'_> {
                 }
             }
             Key::Delete => {
+                // TODO handle deletion somewhere cleaner
                 if let Some(i) = self.focused_widget().selected() {
                     self.downloads_view.downloads.delete(i).await;
-                    if i == 0 {
-                        self.focused_widget_mut().select(None);
-                    }
-                    self.focused_widget_mut().previous();
+                    self.downloads_view.len = self.downloads_view.len.checked_sub(1).unwrap_or(0);
+                    self.focused_widget_mut().next();
                 }
             }
             _ => {}
@@ -227,11 +225,7 @@ impl MainUI<'_> {
         match key {
             Key::Delete => {
                 if let Some(i) = self.focused_widget().selected() {
-                    self.logger.remove(i).await;
-                    if i == 0 {
-                        self.focused_widget_mut().select(None);
-                    }
-                    self.focused_widget_mut().previous();
+                    self.log_view.remove(i);
                 }
             }
             _ => {}

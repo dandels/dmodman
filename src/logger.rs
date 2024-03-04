@@ -41,9 +41,14 @@ impl Logger {
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
+    // No longer needed since the UI drains the log and maintains internal list
+    #[allow(dead_code)]
     pub async fn remove(&self, i: usize) {
-        self.messages.write().unwrap().remove(i);
-        self.has_changed.store(true, Ordering::Relaxed);
+        let mut lock = self.messages.write().unwrap();
+        if lock.len() > 0 {
+            lock.remove(i);
+            self.has_changed.store(true, Ordering::Relaxed);
+        }
     }
 }
 
