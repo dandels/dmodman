@@ -66,7 +66,10 @@ impl FileIndex {
         });
 
         for f in dir_entries {
-            if f.path().is_file() && f.path().extension().and_then(OsStr::to_str) != Some("json") {
+            let path = f.path();
+            let file_ext = path.extension().and_then(OsStr::to_str);
+            // Skip .part and .json files
+            if path.is_file() && ![Some("json"), Some("part")].contains(&file_ext) {
                 let json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
                 match LocalFile::load(json_file).await {
                     Ok(lf) => {
@@ -92,10 +95,12 @@ impl FileIndex {
                             }
                         }
                     }
-                    // TODO archive is missing its LocalFile
+                    // TODO add handling for archive missing its LocalFile
                     Err(e) => {
-                        logger.log(format!("Archive {:?} is missing its metadata:", f.path().file_name().unwrap()));
-                        logger.log(format!("    {e}"));
+                        logger.log(format!(
+                            "{} is missing its metadata: {e}",
+                            f.path().file_name().unwrap().to_string_lossy(),
+                        ));
                     }
                 }
             }

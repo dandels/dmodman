@@ -169,7 +169,7 @@ impl UpdateChecker {
 
     async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, ApiError> {
         let mut file_list = FileList::request(&self.client, &[game, &mod_id.to_string()]).await?;
-        self.cache.format_file_list(&mut file_list, &game, mod_id).await;
+        self.cache.format_file_list(&mut file_list, game, mod_id).await;
         self.cache.save_file_list(&file_list, game, mod_id).await?;
         Ok(file_list)
     }

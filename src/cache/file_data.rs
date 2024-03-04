@@ -31,9 +31,9 @@ impl FileData {
 
     pub fn uploaded_timestamp(&self) -> Option<u64> {
         if let Some(fd) = &self.file_details {
-            return Some(fd.uploaded_timestamp)
+            return Some(fd.uploaded_timestamp);
         } else if let Some(res) = &self.md5results {
-            return Some(res.file_details.uploaded_timestamp)
+            return Some(res.file_details.uploaded_timestamp);
         }
         None
     }

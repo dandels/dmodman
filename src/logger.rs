@@ -30,17 +30,14 @@ impl Logger {
             return;
         }
 
-        let mut lock = self.messages.write().unwrap();
-        let len = lock.len();
-
         let mut path = config::config_dir();
         path.push("dmodman.log");
         let mut logfile = File::options().create(true).append(true).open(path).unwrap();
         // TODO maybe only do this if configured to
         logfile.write_all(format!("{}\n", msg).as_bytes()).unwrap();
 
-        // TODO timestamp instead of number messages, but might require external crate to be sane
-        lock.push(format!("{:?}: {}", len, msg.into()));
+        // TODO timestamp messages, but might require external crate
+        self.messages.write().unwrap().push(msg.to_string());
         self.has_changed.store(true, Ordering::Relaxed);
     }
 

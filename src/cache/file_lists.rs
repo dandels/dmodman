@@ -1,6 +1,6 @@
 use super::{CacheError, Cacheable};
 use crate::api::{FileDetails, FileList};
-use crate::config::{DataType, Config};
+use crate::config::{Config, DataType};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::fs;
@@ -50,8 +50,8 @@ impl FileLists {
     }
 
     pub async fn filedetails_for(&self, game: String, mod_id: u32, file_id: u64) -> Option<FileDetails> {
-        self.get(game, mod_id).await .and_then(|list| list.files.get(
-                    list.files.binary_search_by(|fd| fd.file_id.cmp(&file_id)).unwrap())
-                .cloned())
+        self.get(game, mod_id).await.and_then(|list| {
+            list.files.get(list.files.binary_search_by(|fd| fd.file_id.cmp(&file_id)).unwrap()).cloned()
+        })
     }
 }

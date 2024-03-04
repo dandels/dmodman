@@ -180,7 +180,7 @@ impl Downloads {
             }
             match FileList::request(&self.client, &[game, &mod_id.to_string()]).await {
                 Ok(mut fl) => {
-                    self.cache.format_file_list(&mut fl, &game, mod_id).await;
+                    self.cache.format_file_list(&mut fl, game, mod_id).await;
                     if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
                         self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
                     }

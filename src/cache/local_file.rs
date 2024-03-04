@@ -72,7 +72,7 @@ impl StatusWrapper {
             UpdateStatus::IgnoredUntil(t) => (IGNORED_UNTIL, t),
             UpdateStatus::OutOfDate(t) => (OUT_OF_DATE, t),
         };
-        (variant.into(), time.into())
+        (variant, time)
     }
 }
 
@@ -89,8 +89,7 @@ impl Cacheable for LocalFile {}
 impl Serialize for StatusWrapper {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
-    {
+        S: serde::Serializer, {
         self.to_enum().serialize(serializer)
     }
 }
@@ -98,8 +97,7 @@ impl Serialize for StatusWrapper {
 impl<'de> Deserialize<'de> for StatusWrapper {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
-    {
+        D: serde::Deserializer<'de>, {
         Ok(Self::new(UpdateStatus::deserialize(deserializer)?))
     }
 }
