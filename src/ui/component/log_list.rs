@@ -27,6 +27,7 @@ impl<'a> LogList<'a> {
         let mut neighbors = NeighboringWidgets::new();
         neighbors.map.insert(
             Tab::Main,
+            // Define nonexistent neighbors to left and right so hotkeys work as expected
             Neighbors::default().left(Focused::FileTable).right(Focused::DownloadTable).up(Focused::FileTable),
         );
         neighbors.map.insert(Tab::Archives, Neighbors::default().up(Focused::ArchiveTable));

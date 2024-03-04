@@ -73,10 +73,24 @@ impl MainUI<'_> {
                 self.change_focus_to(self.focused_widget().neighbor_right(&self.tabs.active()));
             }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
-                self.change_focus_to(self.focused_widget().neighbor_left(&self.tabs.active()));
+                let focused = self.focused_widget();
+                if let Some(left) = focused.neighbor_left(&self.tabs.active()) {
+                    self.change_focus_to(Some(left));
+                } else if let Some(up) = focused.neighbor_up(&self.tabs.active()) {
+                    self.change_focus_to(Some(up));
+                } else if let Some(down) = focused.neighbor_down(&self.tabs.active()) {
+                    self.change_focus_to(Some(down));
+                }
             }
             Event::Key(Key::Right) | Event::Key(Key::Char('l')) => {
-                self.change_focus_to(self.focused_widget().neighbor_right(&self.tabs.active()));
+                let focused = self.focused_widget();
+                if let Some(right) = focused.neighbor_right(&self.tabs.active()) {
+                    self.change_focus_to(Some(right));
+                } else if let Some(up) = focused.neighbor_up(&self.tabs.active()) {
+                    self.change_focus_to(Some(up));
+                } else if let Some(down) = focused.neighbor_down(&self.tabs.active()) {
+                    self.change_focus_to(Some(down));
+                }
             }
             Event::Key(Key::Alt(ch)) => {
                 if let Some(nr) = ch.to_digit(10) {
