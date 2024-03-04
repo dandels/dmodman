@@ -165,9 +165,9 @@ impl From<Tab> for usize {
     }
 }
 
-impl Into<Tab> for usize {
-    fn into(self) -> Tab {
-        match self {
+impl From<usize> for Tab {
+    fn from(val: usize) -> Self {
+        match val {
             0 => Tab::Main,
             1 => Tab::Archives,
             _ => panic!("Undefined tab index."),

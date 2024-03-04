@@ -14,6 +14,6 @@ pub const LISTITEM_STYLE: Style = Style::new();
 pub const LISTITEM_ALTERNATE_STYLE: Style = Style::new().fg(Color::White);
 pub const LIST_STYLES: &[Style] = &[LISTITEM_ALTERNATE_STYLE, LISTITEM_STYLE];
 
-pub fn header_text<'a>(name: &'a str) -> Text<'a> {
+pub fn header_text(name: &str) -> Text<'_> {
     Text::from(Span::from(name).style(HEADER_STYLE))
 }

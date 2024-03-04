@@ -94,7 +94,7 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Alt(ch)) => {
                 if let Some(nr) = ch.to_digit(10) {
-                    (nr as usize).checked_sub(1).and_then(|nr| Some(self.select_tab(nr)));
+                    if let Some(nr) = (nr as usize).checked_sub(1) { self.select_tab(nr); }
                 }
             }
             Event::Key(Key::Char('\t')) => {
@@ -160,7 +160,7 @@ impl MainUI<'_> {
                         self.logger.log(format!("Unable to delete file: {}", e));
                     } else {
                         self.focused_widget_mut().next();
-                        self.files_view.len = self.files_view.len.checked_sub(1).unwrap_or(0);
+                        self.files_view.len = self.files_view.len.saturating_sub(1);
                     }
                 }
             }
@@ -183,7 +183,7 @@ impl MainUI<'_> {
                 // TODO handle deletion somewhere cleaner
                 if let Some(i) = self.focused_widget().selected() {
                     self.downloads_view.downloads.delete(i).await;
-                    self.downloads_view.len = self.downloads_view.len.checked_sub(1).unwrap_or(0);
+                    self.downloads_view.len = self.downloads_view.len.saturating_sub(1);
                     self.focused_widget_mut().next();
                 }
             }

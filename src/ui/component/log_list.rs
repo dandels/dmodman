@@ -70,7 +70,7 @@ impl<'a> LogList<'a> {
     pub fn remove(&mut self, i: usize) {
         crate::logger::log_to_file(format!("selected before {:?} len {}", self.selected(), self.len));
         self.list_items.remove(i);
-        self.len = self.len.checked_sub(1).unwrap_or(0);
+        self.len = self.len.saturating_sub(1);
         self.widget = self.widget.clone().items(self.list_items.clone());
         self.next();
         crate::logger::log_to_file(format!("selected after {:?} len {}", self.selected(), self.len));
