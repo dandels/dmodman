@@ -1,15 +1,17 @@
-use ratatui::layout::Constraint;
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
-use std::sync::atomic::Ordering;
-use tokio_stream::StreamExt;
-
+use super::common::*;
+use crate::ui::navigation::*;
 use crate::cache::{FileIndex, UpdateStatus};
+use ratatui::layout::Constraint;
+use ratatui::style::{Style, Stylize};
+use ratatui::text::{Span, Text};
+use ratatui::widgets::{Block, Cell, Row, Table, TableState};
+use std::sync::atomic::Ordering;
 
 pub struct FileTable<'a> {
-    pub file_index: FileIndex,
     headers: Row<'a>,
-    widths: [Constraint; 5],
+    widths: [Constraint; 3],
+    pub file_index: FileIndex,
+    pub neighbors: NeighboringWidgets,
     pub block: Block<'a>,
     pub highlight_style: Style,
     pub state: TableState,
@@ -19,25 +21,33 @@ pub struct FileTable<'a> {
 
 impl<'a> FileTable<'a> {
     pub fn new(file_index: FileIndex) -> Self {
-        let block = Block::default().borders(Borders::ALL).title("Files");
-        let headers = Row::new(
-            ["Name", "Category", "Mod", "Flags", "Version"]
-                .iter()
-                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
-        );
+        let block = DEFAULT_BLOCK.title(" Files ").border_style(BLOCK_STYLE);
         let widths = [
-            Constraint::Ratio(6, 14),
-            Constraint::Ratio(2, 14),
-            Constraint::Ratio(3, 14),
-            Constraint::Ratio(1, 14),
-            Constraint::Ratio(2, 14),
+            Constraint::Ratio(9, 12),
+            Constraint::Ratio(1, 12),
+            Constraint::Ratio(2, 12),
         ];
 
+        let headers = Row::new(vec![
+            Cell::from(header_text("Name")),
+            Cell::from(header_text("Flags").centered()),
+            Cell::from(header_text("Version")),
+        ]);
+
+        let mut neighbors = NeighboringWidgets::new();
+        neighbors.map.insert(
+            Tab::Main,
+            Neighbors::default()
+                .down(Focused::LogList)
+                .right(Focused::DownloadTable)
+        );
+
         Self {
-            file_index: file_index.clone(),
-            block,
             headers,
             widths,
+            file_index: file_index.clone(),
+            neighbors,
+            block,
             highlight_style: Style::default(),
             state: TableState::default(),
             widget: Table::default().widths(widths),
@@ -47,29 +57,24 @@ impl<'a> FileTable<'a> {
 
     pub async fn refresh(&mut self) -> bool {
         if self.file_index.has_changed.swap(false, Ordering::Relaxed) {
-            let files = self.file_index.files_sorted.read().await;
-            let mut stream = tokio_stream::iter(files.iter());
             let mut rows: Vec<Row> = vec![];
-            while let Some(fdata) = stream.next().await {
+            for (i, fdata) in self.file_index.files_sorted.read().await.iter().enumerate() {
                 let fd = &fdata.file_details;
-                rows.push(Row::new(vec![
-                    fd.as_ref().and_then(|fd| Some(fd.name.to_string())).unwrap_or(fdata.local_file.file_name.clone()),
-                    fd.as_ref().and_then(|fd|
-                                Some(match &fd.category_name {
-                                    Some(cat) => cat.to_string(),
-                                    None => fd.category_id.to_string(),
-                                })
-                    ).unwrap_or("".to_string()),
-                    fdata.md5results.as_ref().and_then(|res| res.r#mod.name.clone()).unwrap_or("".to_string()),
-                    //lf.mod_id.to_string(),
-                    match fdata.local_file.update_status() {
-                        UpdateStatus::OutOfDate(_) => "!".to_string(),
-                        UpdateStatus::UpToDate(_) => "".to_string(),
-                        UpdateStatus::IgnoredUntil(_) => "".to_string(),
-                        UpdateStatus::HasNewFile(_) => "?".to_string(),
-                    },
-                    fd.as_ref().and_then(|fd| fd.version.clone()).map_or("".to_string(), |v| v),
-                ]))
+                let row = Row::new(vec![
+                    Cell::from(fd.as_ref().map(|fd| fd.name.to_string()).unwrap_or(fdata.local_file.file_name.clone())),
+                    //Cell::from(fdata.md5results.as_ref().and_then(|res| res.r#mod.name.clone()).unwrap_or("".to_string())),
+                    Cell::from(Text::from(match fdata.local_file.update_status() {
+                        UpdateStatus::OutOfDate(_) => Span::from("!").red(),
+                        UpdateStatus::UpToDate(_) => Span::from(""),
+                        UpdateStatus::IgnoredUntil(_) => Span::from(""),
+                        UpdateStatus::HasNewFile(_) => Span::from("?").yellow(),
+                    }).centered()),
+                    Cell::from(
+                        Text::from(fd.as_ref().and_then(|fd| fd.version.clone()).unwrap_or("".to_string())),
+                    ),
+                ])
+                .style(LIST_STYLES[i % 2]);
+                rows.push(row);
             }
 
             self.len = rows.len();

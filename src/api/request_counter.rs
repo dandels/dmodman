@@ -4,14 +4,14 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Debug, Default)]
-struct Counter {
-    hourly_remaining: Option<u16>,
-    daily_remaining: Option<u16>,
+pub struct Counter {
+    pub hourly_remaining: Option<u16>,
+    pub daily_remaining: Option<u16>,
 }
 
 #[derive(Clone)]
 pub struct RequestCounter {
-    counter: Arc<RwLock<Counter>>,
+    pub counter: Arc<RwLock<Counter>>,
     pub has_changed: Arc<AtomicBool>,
 }
 
@@ -33,14 +33,5 @@ impl RequestCounter {
             counter.hourly_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());
         }
         self.has_changed.store(true, Ordering::Relaxed);
-    }
-
-    pub async fn format(&self) -> String {
-        let counter = self.counter.read().await;
-        format!(
-            "Remaining | hourly: {} | daily: {}",
-            counter.hourly_remaining.map_or_else(|| "NA".to_string(), |i| i.to_string()),
-            counter.daily_remaining.map_or_else(|| "NA".to_string(), |i| i.to_string())
-        )
     }
 }

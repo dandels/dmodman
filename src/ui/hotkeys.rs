@@ -1,15 +1,12 @@
-use std::process::Command;
-
+use super::component::traits::Select;
+use super::component::{ConfirmDialog, PopupDialog};
+use super::main_ui::*;
+use super::navigation::*;
 use crate::archives::InstallError;
+use std::process::Command;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
-//use tui_textarea::{Input, Key};
-//use tui_textarea::{Input, Key, TextArea};
-use super::component::traits::*;
-use super::component::*;
-use super::main_ui::*;
-
-pub const ARCHIVES_KEYS: &[(&str, &str)] = &[("<i>", "install "), ("<Del>", "delete "), ("<q>", "quit ")];
+pub const ARCHIVES_KEYS: &[(&str, &str)] = &[("<Return>", "install "), ("<Del>", "delete "), ("<q>", "quit ")];
 pub const DOWNLOADS_KEYS: &[(&str, &str)] = &[("<p>", "pause/resume "), ("<Del>", "delete "), ("<q>", "quit ")];
 pub const FILES_KEYS: &[(&str, &str)] = &[
     ("<u>", "update all "),
@@ -20,6 +17,13 @@ pub const FILES_KEYS: &[(&str, &str)] = &[
     ("<q>", "quit "),
 ];
 pub const LOG_KEYS: &[(&str, &str)] = &[("<Del>", "delete "), ("<q>", "quit ")];
+pub const INPUT_DIALOG_KEYS: &[(&str, &str)] = &[
+    ("<Return>", "confirm "),
+    ("<Esc|C-c>", "cancel "),
+    ("<Up|Down>", "cycle suggestions "),
+    ("<C-z>", "undo "),
+    ("<C-y>", "redo "),
+];
 
 impl MainUI<'_> {
     pub async fn handle_events(&mut self, event: Event) {
@@ -27,13 +31,21 @@ impl MainUI<'_> {
         //self.logger.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
         //Event::Unsupported(u) => {
         //self.logger.log(format!("Unsupported: {u:?}"));
+        if let InputMode::Confirm = self.input_mode {
+            self.handle_confirm_dialog(event).await;
+            return;
+        }
         if let InputMode::ReadLine = self.input_mode {
-            self.read_input_line(event).await;
+            self.handle_popup_dialog(event).await;
             return;
         }
 
         if let Event::Key(Key::Char('q')) | Event::Key(Key::Ctrl('c')) = event {
-            self.should_run = false;
+            if self.archives.extract_jobs.read().unwrap().is_empty() {
+                self.should_run = false;
+            } else {
+                self.logger.log("Refusing to quit, archive extraction is still in progress.");
+            }
             return;
         }
 
@@ -41,55 +53,58 @@ impl MainUI<'_> {
             Event::Key(Key::Down)
             | Event::Key(Key::Char('j'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
-                self.select_next();
+                self.focused_widget_mut().next();
             }
             Event::Key(Key::Up)
             | Event::Key(Key::Char('k'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
-                self.select_previous();
+                self.focused_widget_mut().previous();
             }
-            Event::Key(Key::Left) | Event::Key(Key::Char('h')) => match self.focused {
-                FocusedWidget::LogList | FocusedWidget::DownloadTable => {
-                    self.change_focus_to(FocusedWidget::FileTable);
+            Event::Key(Key::Char('H')) => {
+                self.change_focus_to(self.focused_widget().neighbor_left(&self.tabs.active()));
+            }
+            Event::Key(Key::Char('J')) => {
+                self.change_focus_to(self.focused_widget().neighbor_down(&self.tabs.active()));
+            }
+            Event::Key(Key::Char('K')) => {
+                self.change_focus_to(self.focused_widget().neighbor_up(&self.tabs.active()));
+            }
+            Event::Key(Key::Char('L')) => {
+                self.change_focus_to(self.focused_widget().neighbor_right(&self.tabs.active()));
+            }
+            Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
+                self.change_focus_to(self.focused_widget().neighbor_left(&self.tabs.active()));
+            }
+            Event::Key(Key::Right) | Event::Key(Key::Char('l')) => {
+                self.change_focus_to(self.focused_widget().neighbor_right(&self.tabs.active()));
+            }
+            Event::Key(Key::Alt(ch)) => {
+                if let Some(nr) = ch.to_digit(10) {
+                    (nr as usize).checked_sub(1).and_then(|nr| Some(self.select_tab(nr)));
                 }
-                FocusedWidget::FileTable => {
-                    self.change_focus_to(FocusedWidget::LogList);
-                }
-                _ => {}
-            },
-            Event::Key(Key::Right) | Event::Key(Key::Char('l')) => match self.focused {
-                FocusedWidget::LogList | FocusedWidget::FileTable => {
-                    self.change_focus_to(FocusedWidget::DownloadTable);
-                }
-                FocusedWidget::DownloadTable => {
-                    self.change_focus_to(FocusedWidget::LogList);
-                }
-                _ => {}
-            },
+            }
             Event::Key(Key::Char('\t')) => {
-                self.tab_bar.next_tab();
-                self.change_focused_tab().await;
+                self.next_tab();
             }
             Event::Key(Key::BackTab) => {
-                self.tab_bar.prev_tab();
-                self.change_focused_tab().await;
+                self.previous_tab();
             }
             _ => {
                 // Uncomment to log keypresses
                 //self.logger.log(format!("{:?}", key));
             }
         }
-        match self.focused {
-            FocusedWidget::FileTable => {
+        match self.tabs.focused() {
+            Focused::FileTable => {
                 self.handle_files_keys(event).await;
             }
-            FocusedWidget::DownloadTable => {
+            Focused::DownloadTable => {
                 self.handle_downloads_keys(event).await;
             }
-            FocusedWidget::ArchiveTable => {
+            Focused::ArchiveTable => {
                 self.handle_archives_keys(event).await;
             }
-            FocusedWidget::LogList => {
+            Focused::LogList => {
                 self.handle_log_keys(event).await;
             }
         }
@@ -100,14 +115,14 @@ impl MainUI<'_> {
 
         match key {
             Key::Char('i') => {
-                if let FocusedWidget::FileTable = self.focused {
-                    if let Some(i) = self.selected_index() {
+                if let Focused::FileTable = self.tabs.focused() {
+                    if let Some(i) = self.focused_widget().selected() {
                         self.updater.ignore_file(i).await;
                     }
                 }
             }
             Key::Char('U') => {
-                if let Some(i) = self.selected_index() {
+                if let Some(i) = self.focused_widget().selected() {
                     let (game, mod_id, files) = self.cache.file_index.get_game_mod_files_by_index(i).await;
                     self.updater.update_mod(game, mod_id, files).await;
                 }
@@ -116,7 +131,7 @@ impl MainUI<'_> {
                 self.updater.update_all().await;
             }
             Key::Char('v') => {
-                if let Some(i) = self.selected_index() {
+                if let Some(i) = self.focused_widget().selected() {
                     let fd = self.cache.file_index.get_by_index(i).await;
                     let url = format!("https://www.nexusmods.com/{}/mods/{}", fd.game, fd.mod_id);
                     if Command::new("xdg-open").arg(url).status().is_err() {
@@ -125,14 +140,14 @@ impl MainUI<'_> {
                 }
             }
             Key::Delete => {
-                if let Some(i) = self.selected_index() {
+                if let Some(i) = self.focused_widget().selected() {
                     if let Err(e) = self.cache.file_index.delete_by_index(i).await {
                         self.logger.log(format!("Unable to delete file: {}", e));
                     } else {
                         if i == 0 {
-                            self.select_widget_index(None);
+                            self.focused_widget_mut().select(None);
                         }
-                        self.select_previous();
+                        self.focused_widget_mut().previous();
                     }
                 }
             }
@@ -145,19 +160,19 @@ impl MainUI<'_> {
 
         match key {
             Key::Char('p') => {
-                if let FocusedWidget::DownloadTable = self.focused {
-                    if let Some(i) = self.selected_index() {
+                if let Focused::DownloadTable = self.tabs.focused() {
+                    if let Some(i) = self.focused_widget().selected() {
                         self.downloads.toggle_pause_for(i).await;
                     }
                 }
             }
             Key::Delete => {
-                if let Some(i) = self.selected_index() {
+                if let Some(i) = self.focused_widget().selected() {
                     self.downloads_view.downloads.delete(i).await;
                     if i == 0 {
-                        self.select_widget_index(None);
+                        self.focused_widget_mut().select(None);
                     }
-                    self.select_previous();
+                    self.focused_widget_mut().previous();
                 }
             }
             _ => {}
@@ -168,17 +183,17 @@ impl MainUI<'_> {
         let key = if let Event::Key(key) = event { key } else { return };
 
         match key {
-            Key::Char('i') => {
-                if let Some(i) = self.selected_index() {
-                    let path = self.archives_view.archives.files.read().await.get(i).unwrap().path();
-                    match self.archives_view.archives.list_contents(path.clone()).await {
+            Key::Char('\n') => {
+                if let Some(i) = self.focused_widget().selected() {
+                    let path = self.archives.files.read().await.get(i).unwrap().path();
+                    match self.archives.list_content(path.clone()).await {
                         Ok(_) => {}
                         Err(e) => {
                             self.logger.log(format!("{:?}", e));
                         }
                     }
                     let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-                    let dialog_title = "Target directory".to_string();
+                    let dialog_title = "Directory name".to_string();
                     let mut suggested_values = vec![];
                     if let Some(fdata) = self.cache.file_index.get_by_filename(&file_name).await {
                         if let Some(fd) = &fdata.file_details {
@@ -191,9 +206,9 @@ impl MainUI<'_> {
                         }
                     } else {
                         self.logger.log(format!("Warn: mod for {file_name} doesn't exist in db"));
+                        suggested_values.push(file_name);
                     }
-                    suggested_values.push(file_name);
-                    self.popup_dialog = PopupDialog::new(suggested_values, dialog_title);
+                    self.popup_dialog = PopupDialog::new(self.config.clone(), suggested_values, dialog_title);
                     self.input_mode = InputMode::ReadLine;
                     self.redraw_terminal = true;
                 }
@@ -211,45 +226,67 @@ impl MainUI<'_> {
         #[allow(clippy::single_match)]
         match key {
             Key::Delete => {
-                if let Some(i) = self.selected_index() {
-                    self.log_view.logger.remove(i).await;
+                if let Some(i) = self.focused_widget().selected() {
+                    self.logger.remove(i).await;
                     if i == 0 {
-                        self.select_widget_index(None);
+                        self.focused_widget_mut().select(None);
                     }
-                    self.select_previous();
+                    self.focused_widget_mut().previous();
                 }
             }
             _ => {}
         }
     }
 
-    async fn change_focused_tab(&mut self) {
-        match self.tab_bar.selected() {
-            Some(0) => {
-                // TODO remember previously focused pane
-                self.change_focus_to(FocusedWidget::FileTable);
+    async fn handle_confirm_dialog(&mut self, event: Event) {
+        if let Event::Key(key) = event {
+            match key {
+                Key::Up | Key::Left => {
+                    self.confirm_dialog.previous();
+                    self.redraw_terminal = true;
+                }
+                Key::Down | Key::Right => {
+                    self.confirm_dialog.next();
+                    self.redraw_terminal = true;
+                }
+                Key::Char('\n') => {
+                    if let 0 = self.confirm_dialog.selected().unwrap() {
+                        let dest_dir = self.popup_dialog.get_content();
+                        let index = self.archives_view.selected().unwrap();
+                        if let Err(e) = self.archives.extract(index, dest_dir.to_string(), true).await {
+                            self.logger.log(format!("Error when extracting: {e}"));
+                        }
+                        self.input_mode = InputMode::Normal;
+                    } else {
+                        self.input_mode = InputMode::ReadLine;
+                    }
+                    self.redraw_terminal = true;
+                }
+                Key::Ctrl('c') | Key::Esc => {
+                    self.input_mode = InputMode::ReadLine;
+                    self.redraw_terminal = true;
+                }
+                _ => {}
             }
-            Some(1) => self.change_focus_to(FocusedWidget::ArchiveTable),
-            None => {
-                panic!("Invalid tabstate")
-            }
-            _ => {}
         }
     }
 
-    async fn read_input_line(&mut self, event: Event) {
+    async fn handle_popup_dialog(&mut self, event: Event) {
         if let Event::Key(key) = event {
             match key {
                 Key::Ctrl('c') | Key::Esc => {
                     self.input_mode = InputMode::Normal;
                 }
                 Key::Char('\n') => {
-                    let dest_dir = self.popup_dialog.get_contents();
+                    let dest_dir = self.popup_dialog.get_content();
                     let index = self.archives_view.selected().unwrap();
-                    match self.archives_view.archives.extract(index, dest_dir.clone(), false).await {
+                    match self.archives.extract(index, dest_dir.to_string(), false).await {
                         Ok(()) => self.input_mode = InputMode::Normal,
                         Err(InstallError::AlreadyExists) => {
-                            // TODO
+                            self.confirm_dialog =
+                                // This should be handled somewhere else
+                                ConfirmDialog::new(" Target directory already exists. Overwrite? ".to_string());
+                            self.input_mode = InputMode::Confirm;
                         }
                         Err(e) => {
                             self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));

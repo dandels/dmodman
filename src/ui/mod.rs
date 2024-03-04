@@ -2,6 +2,7 @@ mod component;
 mod event;
 mod hotkeys;
 mod main_ui;
+mod navigation;
 mod rectangles;
 pub mod sso;
 

@@ -1,16 +1,18 @@
+use super::common::*;
 use crate::api::Downloads;
+use crate::ui::navigation::*;
 use ratatui::layout::Constraint;
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::style::Style;
+use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 use std::sync::atomic::Ordering;
-use tokio_stream::StreamExt;
 
 pub struct DownloadTable<'a> {
-    pub state: TableState,
-    pub downloads: Downloads,
-    pub block: Block<'a>,
     headers: Row<'a>,
     widths: [Constraint; 3],
+    pub downloads: Downloads,
+    pub block: Block<'a>,
+    pub state: TableState,
+    pub neighbors: NeighboringWidgets,
     pub highlight_style: Style,
     pub widget: Table<'a>,
     pub len: usize,
@@ -18,25 +20,34 @@ pub struct DownloadTable<'a> {
 
 impl<'a> DownloadTable<'a> {
     pub fn new(downloads: Downloads) -> Self {
-        let block = Block::default().borders(Borders::ALL).title("Downloads");
+        let block = DEFAULT_BLOCK.title(" Downloads ").border_style(BLOCK_STYLE);
 
-        let headers = Row::new(
-            ["Filename", "Progress", "Status"].iter().map(|h| Cell::from(*h).style(Style::default().fg(Color::Red))),
-        );
+        let headers = Row::new(vec![
+            Cell::from(header_text("Filename")),
+            Cell::from(header_text("Progress")),
+            Cell::from(header_text("Status")),
+        ]);
 
-        downloads.has_changed.store(true, Ordering::Relaxed);
         let widths = [
-            Constraint::Percentage(60),
+            Constraint::Percentage(65),
             Constraint::Percentage(20),
-            Constraint::Percentage(20),
+            Constraint::Percentage(15),
         ];
 
+        downloads.has_changed.store(true, Ordering::Relaxed);
+
+        let mut neighbors = NeighboringWidgets::new();
+        neighbors
+            .map
+            .insert(Tab::Main, Neighbors::default().left(Focused::FileTable).down(Focused::LogList));
+
         Self {
-            state: TableState::default(),
-            downloads,
-            block,
             headers,
             widths,
+            downloads,
+            block,
+            neighbors,
+            state: TableState::default(),
             highlight_style: Style::default(),
             widget: Table::default(),
             len: 0,
@@ -45,15 +56,16 @@ impl<'a> DownloadTable<'a> {
 
     pub async fn refresh(&mut self) -> bool {
         if self.downloads.has_changed.swap(false, Ordering::Relaxed) {
-            let tasks = self.downloads.tasks.read().await;
-            let mut stream = tokio_stream::iter(tasks.values());
             let mut rows: Vec<Row> = vec![];
-            while let Some(task) = stream.next().await {
-                rows.push(Row::new(vec![
-                    task.dl_info.file_info.file_name.to_owned(),
-                    task.dl_info.progress.to_string(),
-                    task.dl_info.get_state().to_string(),
-                ]))
+            for (i, task) in self.downloads.tasks.read().await.values().enumerate() {
+                rows.push(
+                    Row::new(vec![
+                        task.dl_info.file_info.file_name.to_owned(),
+                        task.dl_info.progress.to_string(),
+                        task.dl_info.get_state().to_string(),
+                    ])
+                    .style(LIST_STYLES[i % 2]),
+                )
             }
 
             self.len = rows.len();
@@ -61,7 +73,7 @@ impl<'a> DownloadTable<'a> {
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())
                 .highlight_style(self.highlight_style);
-            return true
+            return true;
         }
         false
     }

@@ -1,20 +1,4 @@
-use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, LogList, TabBar, PopupDialog};
-
-impl Select for TabBar<'_> {
-    fn len(&self) -> usize {
-        self.len
-    }
-
-    fn select(&mut self, index: Option<usize>) {
-        let i = index.unwrap();
-        self.widget = self.widget.clone().select(i);
-        self.selected_tab = i;
-    }
-
-    fn selected(&self) -> Option<usize> {
-        Some(self.selected_tab)
-    }
-}
+use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadTable, FileTable, LogList, PopupDialog};
 
 macro_rules! impl_stateful {
     ($T:ty) => {
@@ -35,6 +19,7 @@ macro_rules! impl_stateful {
 }
 
 impl_stateful!(ArchiveTable<'_>);
+impl_stateful!(ConfirmDialog<'_>);
 impl_stateful!(DownloadTable<'_>);
 impl_stateful!(FileTable<'_>);
 impl_stateful!(LogList<'_>);
@@ -53,13 +38,13 @@ pub trait Select {
     }
 
     fn next(&mut self) {
-        let len = self.len();
-        if len == 0 {
+        if self.len() == 0 {
+            self.select(None);
             return;
         }
         let i = match self.selected() {
             Some(i) => {
-                if i >= len - 1 {
+                if i + 1 >= self.len() {
                     0
                 } else {
                     i + 1
@@ -71,20 +56,15 @@ pub trait Select {
     }
 
     fn previous(&mut self) {
-        let len = self.len();
-        if len == 0 {
-            return;
-        }
-        let i = match self.selected() {
+        self.select(match self.selected() {
             Some(i) => {
                 if i == 0 {
-                    len - 1
+                    self.len().checked_sub(1)
                 } else {
-                    i - 1
+                    i.checked_sub(1)
                 }
             }
-            None => 0,
-        };
-        self.select(Some(i));
+            None => Some(0),
+        });
     }
 }

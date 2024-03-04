@@ -1,22 +1,22 @@
+use crate::ui::component::common::*;
 use crate::ui::component::{ArchiveTable, DownloadTable, FileTable, LogList};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Style;
 
 macro_rules! impl_highlight {
     ($T:ty) => {
         impl Highlight for $T {
-            fn focus(&mut self) {
-                self.highlight_style = Style::default().fg(Color::Black).bg(Color::White);
-                self.block =
-                    self.block.clone().border_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+            fn add_highlight(&mut self) {
+                self.highlight_style = HIGHLIGHT_LINE_STYLE;
+                self.block = self.block.clone().border_style(BLOCK_HIGHLIGHT_STYLE);
                 self.widget = self.widget.clone().highlight_style(self.highlight_style).block(self.block.clone());
             }
 
-            fn unfocus(&mut self) {
+            fn remove_highlight(&mut self) {
                 self.widget = self
                     .widget
                     .clone()
                     .highlight_style(Style::reset())
-                    .block(self.block.clone().border_style(Style::reset()));
+                    .block(self.block.clone().border_style(BLOCK_STYLE));
             }
         }
     };
@@ -28,6 +28,6 @@ impl_highlight!(FileTable<'_>);
 impl_highlight!(LogList<'_>);
 
 pub trait Highlight {
-    fn focus(&mut self);
-    fn unfocus(&mut self);
+    fn add_highlight(&mut self);
+    fn remove_highlight(&mut self);
 }

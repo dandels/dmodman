@@ -1,35 +1,51 @@
-use std::sync::atomic::Ordering;
-
+use super::common::*;
+use crate::ui::navigation::*;
+use crate::Logger;
 use ratatui::style::Style;
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState};
-
-use crate::Logger;
+use ratatui::widgets::{Block, List, ListItem, ListState};
+use std::sync::atomic::Ordering;
 
 pub struct LogList<'a> {
+    list_items: Vec<ListItem<'a>>,
+    logger: Logger,
+    pub neighbors: NeighboringWidgets,
     pub block: Block<'a>,
-    pub logger: Logger,
     pub state: ListState,
     pub highlight_style: Style,
     pub widget: List<'a>,
     pub needs_redraw: bool,
-    list_items: Vec<ListItem<'a>>,
     pub len: usize,
 }
 
 impl<'a> LogList<'a> {
     pub fn new(logger: Logger) -> Self {
-        let block = Block::default().borders(Borders::ALL).title("Log");
+        let block = DEFAULT_BLOCK.title(" Log ").border_style(BLOCK_STYLE);
         let highlight_style = Style::default();
 
+        let mut neighbors = NeighboringWidgets::new();
+        neighbors.map.insert(
+            Tab::Main,
+            Neighbors::default()
+                .left(Focused::FileTable)
+                .right(Focused::DownloadTable)
+                .up(Focused::FileTable),
+        );
+        neighbors.map.insert(
+            Tab::Archives,
+            Neighbors::default()
+                .up(Focused::ArchiveTable),
+        );
+
         Self {
-            block,
+            list_items: vec![],
             logger: logger.clone(),
+            neighbors,
+            block,
             state: ListState::default(),
             highlight_style,
             widget: List::default(),
             needs_redraw: true,
-            list_items: vec![],
             len: 0,
         }
     }
@@ -39,17 +55,13 @@ impl<'a> LogList<'a> {
     pub async fn refresh(&mut self) -> bool {
         if self.logger.has_changed.swap(false, Ordering::Relaxed) {
             let new_len;
-            let mut items: Vec<ListItem<'a>> = {
-                let msgs_lock = self.logger.messages.read().unwrap();
-                new_len = msgs_lock.len();
-                if new_len > 0 {
-                    let msgs: &[String] = &msgs_lock[self.len..msgs_lock.len()];
-                    msgs.iter().map(|msg| ListItem::new(Line::from(msg.to_owned()))).collect()
-                } else {
-                    vec![]
-                }
-            };
-            self.list_items.append(&mut items);
+            let msgs_lock = self.logger.messages.read().unwrap();
+            new_len = msgs_lock.len();
+            if new_len > 0 {
+                let msgs: &[String] = &msgs_lock[self.len..msgs_lock.len()];
+                self.list_items
+                    .append(&mut msgs.into_iter().map(|msg| ListItem::new(Line::from(msg.to_owned()))).collect())
+            }
 
             if self.state.selected().is_none() && new_len != 0 || self.state.selected() == self.len.checked_sub(1) {
                 self.state.select(Some(new_len));

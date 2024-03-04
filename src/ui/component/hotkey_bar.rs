@@ -1,35 +1,49 @@
-use super::FocusedWidget;
 use crate::ui::hotkeys::*;
+use crate::ui::navigation::Focused;
+use crate::ui::InputMode;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 pub struct HotkeyBar<'a> {
     pub widget: Paragraph<'a>,
-    focused: FocusedWidget,
+    focused: Focused,
+    input_mode: InputMode,
 }
 
 impl<'a> HotkeyBar<'a> {
-    pub fn new(focused: FocusedWidget) -> Self {
-        let widget = create_widget(&focused);
-        Self { widget, focused }
+    pub fn new(focused: Focused) -> Self {
+        let input_mode = InputMode::Normal;
+        let widget = create_widget(&input_mode, &focused);
+        Self {
+            widget,
+            focused,
+            input_mode,
+        }
     }
 
-    pub async fn refresh(&mut self, focused: &FocusedWidget) -> bool {
-        if !self.focused.eq(focused) {
-            self.widget = create_widget(focused);
+    pub async fn refresh(&mut self, input_mode: &InputMode, focused: &Focused) -> bool {
+        if !self.focused.eq(focused) || !self.input_mode.eq(input_mode) {
+            self.widget = create_widget(input_mode, focused);
             self.focused = focused.clone();
+            self.input_mode = input_mode.clone();
             return true;
         }
         false
     }
 }
-fn create_widget<'a>(focused: &FocusedWidget) -> Paragraph<'a> {
-    let keys = match focused {
-        FocusedWidget::ArchiveTable => ARCHIVES_KEYS,
-        FocusedWidget::FileTable => FILES_KEYS,
-        FocusedWidget::LogList => LOG_KEYS,
-        FocusedWidget::DownloadTable => DOWNLOADS_KEYS,
+fn create_widget<'a>(input_mode: &InputMode, focused: &Focused) -> Paragraph<'a> {
+    let keys = {
+        match input_mode {
+            InputMode::Normal => match focused {
+                Focused::ArchiveTable => ARCHIVES_KEYS,
+                Focused::FileTable => FILES_KEYS,
+                Focused::LogList => LOG_KEYS,
+                Focused::DownloadTable => DOWNLOADS_KEYS,
+            },
+            InputMode::ReadLine => INPUT_DIALOG_KEYS,
+            _ => &[],
+        }
     };
 
     let mut text = vec![];
