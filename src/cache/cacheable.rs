@@ -34,6 +34,17 @@ where
         .unwrap()
     }
 
+    async fn save_changes(&self, path: PathBuf) -> Result<(), Error> {
+        let data = serde_json::to_string_pretty(&self)?;
+        tokio::task::spawn_blocking(move || {
+            let mut file = File::options().write(true).open(path)?;
+            file.write_all(data.as_bytes())?;
+            Ok(())
+        })
+        .await
+        .unwrap()
+    }
+
     async fn load(path: PathBuf) -> Result<Self, Error> {
         tokio::task::spawn_blocking(move || {
             if let Ok(zst_file) = File::open(path.with_extension("json.zst")) {
@@ -58,10 +69,11 @@ mod tests {
 
     #[tokio::test]
     async fn read_cached_mod_info() -> Result<(), ApiError> {
+        let profile = "testprofile";
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = ConfigBuilder::load(Logger::default()).unwrap().profile(game).build().unwrap();
+        let config = ConfigBuilder::load(Logger::default()).unwrap().profile(profile).build().unwrap();
         let path = config.path_for(DataType::ModInfo(game, mod_id));
         println!("{:?}", path);
 
@@ -72,10 +84,11 @@ mod tests {
 
     #[tokio::test]
     async fn read_cached_file_list() -> Result<(), ApiError> {
+        let profile = "testprofile";
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = ConfigBuilder::default().profile(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(profile).build().unwrap();
         let path = config.path_for(DataType::FileList(game, mod_id));
 
         let fl = FileList::load(path).await?;

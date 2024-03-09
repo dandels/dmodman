@@ -11,8 +11,8 @@ pub use self::file_info::*;
 pub use self::nxm_url::*;
 
 use crate::api::query::{DownloadLink, FileList, Md5Search, Queriable};
-use crate::api::{ApiError, Client};
-use crate::cache::{Cache, Cacheable, LocalFile, UpdateStatus};
+use crate::api::{ApiError, Client, UpdateStatus};
+use crate::cache::{ArchiveFile, ArchiveMetadata, Cache, Cacheable};
 use crate::config::{Config, DataType};
 use crate::{util, Logger};
 
@@ -174,7 +174,8 @@ impl Downloads {
         // Try use cached value for this mod, otherwise query API
         let file_list: Option<FileList> = 'fl: {
             if let Some(fl) = self.cache.file_lists.get(game, mod_id).await {
-                if fl.files.iter().any(|fd| fd.file_id == fi.file_id) {
+                // TODO maybe get the file details here while at it..?
+                if fl.files.binary_search_by(|fd| fd.file_id.cmp(&fi.file_id)).is_ok() {
                     break 'fl Some(fl);
                 }
             }
@@ -200,28 +201,39 @@ impl Downloads {
         {
             if let Some(filedata_heap) = self.cache.file_index.get_modfiles(game, &mod_id).await {
                 for fdata in filedata_heap.iter() {
-                    match fdata.local_file.update_status() {
-                        UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) => {
-                            fdata.local_file.set_update_status(UpdateStatus::UpToDate(latest_timestamp));
-                            let path = self.config.path_for(DataType::LocalFile(&fdata.local_file));
-                            if let Err(e) = fdata.local_file.save(path).await {
-                                self.logger.log(format!("Couldn't set UpdateStatus for {}: {}", fdata.local_file.file_name, e));
-                            }
-                        }
+                    if let UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) = fdata.update_status.to_enum() {
+                        fdata
+                            .propagate_update_status(
+                                &self.config,
+                                &self.logger,
+                                &UpdateStatus::UpToDate(latest_timestamp),
+                            )
+                            .await;
+                    } else {
                         // Probably doesn't make sense to do anything in the other cases..?
-                        _ => {}
                     }
                 }
             }
         }
 
-        let lf = LocalFile::new(fi.clone(), UpdateStatus::UpToDate(latest_timestamp));
-        self.verify_hash(&lf).await;
-        self.cache.save_local_file(lf).await?;
+        let archive_metadata = Arc::new(ArchiveMetadata::new(fi.clone(), UpdateStatus::UpToDate(latest_timestamp)));
+        let path = self.config.download_dir().join(&fi.file_name);
+        // Failing this would mean that the just downloaded file is inaccessible
+        if let Some(archive) =
+            ArchiveFile::new(&self.logger, &self.cache.installed, &path, Some(archive_metadata.clone())).await
+        {
+            let archive = Arc::new(archive);
+            self.verify_hash(&archive_metadata).await;
+            if let Err(e) = archive_metadata.save(self.config.path_for(DataType::ArchiveMetadata(&archive))).await {
+                self.logger.log(format!("Unable to save metadata for {}: {e}", &fi.file_name));
+            }
+            self.cache.archives.add(archive.clone()).await;
+            self.cache.file_index.try_add_mod_archive(archive.into()).await;
+        }
         Ok(())
     }
 
-    async fn verify_hash(&self, local_file: &LocalFile) {
+    async fn verify_hash(&self, local_file: &ArchiveMetadata) {
         let mut path = self.config.download_dir();
         path.push(&local_file.file_name);
         match util::md5sum(path).await {

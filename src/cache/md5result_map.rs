@@ -14,7 +14,7 @@ pub struct Md5ResultMap {
     config: Config,
     #[allow(dead_code)]
     logger: Logger,
-    map: Map<(String, u64), Option<Md5Results>>,
+    map: Map<(String, u64), Option<Arc<Md5Results>>>,
 }
 
 impl Md5ResultMap {
@@ -27,16 +27,17 @@ impl Md5ResultMap {
     }
 
     pub async fn insert(&self, game: String, res: Md5Results) {
-        self.map.write().await.insert((game, res.file_details.file_id), Some(res));
+        self.map.write().await.insert((game, res.file_details.file_id), Some(res.into()));
     }
 
-    pub async fn get<S: Into<String> + Display>(&self, game: S, file_id: u64) -> Option<Md5Results> {
+    pub async fn get<S: Into<String> + Display>(&self, game: S, file_id: u64) -> Option<Arc<Md5Results>> {
         let game = game.into();
         let mut lock = self.map.write().await;
         match lock.get(&(game.clone(), file_id)).cloned() {
             Some(fl) => fl,
             None => match Md5Results::load(self.config.path_for(DataType::Md5Results(&game, file_id))).await {
                 Ok(res) => {
+                    let res = Arc::new(res);
                     lock.insert((game, file_id), Some(res.clone()));
                     Some(res)
                 }

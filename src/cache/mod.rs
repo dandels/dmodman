@@ -1,18 +1,20 @@
+mod archive_files;
 pub mod cache_error;
 mod cacheable;
-mod file_data;
-mod file_index;
 mod file_lists;
-mod local_file;
+mod installed;
 mod md5result_map;
+mod metadata_index;
+mod modfile_metadata;
 
+pub use archive_files::*;
 pub use cache_error::CacheError;
 pub use cacheable::Cacheable;
-pub use file_data::FileData;
-pub use file_index::*;
 pub use file_lists::*;
-pub use local_file::*;
+pub use installed::*;
 pub use md5result_map::*;
+pub use metadata_index::*;
+pub use modfile_metadata::ModFileMetadata;
 
 use crate::api::Md5Results;
 use crate::api::{DownloadLink, FileList};
@@ -26,29 +28,36 @@ use tokio::fs::File;
 use tokio::io;
 use tokio::io::AsyncWriteExt;
 
-// The Cache is a basic file storage. There's a case to be made for using a relational database instead.
 #[derive(Clone)]
 pub struct Cache {
     config: Config,
     logger: Logger,
+    pub archives: ArchiveFiles,
     pub file_lists: FileLists,
-    pub file_index: FileIndex,
+    pub file_index: MetadataIndex,
     pub md5result: Md5ResultMap,
     pub last_update_check: Arc<AtomicU64>,
+    pub installed: Installed,
 }
 
 impl Cache {
     pub async fn new(config: Config, logger: Logger) -> Result<Self, CacheError> {
         let file_lists = FileLists::new(config.clone()).await?;
         let md5result = Md5ResultMap::new(config.clone(), logger.clone());
-        let file_index = FileIndex::new(config.clone(), logger.clone(), file_lists.clone(), md5result.clone()).await?;
+        let metadata_index =
+            MetadataIndex::new(config.clone(), logger.clone(), file_lists.clone(), md5result.clone()).await;
+        let installed = Installed::new(config.clone(), metadata_index.clone()).await;
+        let archives =
+            ArchiveFiles::new(config.clone(), logger.clone(), installed.clone(), metadata_index.clone()).await;
         let last_update_check = load_last_updated(&config);
 
         Ok(Self {
+            archives,
+            installed,
             config,
             logger,
             file_lists,
-            file_index,
+            file_index: metadata_index,
             md5result,
             last_update_check,
         })
@@ -76,41 +85,40 @@ impl Cache {
         fl.file_updates.sort();
 
         if let Some(files) = self.file_index.get_modfiles(&game.to_string(), &mod_id).await {
-            let latest = files.peek().unwrap();
-            let mut lowest_fileid = latest.file_id;
-            let mut earliest_timestamp = latest.uploaded_timestamp().unwrap_or_default();
+            let old_files_start = fl.files.partition_point(|f| f.file_id < files.first().unwrap().file_id);
+            fl.files.drain(..old_files_start);
+            fl.files.shrink_to_fit();
 
-            for fd in files {
-                if fd.file_id < lowest_fileid {
-                    lowest_fileid = fd.file_id;
+            let mut earliest_timestamp = u64::MAX;
+            for mfd in files {
+                let mut fd_lock = mfd.file_details.write().await;
+                if fd_lock.is_none() {
+                    if let Ok(i) = fl.files.binary_search_by(|f| f.file_id.cmp(&mfd.file_id)) {
+                        *fd_lock = Some(fl.files.get(i).unwrap().clone());
+                    }
                 }
-                if earliest_timestamp < fd.uploaded_timestamp().unwrap() {
-                    earliest_timestamp = fd.uploaded_timestamp().unwrap();
-                }
-            }
 
-            if let Some(mut index) = fl.files.len().checked_sub(1) {
-                while index > 0 {
-                    if fl.files.get(index).unwrap().file_id > lowest_fileid {
-                        index -= 1;
-                    } else {
-                        fl.files.drain(..index);
-                        fl.files.shrink_to_fit();
-                        break;
+                match fd_lock.as_ref() {
+                    Some(fd) => {
+                        if earliest_timestamp < fd.uploaded_timestamp {
+                            earliest_timestamp = fd.uploaded_timestamp;
+                        }
+                    }
+                    None => {
+                        let mut md5res_lock = mfd.md5results.write().await;
+                        if let Some(res) = self.md5result.get(game, mfd.file_id).await {
+                            *md5res_lock = Some(res.clone());
+                            if earliest_timestamp < res.file_details.uploaded_timestamp {
+                                earliest_timestamp = res.file_details.uploaded_timestamp;
+                            }
+                        }
                     }
                 }
             }
-            if let Some(mut index) = fl.file_updates.len().checked_sub(1) {
-                while index > 0 {
-                    if fl.file_updates.get(index).unwrap().uploaded_timestamp > earliest_timestamp {
-                        index -= 1;
-                    } else {
-                        fl.file_updates.drain(..index);
-                        fl.file_updates.shrink_to_fit();
-                        break;
-                    }
-                }
-            }
+
+            let old_updates_start = fl.file_updates.partition_point(|u| u.uploaded_timestamp < earliest_timestamp);
+            fl.file_updates.drain(..old_updates_start);
+            fl.file_updates.shrink_to_fit();
         } else {
             self.logger.log("No local file to compare with");
         }
@@ -121,12 +129,6 @@ impl Cache {
 
         fl.save_compressed(path).await?;
         self.file_lists.insert((game, mod_id), fl.clone()).await;
-        Ok(())
-    }
-
-    pub async fn save_local_file(&self, lf: LocalFile) -> Result<(), io::Error> {
-        lf.save(self.config.path_for(DataType::LocalFile(&lf))).await?;
-        self.file_index.add(lf).await;
         Ok(())
     }
 
@@ -168,13 +170,13 @@ mod test {
 
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
-        let profile = "morrowind";
+        let profile = "testprofile";
+        let file_id = 82041;
         let config = ConfigBuilder::default().profile(profile).build().unwrap();
         let cache = Cache::new(config.clone(), Logger::default()).await?;
 
-        let fdata = cache.file_index.get_by_file_id(&82041).await.unwrap();
-        println!("{:?}", fdata);
-        assert_eq!(fdata.local_file.game, profile);
+        let fdata = cache.file_index.get_by_file_id(&file_id).await.unwrap();
+        assert_eq!(fdata.file_id, file_id);
         Ok(())
     }
 }

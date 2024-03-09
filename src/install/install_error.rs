@@ -4,7 +4,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum InstallError {
     AlreadyExists,
-    Compression { source: compress_tools::Error },
+    Compression { source: async_zip::error::ZipError },
     InProgress,
     IO { source: std::io::Error },
 }
@@ -37,8 +37,8 @@ impl From<std::io::Error> for InstallError {
     }
 }
 
-impl From<compress_tools::Error> for InstallError {
-    fn from(source: compress_tools::Error) -> Self {
+impl From<async_zip::error::ZipError> for InstallError {
+    fn from(source: async_zip::error::ZipError) -> Self {
         Self::Compression { source }
     }
 }

@@ -180,8 +180,7 @@ impl Default for Config {
 impl Config {
     fn new(logger: Logger, config: ConfigBuilder) -> Result<Self, ConfigError> {
         let download_dir = {
-            let path =
-                config.download_dir.expect("Config was passed Builder with missing download dir.");
+            let path = config.download_dir.expect("Config was passed Builder with missing download dir.");
             match path.is_absolute() {
                 true => path,
                 false => {
@@ -301,7 +300,7 @@ pub mod tests {
     #[test]
     fn modfile_exists() -> Result<(), ConfigError> {
         setup_env();
-        let profile = "morrowind";
+        let profile = "testprofile";
         let modfile = "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z";
         let config = ConfigBuilder::default().profile(profile).build()?;
         let mut path = config.download_dir();

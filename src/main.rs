@@ -1,7 +1,7 @@
 mod api;
-mod archives;
 mod cache;
 mod config;
+mod install;
 mod logger;
 mod nxm_socket;
 mod ui;
@@ -12,9 +12,9 @@ use std::error::Error;
 use std::io::ErrorKind;
 
 use api::{Client, Downloads};
-use archives::Archives;
 use cache::Cache;
 use config::{Config, ConfigBuilder};
+use install::Installer;
 use logger::Logger;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
@@ -33,12 +33,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if args.len() > 2 {
         println!("Too many arguments. Invoke dmodman without arguments or with an nxm:// URL.");
         return Ok(());
-    } else if let Some(first_arg) = args.get(1) {
+    }
+    if let Some(first_arg) = args.get(1) {
         if first_arg.starts_with("nxm://") {
             nxm_str_opt = Some(first_arg);
         } else if first_arg == "-d" {
             is_interactive = false;
         } else {
+            // TODO use clap, this isn't true
             println!("Arguments are expected only when acting as an nxm:// URL handler.");
             return Ok(());
         }
@@ -96,7 +98,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             });
         }
 
-        let archives = Archives::new(config.clone(), logger.clone());
+        let archives = Installer::new(cache.clone(), config.clone(), logger.clone()).await;
         ui::MainUI::new(cache, client, config, downloads, logger, archives).await.run().await;
     } else {
         nxm_socket::listen_for_downloads(nxm_socket, downloads, logger).await;

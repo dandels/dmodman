@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::Config;
 use crate::api::downloads::DownloadInfo;
-use crate::cache::LocalFile;
+use crate::cache::ArchiveFile;
 
 pub const DL_LINKS: &str = "download_links";
 pub const FILE_LISTS: &str = "file_lists";
@@ -18,7 +18,8 @@ pub enum DataType<'a> {
     Updated(&'a str),                // game
 
     // Local formats
-    LocalFile(&'a LocalFile),
+    InstalledMod(&'a String),
+    ArchiveMetadata(&'a ArchiveFile),
     DownloadInfo(&'a DownloadInfo),
 
     // Unused API responses
@@ -41,7 +42,6 @@ impl Config {
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id, file_id));
             }
-            // The game needs to be specified to support cross-game modding, reading the config doesn't work.
             DataType::FileList(game, mod_id) => {
                 path = self.data_dir();
                 path.push(game);
@@ -52,9 +52,14 @@ impl Config {
                 path = self.data_dir();
                 path.push(format!("{}.json", game));
             }
-            DataType::LocalFile(lf) => {
+            DataType::InstalledMod(dir_name) => {
+                path = self.install_dir();
+                path.push(dir_name);
+                path.push(".dmodman-meta.json");
+            }
+            DataType::ArchiveMetadata(af) => {
                 path = self.download_dir();
-                path.push(format!("{}.json", lf.file_name));
+                path.push(format!("{}.json", af.file_name));
             }
             DataType::Md5Results(game, file_id) => {
                 path = self.data_dir();

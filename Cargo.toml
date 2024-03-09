@@ -5,9 +5,10 @@ authors = ["dandels <dandels (at) hotmail.com>"]
 edition = "2021"
 
 [dependencies]
-compress-tools = { version = "0.13", features = ["tokio_support"] }
+async_zip = { version = "0.0.16", features = ["deflate", "lzma", "tokio", "tokio-fs"] }
 dirs = "5.0"
 futures-util = "0.3"
+futures-lite = "2.2"
 indexmap = "2.2"
 md-5 = "0.10"
 percent-encoding = "2.3"

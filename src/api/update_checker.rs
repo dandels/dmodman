@@ -1,16 +1,13 @@
 use super::ApiError;
+use super::UpdateStatus;
 use super::{Client, FileList, FileUpdate, Queriable};
 use crate::api::Updated;
-use crate::cache::{Cache, Cacheable, FileData, UpdateStatus};
-use crate::config::DataType;
+use crate::cache::{Cache, ModFileMetadata};
 use crate::Config;
 use crate::Logger;
-
-use std::collections::BinaryHeap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-
 use tokio::task;
 
 #[derive(Clone)]
@@ -31,33 +28,40 @@ impl UpdateChecker {
         }
     }
 
-    pub async fn ignore_file(&self, i: usize) {
-        let fd = self.cache.file_index.get_by_index(i).await;
-        if let Some(latest_remote_file) =
-            self.cache.file_lists.get(fd.game.clone(), fd.mod_id).await.unwrap().file_updates.last()
-        {
-            match fd.local_file.update_status() {
-                UpdateStatus::OutOfDate(_) => {
-                    fd.local_file.set_update_status(UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp));
+    pub async fn ignore_file(&self, file_id: u64) {
+        if let Some(mfd) = self.cache.file_index.get_by_file_id(&file_id).await {
+            if let Some(latest_remote_file) =
+                self.cache.file_lists.get(mfd.game.clone(), mfd.mod_id).await.unwrap().file_updates.last()
+            {
+                match mfd.update_status.to_enum() {
+                    UpdateStatus::OutOfDate(_) => {
+                        mfd.propagate_update_status(
+                            &self.config,
+                            &self.logger,
+                            &UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp),
+                        )
+                        .await;
+                    }
+                    UpdateStatus::HasNewFile(_) => {
+                        mfd.propagate_update_status(
+                            &self.config,
+                            &self.logger,
+                            &UpdateStatus::UpToDate(latest_remote_file.uploaded_timestamp),
+                        )
+                        .await;
+                    }
+                    _ => {}
                 }
-                UpdateStatus::HasNewFile(_) => {
-                    fd.local_file.set_update_status(UpdateStatus::UpToDate(latest_remote_file.uploaded_timestamp));
-                }
-                _ => {}
+                self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
             }
-
-            if let Err(e) = fd.local_file.save(self.config.path_for(DataType::LocalFile(&fd.local_file))).await {
-                self.logger.log(format!("Unable save ignore status for: {e}."));
-            }
-            self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
         }
     }
 
     pub async fn update_all(&self) {
-        let mods_by_game = {
-            let lock = self.cache.file_index.game_to_mods_map.read().await;
-            lock.clone()
-        };
+        //let mods_by_game = {
+        //    let lock = self.cache.file_index.by_game_and_mod_sorted.read().await;
+        //    lock.clone()
+        //};
 
         match SystemTime::now().duration_since(UNIX_EPOCH) {
             // If less than a month has passed since previous update we can use the API endpoint for mod updates
@@ -67,6 +71,7 @@ impl UpdateChecker {
                 if t_diff < 2419200 {
                     let me = self.clone();
                     task::spawn(async move {
+                        let mut mods_by_game = me.cache.file_index.by_game_and_mod_sorted.write().await;
                         if let Err(e) = me.cache.save_last_updated(time.as_secs()).await {
                             me.logger.log(format!("Failed to save last updated status: {}", e));
                         }
@@ -74,7 +79,7 @@ impl UpdateChecker {
                         /* The updated mod lists are provided per game and sorted by mod id
                          * FileIndex.game_to_mods_map  */
 
-                        for (game, mut mod_map) in mods_by_game {
+                        for (game, mod_map) in mods_by_game.iter_mut() {
                             match Updated::request(&me.client, &[&game]).await {
                                 Ok(updated_mods) => {
                                     // Uncomment to save Updated lists
@@ -86,7 +91,7 @@ impl UpdateChecker {
                                     let mut i = 0;
                                     mod_map.sort_keys();
                                     // Local and updated mods are sorted so we can iterate in parallel
-                                    for (mod_id, files) in &mod_map {
+                                    for (mod_id, files) in mod_map {
                                         while let Some(upd) = updated_mods.updates.get(i) {
                                             if upd.mod_id == *mod_id {
                                                 me.update_mod(game.clone(), *mod_id, files.clone()).await;
@@ -110,9 +115,9 @@ impl UpdateChecker {
                     });
                 } else {
                     self.logger.log("Over a month since last update check, checking each mod.");
-                    for (game, mods) in mods_by_game {
+                    for (game, mods) in self.cache.file_index.by_game_and_mod_sorted.read().await.iter() {
                         for (mod_id, files) in mods {
-                            self.update_mod(game.clone(), mod_id, files).await;
+                            self.update_mod(game.clone(), *mod_id, files.clone()).await;
                         }
                     }
                 }
@@ -125,11 +130,11 @@ impl UpdateChecker {
         self.logger.log("Finished checking updates.");
     }
 
-    pub async fn update_mod(&self, game: String, mod_id: u32, files_in_mod: BinaryHeap<Arc<FileData>>) {
+    pub async fn update_mod(&self, game: String, mod_id: u32, files_in_mod: Vec<Arc<ModFileMetadata>>) {
         let me = self.clone();
         task::spawn(async move {
             let mut needs_refresh = false;
-            let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
+            let mut checked: Vec<(Arc<ModFileMetadata>, UpdateStatus)> = vec![];
             /* First try to check updates with cached values.
              * If the UpdateStatus is already OutOfDate or HasNewFile, there's no reason to query the API.
              * Only query the API if a file is still reported as UpToDate.
@@ -157,10 +162,9 @@ impl UpdateChecker {
                     }
                 }
             }
-            for (file, new_status) in checked {
-                if file.local_file.update_status() != new_status {
-                    file.local_file.set_update_status(new_status);
-                    file.local_file.save(me.config.path_for(DataType::LocalFile(&file.local_file))).await.unwrap();
+            for (mfd, new_status) in checked {
+                if mfd.update_status.to_enum() != new_status {
+                    mfd.propagate_update_status(&me.config, &me.logger, &new_status).await;
                 }
             }
             me.cache.file_index.has_changed.store(true, Ordering::Relaxed);
@@ -203,28 +207,28 @@ impl UpdateChecker {
      *    UpToDate, depending on the timestamp. */
     async fn check_mod(
         &self,
-        to_check: &BinaryHeap<Arc<FileData>>,
+        to_check: &Vec<Arc<ModFileMetadata>>,
         file_list: &FileList,
-    ) -> Vec<(Arc<FileData>, UpdateStatus)> {
-        if to_check.peek().is_none() {
+    ) -> Vec<(Arc<ModFileMetadata>, UpdateStatus)> {
+        if to_check.first().is_none() {
             self.logger.log("Tried to check updates for nonexistent files. This shouldn't happen.");
             return vec![];
         }
 
         let mut to_check = to_check.clone();
         let mut updates = file_list.file_updates.clone();
-        let mut checked: Vec<(Arc<FileData>, UpdateStatus)> = vec![];
-        let latest_local_time = { to_check.peek().unwrap().local_file.update_status().time() };
+        let mut checked: Vec<(Arc<ModFileMetadata>, UpdateStatus)> = vec![];
+        let latest_local_time = { to_check.last().unwrap().update_status.to_enum().time() };
         // We assume that the last file in the file list is actually the latest, which should be true.
         let latest_remote_time = file_list.files.last().unwrap().uploaded_timestamp;
         let mut newer_files: Vec<FileUpdate> = vec![];
 
-        while let Some(file) = to_check.pop() {
-            let update_status = file.local_file.update_status();
+        while let Some(mfd) = to_check.pop() {
+            let update_status = mfd.update_status.to_enum();
             match update_status {
                 // No need to check files that are already known to have updates
                 UpdateStatus::OutOfDate(_) | UpdateStatus::HasNewFile(_) => {
-                    checked.push((file.clone(), file.local_file.update_status()));
+                    checked.push((mfd.clone(), update_status));
                     continue;
                 }
                 _ => {}
@@ -235,7 +239,9 @@ impl UpdateChecker {
             // enums used by the API
             const OLD_VERSION: u32 = 4;
             const ARCHIVED: u32 = 7;
-            let file_details = file.file_details.clone().unwrap();
+            // TODO get rid of unwrap
+            let lock = mfd.file_details.read().await;
+            let file_details = lock.as_ref().unwrap();
             if file_details.category_id == OLD_VERSION || file_details.category_id == ARCHIVED {
                 has_update = true;
             } else {
@@ -245,7 +251,7 @@ impl UpdateChecker {
                 while let Some(upd) = updates.last() {
                     /* The timestamp in the file updates might be slightly later than the one in the FileList, so we
                      * also need to compare file_id's. */
-                    if file_details.uploaded_timestamp < upd.uploaded_timestamp && file.file_id != upd.new_file_id {
+                    if file_details.uploaded_timestamp < upd.uploaded_timestamp && mfd.file_id != upd.new_file_id {
                         newer_files.push(updates.pop().unwrap());
                     } else {
                         break;
@@ -253,9 +259,10 @@ impl UpdateChecker {
                 }
             }
 
+            // TODO don't pop stuff since we no longer use BinaryHeaps, just keep track of the index instead
             // the files get popped in descending chronological order, so we need to iterate this in reverse
             for upd in newer_files.iter().rev() {
-                if file.file_id == upd.old_file_id {
+                if mfd.file_id == upd.old_file_id {
                     has_update = true;
                     break;
                 }
@@ -265,14 +272,14 @@ impl UpdateChecker {
                     // Set file out of date unless this update is ignored
                     UpdateStatus::IgnoredUntil(t) => {
                         if t < latest_remote_time {
-                            checked.push((file.clone(), UpdateStatus::OutOfDate(latest_remote_time)));
+                            checked.push((mfd.clone(), UpdateStatus::OutOfDate(latest_remote_time)));
                         // this is still ignored and we don't touch it
                         } else {
-                            checked.push((file.clone(), UpdateStatus::IgnoredUntil(t)));
+                            checked.push((mfd.clone(), UpdateStatus::IgnoredUntil(t)));
                         }
                     }
                     _ => {
-                        checked.push((file.clone(), UpdateStatus::OutOfDate(latest_remote_time)));
+                        checked.push((mfd.clone(), UpdateStatus::OutOfDate(latest_remote_time)));
                     }
                 }
             // No direct update in update chain, but there might be new files
@@ -281,18 +288,18 @@ impl UpdateChecker {
                     UpdateStatus::IgnoredUntil(t) => {
                         // another remote file has appeared since updates were ignored
                         if t < latest_remote_time {
-                            checked.push((file.clone(), UpdateStatus::HasNewFile(latest_local_time)));
+                            checked.push((mfd.clone(), UpdateStatus::HasNewFile(latest_local_time)));
                         // this is still ignored and we don't touch it
                         } else {
-                            checked.push((file.clone(), UpdateStatus::IgnoredUntil(t)));
+                            checked.push((mfd.clone(), UpdateStatus::IgnoredUntil(t)));
                         }
                     }
                     _ => {
-                        checked.push((file.clone(), UpdateStatus::HasNewFile(latest_local_time)));
+                        checked.push((mfd.clone(), UpdateStatus::HasNewFile(latest_local_time)));
                     }
                 }
             } else {
-                checked.push((file.clone(), UpdateStatus::UpToDate(latest_local_time)));
+                checked.push((mfd.clone(), UpdateStatus::UpToDate(latest_local_time)));
             }
         }
         checked
@@ -301,24 +308,24 @@ impl UpdateChecker {
 
 #[cfg(test)]
 mod tests {
+    use super::UpdateStatus;
     use crate::api::{ApiError, Client, UpdateChecker};
     use crate::cache::Cache;
-    use crate::cache::UpdateStatus;
     use crate::config::tests::setup_env;
     use crate::ConfigBuilder;
     use crate::Logger;
 
     #[tokio::test]
     async fn block_test_request() -> Result<(), ApiError> {
-        let game = "morrowind";
-        let mod_id = 46599;
-        let config = ConfigBuilder::default().profile(game).build().unwrap();
+        let config = ConfigBuilder::default().build().unwrap();
 
         let logger = Logger::default();
         let cache = Cache::new(config.clone(), logger.clone()).await.unwrap();
         let client = Client::new(&config).await;
         let updater = UpdateChecker::new(cache.clone(), client, config, logger);
 
+        let game = "morrowind";
+        let mod_id = 46599;
         match updater.refresh_filelist(game, mod_id).await {
             Ok(_fl) => panic!("Refresh should have failed"),
             Err(e) => match e {
@@ -333,18 +340,19 @@ mod tests {
     #[tokio::test]
     async fn up_to_date() -> Result<(), ApiError> {
         setup_env();
+        let profile = "testprofile";
         let game = "morrowind";
         let upload_time = 1310405800;
         let mod_id = 39350;
         let _fair_magicka_regen_file_id = 82041;
 
-        let config = ConfigBuilder::default().profile(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(profile).build().unwrap();
         let logger = Logger::default();
         let cache = Cache::new(config.clone(), logger.clone()).await?;
         let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, logger);
 
-        let lock = cache.file_index.game_to_mods_map.read().await;
+        let lock = cache.file_index.by_game_and_mod_sorted.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
         let file_list = cache.file_lists.get(game, mod_id).await.unwrap();
@@ -366,6 +374,7 @@ mod tests {
     #[tokio::test]
     async fn out_of_date() -> Result<(), ApiError> {
         setup_env();
+        let profile = "testprofile";
         let game = "morrowind";
         let mod_id = 46599;
         let _graphic_herbalism_file_id = 1000014314;
@@ -374,27 +383,27 @@ mod tests {
         let latest_local_time = 1558643754;
         let latest_remote_time = 1558643755;
 
-        let config = ConfigBuilder::default().profile(game).build().unwrap();
+        let config = ConfigBuilder::default().profile(profile).build().unwrap();
         let logger = Logger::default();
         let cache = Cache::new(config.clone(), logger.clone()).await?;
         let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, logger);
 
-        let lock = cache.file_index.game_to_mods_map.read().await;
+        let lock = cache.file_index.by_game_and_mod_sorted.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
         let file_list = cache.file_lists.get(game, mod_id).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
 
-        for f in checked {
+        for (mfd, status) in checked {
             //println!("{}, {}", f.0.file_details.name, f.1.time());
-            match f {
-                (_, UpdateStatus::OutOfDate(t)) => {
+            match status {
+                UpdateStatus::OutOfDate(t) => {
                     assert_eq!(t, latest_local_time);
                     assert_eq!(newest_file_update, latest_remote_time);
                 }
-                (file, _) => {
-                    panic!("UpdateStatus should be OutOfDate: {}", file.file_details.as_ref().unwrap().name);
+                _ => {
+                    panic!("UpdateStatus should be OutOfDate for file with id: {}", mfd.file_id);
                 }
             }
         }

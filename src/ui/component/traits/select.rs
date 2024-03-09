@@ -1,4 +1,4 @@
-use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadTable, FileTable, LogList, PopupDialog};
+use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadTable, LogList, ModFilesTable, PopupDialog};
 
 macro_rules! impl_stateful {
     ($T:ty) => {
@@ -21,8 +21,8 @@ macro_rules! impl_stateful {
 impl_stateful!(ArchiveTable<'_>);
 impl_stateful!(ConfirmDialog<'_>);
 impl_stateful!(DownloadTable<'_>);
-impl_stateful!(FileTable<'_>);
 impl_stateful!(LogList<'_>);
+impl_stateful!(ModFilesTable<'_>);
 impl_stateful!(PopupDialog<'_>);
 
 pub trait Select {

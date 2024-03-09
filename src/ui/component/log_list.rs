@@ -31,6 +31,7 @@ impl<'a> LogList<'a> {
             Neighbors::default().left(Focused::FileTable).right(Focused::DownloadTable).up(Focused::FileTable),
         );
         neighbors.map.insert(Tab::Archives, Neighbors::default().up(Focused::ArchiveTable));
+        let widget = List::default().block(block.clone()).highlight_style(highlight_style.clone());
 
         Self {
             list_items: vec![],
@@ -39,7 +40,7 @@ impl<'a> LogList<'a> {
             block,
             state: ListState::default(),
             highlight_style,
-            widget: List::default(),
+            widget,
             needs_redraw: true,
             len: 0,
         }
@@ -50,29 +51,26 @@ impl<'a> LogList<'a> {
     pub async fn refresh(&mut self) -> bool {
         if self.logger.has_changed.swap(false, Ordering::Relaxed) {
             let mut msgs_lock = self.logger.messages.write().unwrap();
-            self.len += msgs_lock.len();
+            let new_msgs_len = msgs_lock.len();
             self.list_items
                 .append(&mut msgs_lock.drain(..).map(|msg| ListItem::new(Line::from(msg.to_owned()))).collect());
+            let old_last_index = self.len.checked_sub(1);
+            self.len = self.list_items.len();
 
-            if self.state.selected().is_none() && self.len > 0 || self.state.selected() == self.len.checked_sub(1) {
-                self.state.select(Some(self.len));
+            if self.state.selected().is_none() && self.len > 0 || self.state.selected() == old_last_index {
+                self.state.select(self.len.checked_sub(1));
             }
 
-            self.widget = List::new(self.list_items.clone())
-                .block(self.block.to_owned())
-                .highlight_style(self.highlight_style.to_owned());
-
+            self.widget = self.widget.clone().items(self.list_items.clone());
             return true;
         }
         false
     }
 
     pub fn remove(&mut self, i: usize) {
-        crate::logger::log_to_file(format!("selected before {:?} len {}", self.selected(), self.len));
         self.list_items.remove(i);
         self.len = self.len.saturating_sub(1);
         self.widget = self.widget.clone().items(self.list_items.clone());
         self.next();
-        crate::logger::log_to_file(format!("selected after {:?} len {}", self.selected(), self.len));
     }
 }

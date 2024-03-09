@@ -2,10 +2,11 @@ use crate::api::Queriable;
 use crate::cache::Cacheable;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileList {
-    pub files: Vec<FileDetails>,
+    pub files: Vec<Arc<FileDetails>>,
     pub file_updates: Vec<FileUpdate>,
 }
 

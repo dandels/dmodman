@@ -2,7 +2,7 @@ use super::component::traits::Select;
 use super::component::{ConfirmDialog, PopupDialog};
 use super::main_ui::*;
 use super::navigation::*;
-use crate::archives::InstallError;
+use crate::install::InstallError;
 use std::process::Command;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
@@ -41,7 +41,7 @@ impl MainUI<'_> {
         }
 
         if let Event::Key(Key::Char('q')) | Event::Key(Key::Ctrl('c')) = event {
-            if self.archives.extract_jobs.read().unwrap().is_empty() {
+            if self.installer.extract_jobs.read().await.is_empty() {
                 self.should_run = false;
             } else {
                 self.logger.log("Refusing to quit, archive extraction is still in progress.");
@@ -94,7 +94,9 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Alt(ch)) => {
                 if let Some(nr) = ch.to_digit(10) {
-                    if let Some(nr) = (nr as usize).checked_sub(1) { self.select_tab(nr); }
+                    if let Some(nr) = (nr as usize).checked_sub(1) {
+                        self.select_tab(nr);
+                    }
                 }
             }
             Event::Key(Key::Char('\t')) => {
@@ -128,42 +130,43 @@ impl MainUI<'_> {
         let key = if let Event::Key(key) = event { key } else { return };
 
         match key {
-            Key::Char('i') => {
-                if let Focused::FileTable = self.tabs.focused() {
-                    if let Some(i) = self.focused_widget().selected() {
-                        self.updater.ignore_file(i).await;
-                    }
-                }
-            }
-            Key::Char('U') => {
-                if let Some(i) = self.focused_widget().selected() {
-                    let (game, mod_id, files) = self.cache.file_index.get_game_mod_files_by_index(i).await;
-                    self.updater.update_mod(game, mod_id, files).await;
-                }
-            }
+            //Key::Char('i') => {
+            //    if let Focused::FileTable = self.tabs.focused() {
+            //        if let Some(i) = self.focused_widget().selected() {
+            //            self.updater.ignore_file(i).await;
+            //        }
+            //    }
+            //}
+            //Key::Char('U') => {
+            //    if let Some(i) = self.focused_widget().selected() {
+            //        let (game, mod_id, files) = self.cache.file_index.get_game_mod_files_by_index(i).await;
+            //        self.updater.update_mod(game, mod_id, files).await;
+            //    }
+            //}
             Key::Char('u') => {
                 self.updater.update_all().await;
             }
-            Key::Char('v') => {
-                if let Some(i) = self.focused_widget().selected() {
-                    let fd = self.cache.file_index.get_by_index(i).await;
-                    let url = format!("https://www.nexusmods.com/{}/mods/{}", fd.game, fd.mod_id);
-                    if Command::new("xdg-open").arg(url).status().is_err() {
-                        self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
-                    }
-                }
-            }
-            Key::Delete => {
-                // TODO handle deletion inside widget or something
-                if let Some(i) = self.focused_widget().selected() {
-                    if let Err(e) = self.cache.file_index.delete_by_index(i).await {
-                        self.logger.log(format!("Unable to delete file: {}", e));
-                    } else {
-                        self.focused_widget_mut().next();
-                        self.files_view.len = self.files_view.len.saturating_sub(1);
-                    }
-                }
-            }
+            //Key::Char('v') => {
+            //    if let Some(i) = self.focused_widget().selected() {
+            //        let fd = self.cache.file_index.get_by_index(i).await;
+            //        let url = format!("https://www.nexusmods.com/{}/mods/{}", fd.game, fd.mod_id);
+            //        if Command::new("xdg-open").arg(url).status().is_err() {
+            //            self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
+            //        }
+            //    }
+            //}
+            // Disabled during rewrite
+            //Key::Delete => {
+            //    // TODO handle deletion inside widget or something
+            //    if let Some(i) = self.focused_widget().selected() {
+            //        if let Err(e) = self.cache.file_index.delete_by_index(i).await {
+            //            self.logger.log(format!("Unable to delete file: {}", e));
+            //        } else {
+            //            self.focused_widget_mut().next();
+            //            self.files_view.len = self.files_view.len.saturating_sub(1);
+            //        }
+            //    }
+            //}
             _ => {}
         }
     }
@@ -197,32 +200,43 @@ impl MainUI<'_> {
         match key {
             Key::Char('\n') => {
                 if let Some(i) = self.focused_widget().selected() {
-                    let path = self.archives.files.read().await.get(i).unwrap().path();
-                    match self.archives.list_content(path.clone()).await {
-                        Ok(_) => {}
-                        Err(e) => {
-                            self.logger.log(format!("{:?}", e));
-                        }
-                    }
-                    let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+                    //let mfi = self.cache.file_index.get_by_index(i).await;
+                    let archive = self.cache.archives.get_by_index(i).await.unwrap();
                     let dialog_title = "Directory name".to_string();
                     let mut suggested_values = vec![];
-                    if let Some(fdata) = self.cache.file_index.get_by_filename(&file_name).await {
-                        if let Some(fd) = &fdata.file_details {
+                    if let Some(mfd) = self.cache.file_index.get_by_archive_name(&archive.file_name).await {
+                        let lock = mfd.file_details.read().await;
+                        if let Some(fd) = lock.as_ref() {
                             suggested_values.push(fd.name.clone());
                         }
-                        if let Some(modname) =
-                            self.cache.md5result.get(&fdata.game, fdata.file_id).await.and_then(|res| res.r#mod.name)
-                        {
-                            suggested_values.push(modname);
+                        let lock = mfd.md5results.read().await;
+                        if let Some(md5res) = lock.as_ref() {
+                            if let Some(modname) = &md5res.r#mod.name {
+                                suggested_values.push(modname.clone());
+                            }
                         }
                     } else {
-                        self.logger.log(format!("Warn: mod for {file_name} doesn't exist in db"));
-                        suggested_values.push(file_name);
+                        self.logger.log(format!("Warn: mod for {} doesn't exist in db", &archive.file_name));
+                        suggested_values.push(archive.file_name.to_string());
                     }
                     self.popup_dialog = PopupDialog::new(self.config.clone(), suggested_values, dialog_title);
                     self.input_mode = InputMode::ReadLine;
                     self.redraw_terminal = true;
+                }
+            }
+            Key::Char('L') => {
+                if let Some(i) = self.focused_widget().selected() {
+                    let archive = self.cache.archives.get_by_index(i).await.unwrap();
+                    match self.installer.list_content(&archive.file_name).await {
+                        Ok(content) => {
+                            for c in content {
+                                self.logger.log(format!("{}", c));
+                            }
+                        }
+                        Err(e) => {
+                            self.logger.log(format!("{:?}", e));
+                        }
+                    }
                 }
             }
             Key::Delete => {
@@ -261,7 +275,10 @@ impl MainUI<'_> {
                     if let 0 = self.confirm_dialog.selected().unwrap() {
                         let dest_dir = self.popup_dialog.get_content();
                         let index = self.archives_view.selected().unwrap();
-                        if let Err(e) = self.archives.extract(index, dest_dir.to_string(), true).await {
+                        let archive = self.cache.archives.get_by_index(index).await.unwrap();
+                        if let Err(e) =
+                            self.installer.extract(archive.file_name.clone(), dest_dir.to_string(), true).await
+                        {
                             self.logger.log(format!("Error when extracting: {e}"));
                         }
                         self.input_mode = InputMode::Normal;
@@ -288,17 +305,21 @@ impl MainUI<'_> {
                 Key::Char('\n') => {
                     let dest_dir = self.popup_dialog.get_content();
                     let index = self.archives_view.selected().unwrap();
-                    match self.archives.extract(index, dest_dir.to_string(), false).await {
-                        Ok(()) => self.input_mode = InputMode::Normal,
-                        Err(InstallError::AlreadyExists) => {
-                            self.confirm_dialog =
-                                // This should be handled somewhere else
-                                ConfirmDialog::new(" Target directory already exists. Overwrite? ".to_string());
-                            self.input_mode = InputMode::Confirm;
+                    if let Some(archive) = self.cache.archives.get_by_index(index).await {
+                        match self.installer.extract(archive.file_name.clone(), dest_dir.to_string(), false).await {
+                            Ok(()) => self.input_mode = InputMode::Normal,
+                            Err(InstallError::AlreadyExists) => {
+                                self.confirm_dialog =
+                                    // This should be handled somewhere else
+                                    ConfirmDialog::new(" Target directory already exists. Overwrite? ".to_string());
+                                self.input_mode = InputMode::Confirm;
+                            }
+                            Err(e) => {
+                                self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));
+                            }
                         }
-                        Err(e) => {
-                            self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));
-                        }
+                    } else {
+                        self.logger.log(format!("Archive to extract no longer exists."));
                     }
                 }
                 _ => {

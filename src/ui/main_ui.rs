@@ -2,9 +2,9 @@ use super::component::traits::*;
 use super::component::*;
 use super::navigation::*;
 use crate::api::{Client, Downloads, UpdateChecker};
-use crate::archives::Archives;
 use crate::cache::Cache;
 use crate::config::Config;
+use crate::install::Installer;
 use crate::ui::rectangles::{Layouts, Rectangles};
 use crate::ui::*;
 use crate::Logger;
@@ -21,7 +21,7 @@ pub enum InputMode {
 
 pub struct MainUI<'a> {
     // Structs handling app logic
-    pub archives: Archives,
+    pub installer: Installer,
     pub cache: Cache,
     pub config: Config,
     pub downloads: Downloads,
@@ -33,7 +33,7 @@ pub struct MainUI<'a> {
     pub archives_view: ArchiveTable<'a>,
     pub confirm_dialog: ConfirmDialog<'a>,
     pub downloads_view: DownloadTable<'a>,
-    pub files_view: FileTable<'a>,
+    pub files_view: ModFilesTable<'a>,
     pub hotkey_bar: HotkeyBar<'a>,
     pub log_view: LogList<'a>,
     pub popup_dialog: PopupDialog<'a>,
@@ -53,27 +53,27 @@ impl MainUI<'_> {
         config: Config,
         downloads: Downloads,
         logger: Logger,
-        archive: Archives,
+        installer: Installer,
     ) -> Self {
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), logger.clone());
 
         let tabs = Tabs::new();
 
-        let archives_view = ArchiveTable::new(archive.clone()).await;
+        let archives_view = ArchiveTable::new(cache.clone()).await;
         let bottom_bar = BottomBar::new(cache.clone(), tabs.focused().clone());
         let confirm_dialog = ConfirmDialog::default();
         let downloads_view = DownloadTable::new(downloads.clone());
-        let files_view = FileTable::new(cache.file_index.clone());
+        let files_view = ModFilesTable::new(cache.installed.clone());
         let hotkey_bar = HotkeyBar::new(tabs.focused().clone());
         let log_view = LogList::new(logger.clone());
         let popup_dialog = PopupDialog::default();
         let top_bar = TopBar::new(client.request_counter).await;
 
         Self {
-            archives: archive,
             cache,
             config,
             downloads,
+            installer,
             top_bar,
             hotkey_bar,
             archives_view,
@@ -123,7 +123,8 @@ impl MainUI<'_> {
             }
             self.redraw_terminal |= self.top_bar.refresh(&self.tabs).await;
             self.redraw_terminal |= self.hotkey_bar.refresh(&self.input_mode, self.tabs.focused()).await;
-            self.redraw_terminal |= self.bottom_bar.refresh(self.tabs.focused(), self.focused_widget().selected()).await;
+            self.redraw_terminal |=
+                self.bottom_bar.refresh(self.tabs.focused(), self.focused_widget().selected()).await;
             self.redraw_terminal |= self.log_view.refresh().await;
 
             let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
