@@ -1,7 +1,7 @@
 use crate::api::{FileDetails, Md5Results};
 use crate::api::{UpdateStatus, UpdateStatusWrapper};
 use crate::cache::{ArchiveFile, Cacheable};
-use crate::config::{Config, DataType};
+use crate::config::{Config, DataPath};
 use crate::install::InstalledMod;
 use crate::Logger;
 use std::collections::HashMap;
@@ -86,14 +86,14 @@ impl ModFileMetadata {
         for (_, archive) in self.mod_archives.write().await.iter() {
             if let Some(metadata) = &archive.mod_data {
                 metadata.update_status.set(status.clone());
-                if let Err(e) = metadata.save_changes(config.path_for(DataType::ArchiveMetadata(&archive))).await {
+                if let Err(e) = metadata.save_changes(DataPath::ArchiveMetadata(&config, &archive.file_name).into()).await {
                     logger.log(format!("Couldn't save UpdateStatus for {}: {}", archive.file_name, e));
                 }
             }
         }
         for (dir_name, installed) in self.installed_mods.write().await.iter() {
             installed.update_status.set(status.clone());
-            if let Err(e) = installed.save_changes(config.path_for(DataType::InstalledMod(dir_name))).await {
+            if let Err(e) = installed.save_changes(DataPath::InstalledMod(&config, dir_name).into()).await {
                 logger.log(format!("Couldn't save UpdateStatus for {}: {}", dir_name, e));
             }
         }

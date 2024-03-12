@@ -70,7 +70,7 @@ impl Cache {
         mod_id: u32,
         file_id: u64,
     ) -> Result<(), CacheError> {
-        let path = self.config.path_for(DataType::DownloadLink(game, mod_id, file_id));
+        let path = DataPath::DownloadLink(&self.config, game, mod_id, file_id).into();
         dl.save(path).await?;
         Ok(())
     }
@@ -125,7 +125,7 @@ impl Cache {
     }
 
     pub async fn save_file_list(&self, fl: Arc<FileList>, game: &str, mod_id: u32) -> Result<(), CacheError> {
-        let path = self.config.path_for(DataType::FileList(game, mod_id));
+        let path = DataPath::FileList(&self.config, game, mod_id).into();
 
         fl.save_compressed(path).await?;
         self.file_lists.insert((game, mod_id), fl).await;
@@ -134,7 +134,7 @@ impl Cache {
 
     pub async fn save_md5result(&self, res: &Md5Results) {
         let game = &res.r#mod.domain_name;
-        let path = self.config.path_for(DataType::Md5Results(game, res.file_details.file_id));
+        let path = DataPath::Md5Results(&self.config, game, res.file_details.file_id).into();
         if let Err(e) = res.save_compressed(path).await {
             self.logger.log(format!("Failed to save Md5Search to disk: {e}"));
         }
