@@ -13,7 +13,7 @@ pub use self::nxm_url::*;
 use crate::api::query::{DownloadLink, FileList, Md5Search, Queriable};
 use crate::api::{ApiError, Client, UpdateStatus};
 use crate::cache::{ArchiveFile, ArchiveMetadata, Cache, Cacheable};
-use crate::config::{Config, DataType};
+use crate::config::{Config, DataPath};
 use crate::{util, Logger};
 
 use std::ffi::OsStr;
@@ -100,7 +100,7 @@ impl Downloads {
                     if let Err(()) = task.start().await {
                         self.logger.log(format!("Failed to restart download for {}", &file_name));
                     }
-                    if let Err(e) = task.dl_info.save(self.config.path_for(DataType::DownloadInfo(&task.dl_info))).await
+                    if let Err(e) = task.dl_info.save(DataPath::DownloadInfo(&self.config, &task.dl_info).into()).await
                     {
                         self.logger.log(format!("Couldn't store new download url for {}: {}", &file_name, e));
                     }
@@ -216,19 +216,20 @@ impl Downloads {
             }
         }
 
-        let archive_metadata = Arc::new(ArchiveMetadata::new(fi.clone(), UpdateStatus::UpToDate(latest_timestamp)));
+        let metadata = Arc::new(ArchiveMetadata::new(fi.clone(), UpdateStatus::UpToDate(latest_timestamp)));
         let path = self.config.download_dir().join(&fi.file_name);
         // Failing this would mean that the just downloaded file is inaccessible
         if let Some(archive) =
-            ArchiveFile::new(&self.logger, &self.cache.installed, &path, Some(archive_metadata.clone())).await
+            ArchiveFile::new(&self.logger, &self.cache.installed, &path, Some(metadata.clone())).await
         {
-            let archive = Arc::new(archive);
-            self.verify_hash(&archive_metadata).await;
-            if let Err(e) = archive_metadata.save(self.config.path_for(DataType::ArchiveMetadata(&archive))).await {
+            self.verify_hash(&metadata).await;
+            if let Err(e) =
+                metadata.save(DataPath::ArchiveMetadata(&self.config, &archive.file_name).into()).await
+            {
                 self.logger.log(format!("Unable to save metadata for {}: {e}", &fi.file_name));
             }
-            self.cache.archives.add(archive.clone()).await;
-            self.cache.file_index.try_add_mod_archive(archive.into()).await;
+            let entry = ArchiveEntry::File(Arc::new(archive));
+            self.cache.archives.add_archive(entry.clone()).await;
         }
         Ok(())
     }

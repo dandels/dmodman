@@ -64,7 +64,7 @@ where
 mod tests {
     use super::Cacheable;
     use crate::api::{ApiError, FileList, ModInfo};
-    use crate::config::{ConfigBuilder, DataType};
+    use crate::config::{ConfigBuilder, DataPath};
     use crate::Logger;
 
     #[tokio::test]
@@ -74,7 +74,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::load(Logger::default()).unwrap().profile(profile).build().unwrap();
-        let path = config.path_for(DataType::ModInfo(game, mod_id));
+        let path = DataPath::ModInfo(&config, game, mod_id).into();
         println!("{:?}", path);
 
         let mi: ModInfo = ModInfo::load(path).await?;
@@ -89,7 +89,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::default().profile(profile).build().unwrap();
-        let path = config.path_for(DataType::FileList(game, mod_id));
+        let path = DataPath::FileList(&config, game, mod_id).into();
 
         let fl = FileList::load(path).await?;
         let mut upds = fl.file_updates.clone();

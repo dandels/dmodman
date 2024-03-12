@@ -98,7 +98,7 @@ impl Installer {
                     }
                     None => InstalledMod::new(&archive_file, &None).await,
                 };
-                if let Err(e) = im.save(self.config.path_for(DataType::InstalledMod(&dest_dir_name))).await {
+                if let Err(e) = im.save(DataPath::InstalledMod(&self.config, &dest_dir_name).into()).await {
                     self.logger.log(format!("Failed to save metadata for extracted directory {}, {e}", &dest_dir_name));
                 }
 

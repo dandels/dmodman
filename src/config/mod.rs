@@ -2,7 +2,7 @@ pub mod config_error;
 pub mod paths;
 
 pub use config_error::ConfigError;
-pub use paths::DataType;
+pub use paths::DataPath;
 
 use super::Logger;
 use crate::util;
@@ -43,6 +43,8 @@ pub struct Profile {
     pub download_dir: Option<PathBuf>,
     pub install_dir: Option<PathBuf>,
 }
+
+const DEFAULT_PROFILE_NAME: &str = "default";
 
 impl ConfigBuilder {
     pub fn load(logger: Logger) -> Result<Self, ConfigError> {
@@ -109,7 +111,7 @@ impl ConfigBuilder {
                         self.download_dir = Some(default_download_dir().join(selected_profile));
                     }
                     if profile.install_dir.is_none() && self.install_dir.is_none() {
-                        self.install_dir = Some(default_install_dir().join(selected_profile));
+                        self.install_dir = Some(install_dir_for_profile(selected_profile));
                     }
                 }
                 None => {
@@ -119,7 +121,7 @@ impl ConfigBuilder {
                     };
                     self.install_dir = match self.install_dir {
                         Some(ins) => Some(ins.join(selected_profile)),
-                        None => Some(default_install_dir().join(selected_profile)),
+                        None => Some(install_dir_for_profile(selected_profile)),
                     }
                 }
             },
@@ -128,7 +130,7 @@ impl ConfigBuilder {
                     self.download_dir = Some(default_download_dir());
                 }
                 if self.install_dir.is_none() {
-                    self.install_dir = Some(default_install_dir());
+                    self.install_dir = Some(install_dir_for_profile(DEFAULT_PROFILE_NAME));
                 }
             }
         }
@@ -159,8 +161,8 @@ pub fn default_download_dir() -> PathBuf {
     xdg_download_dir().join(env!("CARGO_CRATE_NAME"))
 }
 
-pub fn default_install_dir() -> PathBuf {
-    xdg_data_dir().join(env!("CARGO_CRATE_NAME")).join("install")
+pub fn install_dir_for_profile(profile: &str) -> PathBuf {
+    xdg_data_dir().join(env!("CARGO_CRATE_NAME")).join("profiles").join(profile).join("install")
 }
 
 #[derive(Clone)]
@@ -218,6 +220,18 @@ impl Config {
         path.push(env!("CARGO_CRATE_NAME"));
         path.push(&self.profile);
         path
+    }
+
+    pub fn metadata_for_profile(&self) -> PathBuf {
+        let mut path = self.data_dir();
+        path.push("profiles");
+        path.push(&self.profile);
+        path.push("metadata");
+        path
+    }
+
+    pub fn metadata_dir(&self) -> PathBuf {
+        self.data_dir().join("metadata")
     }
 
     pub fn data_dir(&self) -> PathBuf {
@@ -344,7 +358,10 @@ pub mod tests {
         let config = ConfigBuilder::default().build()?;
         println!("dirs {:?}", dirs::download_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/Downloads/dmodman"), config.download_dir());
-        assert_eq!(PathBuf::from("/home/dmodman_test/.local/share/dmodman/install"), config.install_dir());
+        assert_eq!(
+            PathBuf::from("/home/dmodman_test/.local/share/dmodman/profiles/default/install"),
+            config.install_dir()
+        );
         Ok(())
     }
 

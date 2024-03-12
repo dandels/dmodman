@@ -1,7 +1,7 @@
 use super::DownloadState;
 use super::{Client, DownloadInfo, DownloadProgress, Downloads};
 use crate::cache::{Cache, Cacheable};
-use crate::config::{Config, DataType};
+use crate::config::{Config, DataPath};
 use crate::Logger;
 
 use std::fmt::{Debug, Display};
@@ -242,7 +242,7 @@ impl DownloadTask {
     }
 
     async fn save_dl_info(&self) {
-        if let Err(e) = self.dl_info.save(self.config.path_for(DataType::DownloadInfo(&self.dl_info))).await {
+        if let Err(e) = self.dl_info.save(DataPath::DownloadInfo(&self.config, &self.dl_info).into()).await {
             self.logger
                 .log(format!("Error when saving download state for {}: {}", self.dl_info.file_info.file_name, e));
         }

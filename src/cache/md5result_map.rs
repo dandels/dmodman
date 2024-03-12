@@ -1,6 +1,6 @@
 use super::Cacheable;
 use crate::api::Md5Results;
-use crate::config::DataType;
+use crate::config::DataPath;
 use crate::{Config, Logger};
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -35,7 +35,7 @@ impl Md5ResultMap {
         let mut lock = self.map.write().await;
         match lock.get(&(game.clone(), file_id)).cloned() {
             Some(fl) => fl,
-            None => match Md5Results::load(self.config.path_for(DataType::Md5Results(&game, file_id))).await {
+            None => match Md5Results::load(DataPath::Md5Results(&self.config, &game, file_id).into()).await {
                 Ok(res) => {
                     let res = Arc::new(res);
                     lock.insert((game, file_id), Some(res.clone()));
