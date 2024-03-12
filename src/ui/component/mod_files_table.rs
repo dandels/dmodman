@@ -1,17 +1,19 @@
 use super::common::*;
-use crate::api::UpdateStatus;
 use crate::cache::Installed;
+use crate::install::ModDirectory;
 use crate::ui::navigation::*;
+use indexmap::IndexMap;
 use ratatui::layout::Constraint;
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Style;
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 use std::sync::atomic::Ordering;
-use crate::install::ModDirectory;
+use std::sync::Arc;
 
-pub struct ModFilesTable<'a> {
+pub struct InstalledModsTable<'a> {
     headers: Row<'a>,
     widths: [Constraint; 3],
+    pub currently_shown: IndexMap<String, Arc<ModDirectory>>,
     pub installed: Installed,
     pub neighbors: NeighboringWidgets,
     pub block: Block<'a>,
@@ -21,9 +23,9 @@ pub struct ModFilesTable<'a> {
     pub len: usize,
 }
 
-impl<'a> ModFilesTable<'a> {
+impl<'a> InstalledModsTable<'a> {
     pub fn new(installed: Installed) -> Self {
-        let block = DEFAULT_BLOCK.title(" Files ").border_style(BLOCK_STYLE);
+        let block = DEFAULT_BLOCK.title(" Installed ").border_style(BLOCK_STYLE);
         let widths = [
             Constraint::Ratio(9, 12),
             Constraint::Ratio(1, 12),
@@ -44,6 +46,7 @@ impl<'a> ModFilesTable<'a> {
         Self {
             headers,
             widths,
+            currently_shown: IndexMap::new(),
             installed,
             neighbors,
             block,
@@ -58,30 +61,16 @@ impl<'a> ModFilesTable<'a> {
         if self.installed.has_changed.swap(false, Ordering::Relaxed) {
             let mut rows: Vec<Row> = vec![];
             let lock = self.installed.mods.read().await;
+            self.currently_shown = lock.clone();
             for (i, (dir_name, dir_type)) in lock.iter().enumerate() {
-                let row =
-                    match dir_type.as_ref() {
-                        ModDirectory::Nexus(im) => {
-                            Row::new(vec![
-                                Cell::new(Span::raw(dir_name.clone())),
-                                //Cell::from(fdata.md5results.as_ref().and_then(|res| res.r#mod.name.clone()).unwrap_or("".to_string())),
-                                Cell::from(
-                                    Text::from(
-                                        match im.update_status.to_enum() {
-                                            UpdateStatus::OutOfDate(_) => Span::from("!").red(),
-                                            UpdateStatus::UpToDate(_) => Span::from(""),
-                                            UpdateStatus::IgnoredUntil(_) => Span::from(""),
-                                            UpdateStatus::HasNewFile(_) => Span::from("+").yellow(),
-                                            UpdateStatus::Invalid(_) => Span::from("?").yellow(),
-                                        }
-                                    )
-                                    .centered(),
-                                ),
-                                Cell::from(Text::from(im.version.as_ref().map(|v| v.to_string()).unwrap_or("".to_string()))),
-                            ])
-                        }
-                        ModDirectory::Unknown => Row::new(vec![Span::raw(format!("unknown {}", &dir_name))]),
-                    }
+                let row = match dir_type.as_ref() {
+                    ModDirectory::Nexus(im) => Row::new(vec![
+                        Cell::new(Span::raw(dir_name.clone())),
+                        Cell::from(format_update_status_flags(&im.update_status)),
+                        Cell::from(Text::from(im.version.as_ref().map(|v| v.to_string()).unwrap_or("".to_string()))),
+                    ]),
+                    ModDirectory::Unknown => Row::new(vec![Span::raw(format!("unknown {}", &dir_name))]),
+                }
                 .style(LIST_STYLES[i % 2]);
                 rows.push(row);
             }
@@ -95,5 +84,14 @@ impl<'a> ModFilesTable<'a> {
             return true;
         }
         false
+    }
+
+    pub fn get_by_index(&self, index: usize) -> (&String, &Arc<ModDirectory>) {
+        self.currently_shown.get_index(index).unwrap()
+    }
+
+    pub async fn delete_by_index(&self, index: usize) {
+        let (dir_name, _) = self.get_by_index(index);
+        self.installed.delete(dir_name).await;
     }
 }

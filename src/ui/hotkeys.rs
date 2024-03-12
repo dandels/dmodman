@@ -2,11 +2,19 @@ use super::component::traits::Select;
 use super::component::{ConfirmDialog, PopupDialog};
 use super::main_ui::*;
 use super::navigation::*;
-use crate::install::InstallError;
+use crate::install::{InstallError, ModDirectory};
 use std::process::Command;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
-pub const ARCHIVES_KEYS: &[(&str, &str)] = &[("<Return>", "install "), ("<Del>", "delete "), ("<q>", "quit ")];
+pub const ARCHIVES_KEYS: &[(&str, &str)] = &[
+    ("<Return>", "install "),
+    ("<u>", "update all "),
+    ("<U>", "update selected "),
+    ("<i>", "ignore update "),
+    ("<v>", "visit on Nexus "),
+    ("<Del>", "delete "),
+    ("<q>", "quit "),
+];
 pub const DOWNLOADS_KEYS: &[(&str, &str)] = &[("<p>", "pause/resume "), ("<Del>", "delete "), ("<q>", "quit ")];
 pub const FILES_KEYS: &[(&str, &str)] = &[
     ("<u>", "update all "),
@@ -105,14 +113,111 @@ impl MainUI<'_> {
             Event::Key(Key::BackTab) => {
                 self.previous_tab();
             }
+            Event::Key(Key::Char('v')) => {
+                if let Some(i) = self.focused_widget().selected() {
+                    let mut args: Option<(String, u32)> = None;
+                    match self.tabs.focused() {
+                        Focused::ArchiveTable => {
+                            if let Some(metadata) = &self.archives_view.get_by_index(i).1.metadata() {
+                                args = Some((metadata.game.clone(), metadata.mod_id));
+                            }
+                        }
+                        Focused::InstalledMods => {
+                            let (_, md) = self.installed_mods_table.get_by_index(i);
+                            if let ModDirectory::Nexus(im) = md.as_ref() {
+                                args = Some((im.game.clone(), im.mod_id))
+                            }
+                        }
+                        _ => {
+                            return;
+                        }
+                    }
+                    if let Some((game, mod_id)) = args {
+                        let url = format!("https://www.nexusmods.com/{}/mods/{}", game, mod_id);
+                        if Command::new("xdg-open").arg(url).status().is_err() {
+                            self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
+                        }
+                    }
+                }
+            }
+            Event::Key(Key::Delete) => {
+                if let Some(i) = self.focused_widget().selected() {
+                    match self.tabs.focused() {
+                        Focused::ArchiveTable => {
+                            self.archives_view.delete_by_index(i).await;
+                        }
+                        Focused::InstalledMods => {
+                            self.installed_mods_table.delete_by_index(i).await;
+                        }
+                        Focused::LogList => {
+                            self.log_view.delete_selected();
+                        }
+                        Focused::DownloadTable => {
+                            self.downloads_view.delete_by_index(i).await;
+                            self.downloads_view.len = self.downloads_view.len.saturating_sub(1);
+                        }
+                    }
+                    // Ensure selected index isn't out of bounds after deletion
+                    self.focused_widget_mut().select(Some(i));
+                }
+            }
+            Event::Key(Key::Char('i')) => {
+                if let Some(i) = self.focused_widget().selected() {
+                    match self.tabs.focused() {
+                        Focused::ArchiveTable => {
+                            let (_, archive) = self.archives_view.get_by_index(i);
+                            if let Some(metadata) = archive.metadata() {
+                                self.updater.ignore_file(metadata.file_id).await;
+                            }
+                        }
+                        Focused::InstalledMods => {
+                            let (_, mod_dir) = self.installed_mods_table.get_by_index(i);
+                            if let ModDirectory::Nexus(im) = mod_dir.as_ref() {
+                                self.updater.ignore_file(im.file_id).await;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Event::Key(Key::Char('U')) => {
+                if let Some(i) = self.focused_widget().selected() {
+                    match self.tabs.focused() {
+                        Focused::ArchiveTable => {
+                            let (_, archive) = self.archives_view.get_by_index(i);
+                            if let Some(metadata) = archive.metadata() {
+                                if let Some(files) =
+                                    self.cache.metadata_index.get_modfiles(&metadata.game, &metadata.mod_id).await
+                                {
+                                    self.updater.update_mod(metadata.game.clone(), metadata.mod_id, files).await;
+                                }
+                            }
+                        }
+                        Focused::InstalledMods => {
+                            let (_, mod_dir) = self.installed_mods_table.get_by_index(i);
+                            if let ModDirectory::Nexus(im) = mod_dir.as_ref() {
+                                if let Some(files) = self.cache.metadata_index.get_modfiles(&im.game, &im.mod_id).await
+                                {
+                                    self.updater.update_mod(im.game.clone(), im.mod_id, files).await;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Event::Key(Key::Char('u')) => {
+                self.updater.update_all().await;
+            }
+
             _ => {
                 // Uncomment to log keypresses
                 //self.logger.log(format!("{:?}", key));
             }
         }
         match self.tabs.focused() {
-            Focused::FileTable => {
-                self.handle_files_keys(event).await;
+            Focused::InstalledMods => {
+                // no keys to handle
             }
             Focused::DownloadTable => {
                 self.handle_downloads_keys(event).await;
@@ -121,53 +226,8 @@ impl MainUI<'_> {
                 self.handle_archives_keys(event).await;
             }
             Focused::LogList => {
-                self.handle_log_keys(event).await;
+                // no keys to handle
             }
-        }
-    }
-
-    async fn handle_files_keys(&mut self, event: Event) {
-        let key = if let Event::Key(key) = event { key } else { return };
-
-        match key {
-            //Key::Char('i') => {
-            //    if let Focused::FileTable = self.tabs.focused() {
-            //        if let Some(i) = self.focused_widget().selected() {
-            //            self.updater.ignore_file(i).await;
-            //        }
-            //    }
-            //}
-            //Key::Char('U') => {
-            //    if let Some(i) = self.focused_widget().selected() {
-            //        let (game, mod_id, files) = self.cache.file_index.get_game_mod_files_by_index(i).await;
-            //        self.updater.update_mod(game, mod_id, files).await;
-            //    }
-            //}
-            Key::Char('u') => {
-                self.updater.update_all().await;
-            }
-            //Key::Char('v') => {
-            //    if let Some(i) = self.focused_widget().selected() {
-            //        let fd = self.cache.file_index.get_by_index(i).await;
-            //        let url = format!("https://www.nexusmods.com/{}/mods/{}", fd.game, fd.mod_id);
-            //        if Command::new("xdg-open").arg(url).status().is_err() {
-            //            self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
-            //        }
-            //    }
-            //}
-            // Disabled during rewrite
-            //Key::Delete => {
-            //    // TODO handle deletion inside widget or something
-            //    if let Some(i) = self.focused_widget().selected() {
-            //        if let Err(e) = self.cache.file_index.delete_by_index(i).await {
-            //            self.logger.log(format!("Unable to delete file: {}", e));
-            //        } else {
-            //            self.focused_widget_mut().next();
-            //            self.files_view.len = self.files_view.len.saturating_sub(1);
-            //        }
-            //    }
-            //}
-            _ => {}
         }
     }
 
@@ -182,14 +242,6 @@ impl MainUI<'_> {
                     }
                 }
             }
-            Key::Delete => {
-                // TODO handle deletion somewhere cleaner
-                if let Some(i) = self.focused_widget().selected() {
-                    self.downloads_view.downloads.delete(i).await;
-                    self.downloads_view.len = self.downloads_view.len.saturating_sub(1);
-                    self.focused_widget_mut().next();
-                }
-            }
             _ => {}
         }
     }
@@ -201,23 +253,21 @@ impl MainUI<'_> {
             Key::Char('\n') => {
                 if let Some(i) = self.focused_widget().selected() {
                     //let mfi = self.cache.file_index.get_by_index(i).await;
-                    let archive = self.cache.archives.get_by_index(i).await.unwrap();
+                    let (file_name, archive) = self.archives_view.get_by_index(i);
                     let dialog_title = "Directory name".to_string();
                     let mut suggested_values = vec![];
-                    if let Some(mfd) = self.cache.file_index.get_by_archive_name(&archive.file_name).await {
-                        let lock = mfd.file_details.read().await;
-                        if let Some(fd) = lock.as_ref() {
-                            suggested_values.push(fd.name.clone());
+                    if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(&file_name).await {
+                        if let Some(name) = mfd.name().await {
+                            suggested_values.push(name);
                         }
-                        let lock = mfd.md5results.read().await;
-                        if let Some(md5res) = lock.as_ref() {
-                            if let Some(modname) = &md5res.r#mod.name {
-                                suggested_values.push(modname.clone());
-                            }
+                        if let Some(modname) = mfd.mod_name().await {
+                            suggested_values.push(modname.clone());
                         }
                     } else {
-                        self.logger.log(format!("Warn: mod for {} doesn't exist in db", &archive.file_name));
-                        suggested_values.push(archive.file_name.to_string());
+                        self.logger.log(format!("Warn: mod for {} doesn't exist in db", &file_name));
+                    }
+                    if suggested_values.is_empty() {
+                        suggested_values.push(archive.file_name().clone());
                     }
                     self.popup_dialog = PopupDialog::new(self.config.clone(), suggested_values, dialog_title);
                     self.input_mode = InputMode::ReadLine;
@@ -226,8 +276,8 @@ impl MainUI<'_> {
             }
             Key::Char('L') => {
                 if let Some(i) = self.focused_widget().selected() {
-                    let archive = self.cache.archives.get_by_index(i).await.unwrap();
-                    match self.installer.list_content(&archive.file_name).await {
+                    let (_file_name, archive) = self.archives_view.get_by_index(i);
+                    match self.installer.list_content(&archive.file_name()).await {
                         Ok(content) => {
                             for c in content {
                                 self.logger.log(format!("{}", c));
@@ -237,23 +287,6 @@ impl MainUI<'_> {
                             self.logger.log(format!("{:?}", e));
                         }
                     }
-                }
-            }
-            Key::Delete => {
-                self.logger.log("Not implemented.");
-            }
-            _ => {}
-        }
-    }
-
-    async fn handle_log_keys(&mut self, event: Event) {
-        let key = if let Event::Key(key) = event { key } else { return };
-
-        #[allow(clippy::single_match)]
-        match key {
-            Key::Delete => {
-                if let Some(i) = self.focused_widget().selected() {
-                    self.log_view.remove(i);
                 }
             }
             _ => {}
@@ -275,11 +308,9 @@ impl MainUI<'_> {
                     if let 0 = self.confirm_dialog.selected().unwrap() {
                         let dest_dir = self.popup_dialog.get_content();
                         let index = self.archives_view.selected().unwrap();
-                        let archive = self.cache.archives.get_by_index(index).await.unwrap();
-                        if let Err(e) =
-                            self.installer.extract(archive.file_name.clone(), dest_dir.to_string(), true).await
-                        {
-                            self.logger.log(format!("Error when extracting: {e}"));
+                        let (file_name, _archive) = self.archives_view.get_by_index(index);
+                        if let Err(e) = self.installer.extract(file_name, dest_dir.to_string(), true).await {
+                            self.logger.log(format!("Error when extracting {file_name}: {e}"));
                         }
                         self.input_mode = InputMode::Normal;
                     } else {
@@ -305,21 +336,18 @@ impl MainUI<'_> {
                 Key::Char('\n') => {
                     let dest_dir = self.popup_dialog.get_content();
                     let index = self.archives_view.selected().unwrap();
-                    if let Some(archive) = self.cache.archives.get_by_index(index).await {
-                        match self.installer.extract(archive.file_name.clone(), dest_dir.to_string(), false).await {
-                            Ok(()) => self.input_mode = InputMode::Normal,
-                            Err(InstallError::AlreadyExists) => {
-                                self.confirm_dialog =
-                                    // This should be handled somewhere else
-                                    ConfirmDialog::new(" Target directory already exists. Overwrite? ".to_string());
-                                self.input_mode = InputMode::Confirm;
-                            }
-                            Err(e) => {
-                                self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));
-                            }
+                    let (file_name, _archive) = self.archives_view.get_by_index(index);
+                    match self.installer.extract(file_name, dest_dir.to_string(), false).await {
+                        Ok(()) => self.input_mode = InputMode::Normal,
+                        Err(InstallError::AlreadyExists) => {
+                            self.confirm_dialog =
+                                // This should be handled somewhere else
+                                ConfirmDialog::new(" Target directory already exists. Overwrite? ".to_string());
+                            self.input_mode = InputMode::Confirm;
                         }
-                    } else {
-                        self.logger.log(format!("Archive to extract no longer exists."));
+                        Err(e) => {
+                            self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));
+                        }
                     }
                 }
                 _ => {

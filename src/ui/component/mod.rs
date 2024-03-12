@@ -16,6 +16,6 @@ pub use confirm_dialog::ConfirmDialog;
 pub use download_table::DownloadTable;
 pub use hotkey_bar::HotkeyBar;
 pub use log_list::LogList;
-pub use mod_files_table::ModFilesTable;
+pub use mod_files_table::InstalledModsTable;
 pub use popup_dialog::PopupDialog;
 pub use topbar::TopBar;

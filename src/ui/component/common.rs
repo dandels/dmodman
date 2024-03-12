@@ -1,4 +1,5 @@
-use ratatui::style::{Color, Modifier, Style};
+use crate::api::{UpdateStatus, UpdateStatusWrapper};
+use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Borders, Padding};
 
@@ -16,4 +17,15 @@ pub const LIST_STYLES: &[Style] = &[LISTITEM_ALTERNATE_STYLE, LISTITEM_STYLE];
 
 pub fn header_text(name: &str) -> Text<'_> {
     Text::from(Span::from(name).style(HEADER_STYLE))
+}
+
+pub fn format_update_status_flags<'a>(update_status: &UpdateStatusWrapper) -> Text<'a> {
+    Text::from(match update_status.to_enum() {
+        UpdateStatus::OutOfDate(_) => Span::from("!").red(),
+        UpdateStatus::UpToDate(_) => Span::from(""),
+        UpdateStatus::IgnoredUntil(_) => Span::from(""),
+        UpdateStatus::HasNewFile(_) => Span::from("+").yellow(),
+        UpdateStatus::Invalid(_) => Span::from("?").yellow(),
+    })
+    .centered()
 }

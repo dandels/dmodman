@@ -1,5 +1,5 @@
 use crate::ui::component::common::*;
-use crate::ui::component::{ArchiveTable, DownloadTable, ModFilesTable, LogList};
+use crate::ui::component::{ArchiveTable, DownloadTable, InstalledModsTable, LogList};
 use ratatui::style::Style;
 
 macro_rules! impl_highlight {
@@ -24,7 +24,7 @@ macro_rules! impl_highlight {
 
 impl_highlight!(ArchiveTable<'_>);
 impl_highlight!(DownloadTable<'_>);
-impl_highlight!(ModFilesTable<'_>);
+impl_highlight!(InstalledModsTable<'_>);
 impl_highlight!(LogList<'_>);
 
 pub trait Highlight {

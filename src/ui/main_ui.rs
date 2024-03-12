@@ -33,7 +33,7 @@ pub struct MainUI<'a> {
     pub archives_view: ArchiveTable<'a>,
     pub confirm_dialog: ConfirmDialog<'a>,
     pub downloads_view: DownloadTable<'a>,
-    pub files_view: ModFilesTable<'a>,
+    pub installed_mods_table: InstalledModsTable<'a>,
     pub hotkey_bar: HotkeyBar<'a>,
     pub log_view: LogList<'a>,
     pub popup_dialog: PopupDialog<'a>,
@@ -63,7 +63,7 @@ impl MainUI<'_> {
         let bottom_bar = BottomBar::new(cache.clone(), tabs.focused().clone());
         let confirm_dialog = ConfirmDialog::default();
         let downloads_view = DownloadTable::new(downloads.clone());
-        let files_view = ModFilesTable::new(cache.installed.clone());
+        let files_view = InstalledModsTable::new(cache.installed.clone());
         let hotkey_bar = HotkeyBar::new(tabs.focused().clone());
         let log_view = LogList::new(logger.clone());
         let popup_dialog = PopupDialog::default();
@@ -77,7 +77,7 @@ impl MainUI<'_> {
             top_bar,
             hotkey_bar,
             archives_view,
-            files_view,
+            installed_mods_table: files_view,
             downloads_view,
             log_view,
             bottom_bar,
@@ -96,7 +96,7 @@ impl MainUI<'_> {
      * Redrawing the terminal is CPU intensive - locks and atomics are used to ensure it's done only when necessary. */
     pub async fn run(mut self) {
         let mut events = Events::new();
-        self.files_view.add_highlight();
+        self.installed_mods_table.add_highlight();
         // X11 (and maybe Wayland?) sends SIGWINCH when the window is resized
         // Set to true so rectangles are calculated on first loop
         let got_sigwinch = Arc::new(AtomicBool::new(true));
@@ -116,7 +116,7 @@ impl MainUI<'_> {
         while self.should_run {
             // set redraw_terminal to true if any of the widgets have changed
             if self.tabs.selected().unwrap() == 0 {
-                self.redraw_terminal |= self.files_view.refresh().await;
+                self.redraw_terminal |= self.installed_mods_table.refresh().await;
                 self.redraw_terminal |= self.downloads_view.refresh().await;
             } else if self.tabs.selected().unwrap() == 1 {
                 self.redraw_terminal |= self.archives_view.refresh().await;
@@ -124,7 +124,7 @@ impl MainUI<'_> {
             self.redraw_terminal |= self.top_bar.refresh(&self.tabs).await;
             self.redraw_terminal |= self.hotkey_bar.refresh(&self.input_mode, self.tabs.focused()).await;
             self.redraw_terminal |=
-                self.bottom_bar.refresh(self.tabs.focused(), self.focused_widget().selected()).await;
+                self.bottom_bar.refresh(&self.archives_view, &self.installed_mods_table, self.tabs.focused(), self.focused_widget().selected()).await;
             self.redraw_terminal |= self.log_view.refresh().await;
 
             let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
@@ -147,9 +147,9 @@ impl MainUI<'_> {
                             InputMode::Normal => {
                                 if let Tab::Main = self.tabs.selected().unwrap().into() {
                                     frame.render_stateful_widget(
-                                        &self.files_view.widget,
+                                        &self.installed_mods_table.widget,
                                         rectangles.main_horizontal[0],
-                                        &mut self.files_view.state,
+                                        &mut self.installed_mods_table.state,
                                     );
                                     frame.render_stateful_widget(
                                         &self.downloads_view.widget,

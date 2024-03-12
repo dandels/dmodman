@@ -1,7 +1,8 @@
+use super::{ArchiveTable, InstalledModsTable};
 use crate::api::UpdateStatus;
-use crate::cache::Cache;
 use crate::install::ModDirectory;
 use crate::ui::navigation::Focused;
+use crate::Cache;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -23,15 +24,25 @@ impl<'a> BottomBar<'a> {
         }
     }
 
-    pub async fn refresh(&mut self, focused: &Focused, focused_index: Option<usize>) -> bool {
+    pub async fn refresh(
+        &mut self,
+        archives: &ArchiveTable<'_>,
+        installed: &InstalledModsTable<'_>,
+        focused: &Focused,
+        focused_index: Option<usize>,
+    ) -> bool {
         if *focused != self.prev_focused || !focused_index.eq(&self.prev_selected_index) {
             if let Some(focused_index) = focused_index {
                 match focused {
-                    Focused::FileTable => {
-                        let (_, mod_dir) = self.cache.installed.get_by_index(focused_index).await.unwrap();
+                    Focused::InstalledMods => {
+                        let (_, mod_dir) = installed.get_by_index(focused_index);
                         let style_outofdate = Style::default().fg(Color::Red);
                         let style_hasnewfile = Style::default().fg(Color::Yellow);
                         if let ModDirectory::Nexus(im) = mod_dir.as_ref() {
+                            let modname = im.mod_name.as_ref().and_then(|name| {
+                                Some(StatusField::new("Mod", name.clone()).style(Style::default().fg(Color::White)))
+                            });
+
                             let flags = match im.update_status.to_enum() {
                                 UpdateStatus::OutOfDate(_) => {
                                     Some(StatusField::new("Flags", "Out of date".to_string()).style(style_outofdate))
@@ -41,19 +52,16 @@ impl<'a> BottomBar<'a> {
                                 ),
                                 _ => None,
                             };
-                            let modname = im.mod_name.as_ref().and_then(|name| {
-                                Some(StatusField::new("Mod", name.clone()).style(Style::default().fg(Color::White)))
-                            });
-                            self.widget = Paragraph::new(Line::from(format_fields(vec![flags, modname])));
+                            self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
                         } else {
                             self.widget = Paragraph::default();
                         }
                     }
                     Focused::ArchiveTable => {
-                        let archive = self.cache.archives.get_by_index(focused_index).await.unwrap();
+                        let (_, archive) = archives.get_by_index(focused_index);
                         let mut modname: Option<StatusField<'a>> = None;
-                        if let Some(metadata) = &archive.mod_data {
-                            if let Some(mfd) = self.cache.file_index.get_by_file_id(&metadata.file_id).await {
+                        if let Some(metadata) = archive.metadata() {
+                            if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&metadata.file_id).await {
                                 modname = mfd.mod_name().await.and_then(|n| Some(StatusField::new("Mod", n.clone())));
                             }
                         }

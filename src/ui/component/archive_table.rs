@@ -1,7 +1,9 @@
 use super::common::*;
+use crate::cache::ArchiveEntry;
 use crate::ui::navigation::*;
 use crate::util;
 use crate::Cache;
+use indexmap::IndexMap;
 use ratatui::layout::Constraint;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
@@ -9,8 +11,9 @@ use std::sync::atomic::Ordering;
 
 pub struct ArchiveTable<'a> {
     headers: Row<'a>,
-    widths: [Constraint; 3],
-    cache: Cache,
+    widths: [Constraint; 4],
+    pub cache: Cache,
+    pub currently_shown: IndexMap<String, ArchiveEntry>,
     pub neighbors: NeighboringWidgets,
     pub block: Block<'a>,
     pub highlight_style: Style,
@@ -25,12 +28,14 @@ impl ArchiveTable<'_> {
         let headers = Row::new(vec![
             Cell::from(header_text("Filename")),
             Cell::from(header_text("Status")),
+            Cell::from(header_text("Flags").centered()),
             Cell::from(header_text("Size")),
         ]);
         let widths = [
-            Constraint::Ratio(3, 5),
-            Constraint::Ratio(1, 5),
-            Constraint::Ratio(1, 5),
+            Constraint::Ratio(9, 12),
+            Constraint::Ratio(1, 12),
+            Constraint::Ratio(1, 12),
+            Constraint::Ratio(1, 12),
         ];
 
         let mut neighbors = NeighboringWidgets::new();
@@ -39,6 +44,7 @@ impl ArchiveTable<'_> {
         Self {
             headers,
             widths,
+            currently_shown: IndexMap::new(),
             cache,
             neighbors,
             block,
@@ -53,17 +59,29 @@ impl ArchiveTable<'_> {
     pub async fn refresh(&mut self) -> bool {
         if self.cache.archives.has_changed.swap(false, Ordering::Relaxed) {
             let mut rows: Vec<Row> = vec![];
-            for (i, (archive_name, archive)) in self.cache.archives.files.read().await.iter().enumerate() {
-                let mfd = self.cache.file_index.get_by_archive_name(&archive_name).await;
-                let install_status = match mfd {
-                    Some(mfd) => mfd.install_status.read().await.to_string(),
-                    None => "".to_string(),
+            let archives_lock = self.cache.archives.files.read().await;
+            self.currently_shown = archives_lock.clone();
+            for (i, (archive_name, entry)) in archives_lock.iter().enumerate() {
+                let install_status = match &entry {
+                    ArchiveEntry::File(archive) => archive.status.read().await.to_string(),
+                    ArchiveEntry::MetadataOnly(_) => "Deleted".to_string(),
+                };
+                let update_status = match entry.metadata() {
+                    Some(metadata) => {
+                        let mfd = self.cache.metadata_index.get_by_file_id(&metadata.file_id).await.unwrap();
+                        format_update_status_flags(&mfd.update_status)
+                    }
+                    None => "".into(),
                 };
                 rows.push(
                     Row::new(vec![
-                        archive_name.clone(),
-                        install_status,
-                        util::format::human_readable(archive.size).0,
+                        Cell::new(archive_name.clone()),
+                        Cell::new(install_status),
+                        Cell::new(update_status),
+                        Cell::new(match entry {
+                            ArchiveEntry::File(archive) => util::format::human_readable(archive.size).0,
+                            _ => "".to_string(),
+                        }),
                     ])
                     .style(LIST_STYLES[i % 2]),
                 )
@@ -76,5 +94,14 @@ impl ArchiveTable<'_> {
             return true;
         }
         false
+    }
+
+    pub fn get_by_index(&self, index: usize) -> (&String, &ArchiveEntry) {
+        self.currently_shown.get_index(index).unwrap()
+    }
+
+    pub async fn delete_by_index(&self, index: usize) {
+        let (name, _archive) = self.get_by_index(index);
+        self.cache.archives.delete(name).await;
     }
 }

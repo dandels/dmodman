@@ -30,7 +30,7 @@ impl MainUI<'_> {
         match self.tabs.focused() {
             Focused::ArchiveTable => &self.archives_view,
             Focused::DownloadTable => &self.downloads_view,
-            Focused::FileTable => &self.files_view,
+            Focused::InstalledMods => &self.installed_mods_table,
             Focused::LogList => &self.log_view,
         }
     }
@@ -39,7 +39,7 @@ impl MainUI<'_> {
         match &self.tabs.focused() {
             Focused::ArchiveTable => &mut self.archives_view,
             Focused::DownloadTable => &mut self.downloads_view,
-            Focused::FileTable => &mut self.files_view,
+            Focused::InstalledMods => &mut self.installed_mods_table,
             Focused::LogList => &mut self.log_view,
         }
     }
@@ -58,7 +58,7 @@ impl MainUI<'_> {
 pub enum Focused {
     ArchiveTable,
     DownloadTable,
-    FileTable,
+    InstalledMods,
     LogList,
 }
 
@@ -78,7 +78,7 @@ impl Tabs {
     pub fn new() -> Self {
         Self {
             active_index: 0,
-            focused_per_tab: vec![Focused::FileTable, Focused::ArchiveTable],
+            focused_per_tab: vec![Focused::InstalledMods, Focused::ArchiveTable],
         }
     }
 

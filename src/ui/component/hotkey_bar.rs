@@ -37,7 +37,7 @@ fn create_widget<'a>(input_mode: &InputMode, focused: &Focused) -> Paragraph<'a>
         match input_mode {
             InputMode::Normal => match focused {
                 Focused::ArchiveTable => ARCHIVES_KEYS,
-                Focused::FileTable => FILES_KEYS,
+                Focused::InstalledMods => FILES_KEYS,
                 Focused::LogList => LOG_KEYS,
                 Focused::DownloadTable => DOWNLOADS_KEYS,
             },

@@ -1,4 +1,4 @@
-use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadTable, LogList, ModFilesTable, PopupDialog};
+use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadTable, LogList, InstalledModsTable, PopupDialog};
 
 macro_rules! impl_stateful {
     ($T:ty) => {
@@ -8,7 +8,11 @@ macro_rules! impl_stateful {
             }
 
             fn select(&mut self, index: Option<usize>) {
-                self.state.select(index)
+                if index < Some(self.len()) {
+                    self.state.select(index)
+                } else {
+                    self.state.select(self.len().checked_sub(1))
+                }
             }
 
             fn selected(&self) -> Option<usize> {
@@ -22,7 +26,7 @@ impl_stateful!(ArchiveTable<'_>);
 impl_stateful!(ConfirmDialog<'_>);
 impl_stateful!(DownloadTable<'_>);
 impl_stateful!(LogList<'_>);
-impl_stateful!(ModFilesTable<'_>);
+impl_stateful!(InstalledModsTable<'_>);
 impl_stateful!(PopupDialog<'_>);
 
 pub trait Select {

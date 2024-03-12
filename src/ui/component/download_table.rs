@@ -39,7 +39,7 @@ impl<'a> DownloadTable<'a> {
         let mut neighbors = NeighboringWidgets::new();
         neighbors
             .map
-            .insert(Tab::Main, Neighbors::default().left(Focused::FileTable).down(Focused::LogList));
+            .insert(Tab::Main, Neighbors::default().left(Focused::InstalledMods).down(Focused::LogList));
 
         Self {
             headers,
@@ -76,5 +76,10 @@ impl<'a> DownloadTable<'a> {
             return true;
         }
         false
+    }
+
+    pub async fn delete_by_index(&mut self, index: usize) {
+        self.downloads.delete(index).await;
+        self.len = self.len.saturating_sub(1);
     }
 }
