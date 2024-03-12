@@ -29,7 +29,7 @@ impl UpdateChecker {
     }
 
     pub async fn ignore_file(&self, file_id: u64) {
-        if let Some(mfd) = self.cache.file_index.get_by_file_id(&file_id).await {
+        if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&file_id).await {
             if let Some(latest_remote_file) =
                 self.cache.file_lists.get(mfd.game.clone(), mfd.mod_id).await.unwrap().file_updates.last()
             {
@@ -52,7 +52,7 @@ impl UpdateChecker {
                     }
                     _ => {}
                 }
-                self.cache.file_index.has_changed.store(true, Ordering::Relaxed);
+                self.cache.metadata_index.has_changed.store(true, Ordering::Relaxed);
             }
         }
     }
@@ -71,7 +71,7 @@ impl UpdateChecker {
                 if t_diff < 2419200 {
                     let me = self.clone();
                     task::spawn(async move {
-                        let mut mods_by_game = me.cache.file_index.by_game_and_mod_sorted.write().await;
+                        let mut mods_by_game = me.cache.metadata_index.by_game_and_mod_sorted.write().await;
                         if let Err(e) = me.cache.save_last_updated(time.as_secs()).await {
                             me.logger.log(format!("Failed to save last updated status: {}", e));
                         }
@@ -115,7 +115,7 @@ impl UpdateChecker {
                     });
                 } else {
                     self.logger.log("Over a month since last update check, checking each mod.");
-                    for (game, mods) in self.cache.file_index.by_game_and_mod_sorted.read().await.iter() {
+                    for (game, mods) in self.cache.metadata_index.by_game_and_mod_sorted.read().await.iter() {
                         for (mod_id, files) in mods {
                             self.update_mod(game.clone(), *mod_id, files.clone()).await;
                         }
@@ -167,14 +167,15 @@ impl UpdateChecker {
                     mfd.propagate_update_status(&me.config, &me.logger, &new_status).await;
                 }
             }
-            me.cache.file_index.has_changed.store(true, Ordering::Relaxed);
+            me.cache.metadata_index.has_changed.store(true, Ordering::Relaxed);
         });
     }
 
-    async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<FileList, ApiError> {
+    async fn refresh_filelist(&self, game: &str, mod_id: u32) -> Result<Arc<FileList>, ApiError> {
         let mut file_list = FileList::request(&self.client, &[game, &mod_id.to_string()]).await?;
         self.cache.format_file_list(&mut file_list, game, mod_id).await;
-        self.cache.save_file_list(&file_list, game, mod_id).await?;
+        let file_list = Arc::new(file_list);
+        self.cache.save_file_list(file_list.clone(), game, mod_id).await?;
         Ok(file_list)
     }
 
@@ -261,10 +262,12 @@ impl UpdateChecker {
 
             // TODO don't pop stuff since we no longer use BinaryHeaps, just keep track of the index instead
             // the files get popped in descending chronological order, so we need to iterate this in reverse
-            for upd in newer_files.iter().rev() {
-                if mfd.file_id == upd.old_file_id {
-                    has_update = true;
-                    break;
+            if !has_update {
+                for upd in newer_files.iter().rev() {
+                    if mfd.file_id == upd.old_file_id {
+                        has_update = true;
+                        break;
+                    }
                 }
             }
             if has_update {
@@ -352,7 +355,7 @@ mod tests {
         let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, logger);
 
-        let lock = cache.file_index.by_game_and_mod_sorted.read().await;
+        let lock = cache.metadata_index.by_game_and_mod_sorted.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
         let file_list = cache.file_lists.get(game, mod_id).await.unwrap();
@@ -389,7 +392,7 @@ mod tests {
         let client = Client::new(&config).await;
         let update = UpdateChecker::new(cache.clone(), client, config, logger);
 
-        let lock = cache.file_index.by_game_and_mod_sorted.read().await;
+        let lock = cache.metadata_index.by_game_and_mod_sorted.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
         let file_list = cache.file_lists.get(game, mod_id).await.unwrap();

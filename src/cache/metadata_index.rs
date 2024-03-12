@@ -14,14 +14,16 @@ type Map<K, V> = Arc<RwLock<HashMap<K, V>>>;
 
 #[derive(Clone)]
 pub struct MetadataIndex {
+    #[allow(dead_code)]
     config: Config,
+    #[allow(dead_code)]
     logger: Logger,
 
     // references to other cache fields
     file_lists: FileLists,
     md5result_map: Md5ResultMap,
 
-    pub by_file_id: Map<u64, Arc<ModFileMetadata>>,
+    pub by_file_id: Map<u64, Arc<ModFileMetadata>>, // is this one needed?
     pub by_archive_name: Map<String, Arc<ModFileMetadata>>,
     // (game, mod_id) -> BinaryHeap that keeps the modfiles sorted by timestamp. Used by the update checker.
     pub by_game_and_mod_sorted: Map<String, IndexMap<u32, Vec<Arc<ModFileMetadata>>>>,
@@ -42,10 +44,10 @@ impl MetadataIndex {
         }
     }
 
-    async fn add_to_collections(&self, archive_name: Option<String>, mfdata: Arc<ModFileMetadata>) {
+    pub async fn add_to_collections(&self, archive_name: Option<String>, mfdata: Arc<ModFileMetadata>) {
         self.by_file_id.write().await.insert(mfdata.file_id, mfdata.clone());
-        if let Some(arch_name) = archive_name {
-            self.by_archive_name.write().await.insert(arch_name, mfdata.clone());
+        if let Some(archive_name) = archive_name {
+            self.by_archive_name.write().await.insert(archive_name, mfdata.clone());
         }
 
         let mut game_map_lock = self.by_game_and_mod_sorted.write().await;
@@ -67,7 +69,7 @@ impl MetadataIndex {
         }
     }
 
-    // needs a better name, we lack (circular) references to other cache structs to fill all fields
+    // TODO (circular) references to other cache structs to fill all fields within this one function
     pub async fn fill_mod_file_data(&self, game: &String, mod_id: u32, file_id: u64, mfdata: &ModFileMetadata) {
         {
             let mut fd_lock = mfdata.file_details.write().await;
@@ -83,38 +85,59 @@ impl MetadataIndex {
         }
     }
 
-    pub async fn try_add_mod_archive(&self, archive: Arc<ArchiveFile>) -> Option<Arc<ModFileMetadata>> {
-        if let None = archive.mod_data {
-            return None;
-        }
-        let metadata = archive.mod_data.as_ref().unwrap();
+    pub async fn try_add_mod_archive(&self, archive_entry: ArchiveEntry) -> Option<Arc<ModFileMetadata>> {
+        let metadata = match &archive_entry {
+            ArchiveEntry::File(archive) => {
+                match &archive.mod_data {
+                    Some(metadata) => metadata,
+                    None => return None, // return early if the metadata is missing
+                }
+            }
+            ArchiveEntry::MetadataOnly(metadata) => metadata,
+        };
         let ArchiveMetadata {
             ref file_name,
             ref game,
             mod_id,
             file_id,
-            ..
+            .. // avoid touching UpdateStatusWrapper
         } = metadata.as_ref();
         let game = game.clone();
         let file_name = file_name.clone();
 
         let mfdata = match self.get_by_file_id(&metadata.file_id).await {
             Some(mfdata) => mfdata,
-            None => Arc::new(ModFileMetadata::new(
-                metadata.game.clone(),
-                metadata.mod_id,
-                metadata.file_id,
-                None,
-                None,
-                None,
-                Some(archive.clone()),
-                InstallStatus::Downloaded,
-            )),
+            None => match &archive_entry {
+                ArchiveEntry::File(archive) => {
+                    Arc::new(ModFileMetadata::new(
+                        metadata.game.clone(),
+                        metadata.mod_id,
+                        metadata.file_id,
+                        None,
+                        None,
+                        None,
+                        Some(archive.clone()),
+                    ))
+                }
+                ArchiveEntry::MetadataOnly(_) => {
+                    Arc::new(ModFileMetadata::new(
+                        metadata.game.clone(),
+                        metadata.mod_id,
+                        metadata.file_id,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ))
+                }
+            }
         };
+
         self.fill_mod_file_data(&game, *mod_id, *file_id, &mfdata).await;
-        {
+
+        if let ArchiveEntry::File(archive) = &archive_entry {
             let mut lock = mfdata.mod_archives.write().await;
-            lock.insert(archive.file_name.clone(), archive.clone());
+            lock.insert(metadata.file_name.clone(), archive.clone());
         }
 
         self.add_to_collections(Some(file_name), mfdata.clone()).await;
@@ -133,7 +156,6 @@ impl MetadataIndex {
                 Some((dir_name.clone(), im.clone())),
                 None,
                 None,
-                InstallStatus::Installed,
             )
             .into(),
         };
@@ -155,44 +177,25 @@ impl MetadataIndex {
         self.by_archive_name.read().await.get(name).cloned()
     }
 
-    // TODO disabled because of race condition with inotify
-    //// Return game, mod id, files for the index selected in the UI.
-    //pub async fn get_game_mod_files_by_index(&self, index: usize) -> (String, u32, BinaryHeap<Arc<ModFileData>>) {
-    //    // If the unwraps here fail then there is a bug elsewhere causing inconsistent cache state
-    //    let lock = self.files_sorted.read().await;
-    //    let lf = &lock.get(index).unwrap().mod_archive;
-    //    let files = self.game_to_mods_map.read().await.get(&lf.game).and_then(|mods| mods.get(&lf.mod_id).cloned());
-    //    (lf.game.clone(), lf.mod_id, files.unwrap())
-    //}
-
-    // Delete a file and its metadata based on its index in files_sorted.
-    //pub async fn delete_by_index(&self, i: usize) -> Result<(), std::io::Error> {
-    //    let mut fs_lock = self.files_sorted.write().await;
-    //    let mut game_mods_lock = self.game_to_mods_map.write().await;
-    //    let mut files_lock = self.file_id_map.write().await;
-    //    let fd = fs_lock.get(&i).unwrap().clone();
-    //    let id_to_delete = fs_lock.get(&i).unwrap().file_id;
-
-    //    files_lock.remove(&id_to_delete);
-
-    //    fs_lock.swap_remove(&i);
-
-    //    let mods_map = game_mods_lock.get_mut(&fd.mod_archive.game).unwrap();
-    //    let heap = mods_map.get_mut(&fd.mod_archive.mod_id).unwrap();
-    //    heap.retain(|fdata| fdata.file_id != id_to_delete);
-    //    if heap.is_empty() {
-    //        mods_map.shift_remove(&fd.mod_archive.mod_id);
-    //    }
-    //    if mods_map.is_empty() {
-    //        game_mods_lock.remove(&fd.mod_archive.game);
-    //    }
-
-    //    let mut path = self.config.path_for(DataType::ModArchive(&fd.mod_archive));
-    //    fs::remove_file(&path).await?;
-    //    path.pop();
-    //    path.push(&fd.mod_archive.file_name);
-    //    fs::remove_file(path).await?;
-    //    self.has_changed.store(true, Ordering::Relaxed);
-    //    Ok(())
-    //}
+    pub async fn delete_if_unreferenced(&self, file_id: &u64) {
+        let mut has_reference = false;
+        if let Some(mfd) = self.get_by_file_id(file_id).await {
+            if !mfd.installed_mods.read().await.is_empty() {
+                has_reference = true;
+            } else if !mfd.mod_archives.read().await.is_empty() {
+                has_reference = true;
+            }
+            if !has_reference {
+                /* the entry in self.by_archive_name should be taken care of by the archives struct because
+                 * md.mod_archives is empty. */
+                self.by_file_id.write().await.remove(&mfd.file_id);
+                let mut games_lock = self.by_game_and_mod_sorted.write().await;
+                let mods_in_game = games_lock.get_mut(&mfd.game).unwrap();
+                let files = mods_in_game.get_mut(&mfd.mod_id).unwrap();
+                let index = files.binary_search_by(|f| f.file_id.cmp(&mfd.file_id)).
+                       expect("Should have found file by id {file_id} to delete in game->mods->files map.");
+                files.remove(index);
+            }
+        }
+    }
 }

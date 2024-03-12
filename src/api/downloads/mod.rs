@@ -12,7 +12,7 @@ pub use self::nxm_url::*;
 
 use crate::api::query::{DownloadLink, FileList, Md5Search, Queriable};
 use crate::api::{ApiError, Client, UpdateStatus};
-use crate::cache::{ArchiveFile, ArchiveMetadata, Cache, Cacheable};
+use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cache, Cacheable};
 use crate::config::{Config, DataPath};
 use crate::{util, Logger};
 
@@ -172,7 +172,7 @@ impl Downloads {
         let (game, mod_id) = (&fi.game, fi.mod_id);
 
         // Try use cached value for this mod, otherwise query API
-        let file_list: Option<FileList> = 'fl: {
+        let file_list: Option<Arc<FileList>> = 'fl: {
             if let Some(fl) = self.cache.file_lists.get(game, mod_id).await {
                 // TODO maybe get the file details here while at it..?
                 if fl.files.binary_search_by(|fd| fd.file_id.cmp(&fi.file_id)).is_ok() {
@@ -182,7 +182,8 @@ impl Downloads {
             match FileList::request(&self.client, &[game, &mod_id.to_string()]).await {
                 Ok(mut fl) => {
                     self.cache.format_file_list(&mut fl, game, mod_id).await;
-                    if let Err(e) = self.cache.save_file_list(&fl, game, mod_id).await {
+                    let fl = Arc::new(fl);
+                    if let Err(e) = self.cache.save_file_list(fl.clone(), game, mod_id).await {
                         self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
                     }
                     Some(fl)
@@ -197,9 +198,10 @@ impl Downloads {
         /* Assume the user has noticed the other files in this mod.
          * For files that aren't out of date, clear the HasNewFile flag and set UpdateStatus to UpToDate(time) where
          * time is the timestamp of the newest file in the mod. */
+        // TODO if user downloads outdated file it won't be shown as outdated
         let latest_timestamp = file_list.and_then(|fl| fl.files.last().cloned()).unwrap().uploaded_timestamp;
         {
-            if let Some(filedata_heap) = self.cache.file_index.get_modfiles(game, &mod_id).await {
+            if let Some(filedata_heap) = self.cache.metadata_index.get_modfiles(game, &mod_id).await {
                 for fdata in filedata_heap.iter() {
                     if let UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) = fdata.update_status.to_enum() {
                         fdata
@@ -234,21 +236,21 @@ impl Downloads {
         Ok(())
     }
 
-    async fn verify_hash(&self, local_file: &ArchiveMetadata) {
+    async fn verify_hash(&self, metadata: &ArchiveMetadata) {
         let mut path = self.config.download_dir();
-        path.push(&local_file.file_name);
+        path.push(&metadata.file_name);
         match util::md5sum(path).await {
-            Ok(md5) => match Md5Search::request(&self.client, &[&local_file.game, &md5]).await {
+            Ok(md5) => match Md5Search::request(&self.client, &[&metadata.game, &md5]).await {
                 Ok(query_res) => {
-                    match query_res.results.iter().find(|fd| fd.file_details.file_id == local_file.file_id) {
+                    match query_res.results.iter().find(|fd| fd.file_details.file_id == metadata.file_id) {
                         Some(md5result) => {
                             self.cache.save_md5result(md5result).await;
                             if !(md5.eq(&md5result.file_details.md5)
-                                && local_file.file_name.eq(&md5result.file_details.file_name))
+                                && metadata.file_name.eq(&md5result.file_details.file_name))
                             {
                                 self.logger.log(format!(
                                     "Warning: API returned unexpected response when checking hash for {}",
-                                    &local_file.file_name
+                                    &metadata.file_name
                                 ));
                                 let mi = &md5result.r#mod;
                                 let fd = &md5result.file_details;
@@ -258,7 +260,7 @@ impl Downloads {
                         None => {
                             self.logger.log(format!(
                                 "Failed to verify hash for {}. Found this instead:",
-                                local_file.file_name
+                                metadata.file_name
                             ));
                             for res in query_res.results {
                                 let mi = &res.r#mod;
@@ -269,12 +271,12 @@ impl Downloads {
                     }
                 }
                 Err(e) => {
-                    self.logger.log(format!("Unable to verify integrity of {}: {e}", &local_file.file_name));
+                    self.logger.log(format!("Unable to verify integrity of {}: {e}", &metadata.file_name));
                     self.logger.log("This could mean the download got corrupted. See README for details.");
                 }
             },
             Err(e) => {
-                self.logger.log(format!("Error when checking hash for {}. {e}", local_file.file_name));
+                self.logger.log(format!("Error when checking hash for {}. {e}", metadata.file_name));
             }
         }
     }

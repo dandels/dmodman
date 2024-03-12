@@ -3,28 +3,48 @@ use crate::api::downloads::FileInfo;
 use crate::api::update_status::*;
 use crate::cache::{Cacheable, Installed};
 use crate::config::Config;
-use crate::install::InstallStatus;
 use crate::Logger;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
+use tokio::fs;
 use tokio::fs::File;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
+pub enum ArchiveEntry {
+    File(Arc<ArchiveFile>),
+    MetadataOnly(Arc<ArchiveMetadata>),
+}
+
+impl ArchiveEntry {
+    pub fn file_name(&self) -> &String {
+        match self {
+            ArchiveEntry::File(archive) => &archive.file_name,
+            ArchiveEntry::MetadataOnly(metadata) => &metadata.file_name,
+        }
+    }
+
+    pub fn metadata(&self) -> Option<Arc<ArchiveMetadata>> {
+        match self {
+            ArchiveEntry::File(archive) => archive.mod_data.clone(),
+            ArchiveEntry::MetadataOnly(metadata) => Some(metadata.clone()),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct ArchiveFiles {
-    #[allow(dead_code)]
     config: Config,
-    #[allow(dead_code)]
     logger: Logger,
-    #[allow(dead_code)]
-    file_index: MetadataIndex,
-    pub files: Arc<RwLock<IndexMap<String, Arc<ArchiveFile>>>>, // indexed by name
+    metadata_index: MetadataIndex,
+    pub files: Arc<RwLock<IndexMap<String, ArchiveEntry>>>, // indexed by name
     pub has_changed: Arc<AtomicBool>,
 }
 
@@ -49,9 +69,25 @@ impl ArchiveFiles {
         for f in dir_entries {
             let path = f.path();
             let file_ext = path.extension().and_then(OsStr::to_str);
-            // Skip .part and .json files
-            if path.is_file() && ![Some("json"), Some("part")].contains(&file_ext) {
-                let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+            // Skip .part and .part.json files
+            if !path.is_file() || file_ext == Some("part") || path.ends_with(".part.json") {
+                continue;
+            }
+            let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+            // Only .json file for archive is present
+            if file_ext == Some("json") && !path.with_extension("").exists() {
+                match ArchiveMetadata::load(path).await {
+                    Ok(md) => {
+                        let entry = ArchiveEntry::MetadataOnly(Arc::new(md));
+                        file_index.try_add_mod_archive(entry.clone()).await;
+                        files.insert(entry.file_name().clone(), entry);
+                    }
+                    Err(e) => {
+                        logger.log(format!("Failed to deserialize {} as archive metadata: {e}", file_name));
+                    }
+                };
+            // Archive exists, might also have .json file
+            } else if file_ext != Some("json") {
                 let json_file = path.with_file_name(format!("{}.json", file_name));
                 let mod_data = match ArchiveMetadata::load(json_file).await {
                     Ok(md) => Some(Arc::new(md)),
@@ -61,32 +97,45 @@ impl ArchiveFiles {
                     }
                 };
                 if let Some(af) = ArchiveFile::new(&logger, &installed, &path, mod_data).await {
-                    let af = Arc::new(af);
-                    file_index.try_add_mod_archive(af.clone()).await;
-                    files.insert(af.file_name.clone(), af);
+                    let entry = ArchiveEntry::File(Arc::new(af));
+                    file_index.try_add_mod_archive(entry.clone()).await;
+                    files.insert(entry.file_name().clone(), entry);
                 }
             }
         }
         Self {
             config,
             logger,
-            file_index,
+            metadata_index: file_index,
             files: Arc::new(RwLock::new(files)),
             has_changed: Arc::new(true.into()),
         }
     }
 
-    pub async fn add(&self, archive: Arc<ArchiveFile>) {
-        self.file_index.try_add_mod_archive(archive.clone()).await;
-        self.files.write().await.insert(archive.file_name.clone(), archive);
+    pub async fn add_archive(&self, archive: ArchiveEntry) {
+        self.metadata_index.try_add_mod_archive(archive.clone()).await;
+        self.files.write().await.insert(archive.file_name().clone(), archive);
+        self.has_changed.store(true, Ordering::Relaxed);
     }
 
-    pub async fn get(&self, file_name: &String) -> Option<Arc<ArchiveFile>> {
+    pub async fn get(&self, file_name: &str) -> Option<ArchiveEntry> {
         self.files.read().await.get(file_name).cloned()
     }
 
-    pub async fn get_by_index(&self, index: usize) -> Option<Arc<ArchiveFile>> {
-        self.files.read().await.get_index(index).map(|(_, af)| af.clone())
+    pub async fn delete(&self, file_name: &str) {
+        let mut lock = self.files.write().await;
+        if let Some(_archive_file) = lock.get(file_name) {
+            let path = self.config.download_dir().join(&file_name);
+            match fs::remove_file(path).await {
+                Ok(()) => {
+                    lock.swap_remove(file_name);
+                    self.has_changed.store(true, Ordering::Relaxed);
+                }
+                Err(e) => {
+                    self.logger.log(format!("Error when removing file: {e}"));
+                }
+            }
+        }
     }
 }
 
@@ -94,7 +143,7 @@ pub struct ArchiveFile {
     pub file_name: String,
     pub size: u64,
     pub mod_data: Option<Arc<ArchiveMetadata>>,
-    pub install_status: Arc<RwLock<InstallStatus>>,
+    pub status: Arc<RwLock<ArchiveStatus>>,
 }
 
 impl ArchiveFile {
@@ -121,12 +170,12 @@ impl ArchiveFile {
 
         let install_status = {
             if let Some(md) = &mod_data {
-                match installed.by_file_id.read().await.get(&md.file_id) {
-                    Some(_) => InstallStatus::Installed,
-                    None => InstallStatus::Downloaded,
+                match installed.get(&md.file_name).await {
+                    Some(_) => ArchiveStatus::Installed,
+                    None => ArchiveStatus::Downloaded,
                 }
             } else {
-                InstallStatus::Downloaded
+                ArchiveStatus::Downloaded
             }
         };
 
@@ -134,8 +183,25 @@ impl ArchiveFile {
             file_name,
             size,
             mod_data,
-            install_status: Arc::new(install_status.into()),
+            status: Arc::new(install_status.into()),
         })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ArchiveStatus {
+    Downloaded,
+    Extracting,
+    Installed,
+}
+
+impl Display for ArchiveStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArchiveStatus::Downloaded => f.write_str(""),
+            ArchiveStatus::Extracting => f.write_str("Extracting..."),
+            ArchiveStatus::Installed => f.write_str("Installed"),
+        }
     }
 }
 

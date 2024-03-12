@@ -18,7 +18,7 @@ pub use modfile_metadata::ModFileMetadata;
 
 use crate::api::Md5Results;
 use crate::api::{DownloadLink, FileList};
-use crate::config::{Config, DataType};
+use crate::config::{Config, DataPath};
 use crate::Logger;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -34,7 +34,7 @@ pub struct Cache {
     logger: Logger,
     pub archives: ArchiveFiles,
     pub file_lists: FileLists,
-    pub file_index: MetadataIndex,
+    pub metadata_index: MetadataIndex,
     pub md5result: Md5ResultMap,
     pub last_update_check: Arc<AtomicU64>,
     pub installed: Installed,
@@ -46,7 +46,7 @@ impl Cache {
         let md5result = Md5ResultMap::new(config.clone(), logger.clone());
         let metadata_index =
             MetadataIndex::new(config.clone(), logger.clone(), file_lists.clone(), md5result.clone()).await;
-        let installed = Installed::new(config.clone(), metadata_index.clone()).await;
+        let installed = Installed::new(config.clone(), logger.clone(), metadata_index.clone()).await;
         let archives =
             ArchiveFiles::new(config.clone(), logger.clone(), installed.clone(), metadata_index.clone()).await;
         let last_update_check = load_last_updated(&config);
@@ -57,7 +57,7 @@ impl Cache {
             config,
             logger,
             file_lists,
-            file_index: metadata_index,
+            metadata_index,
             md5result,
             last_update_check,
         })
@@ -84,7 +84,7 @@ impl Cache {
         fl.files.sort();
         fl.file_updates.sort();
 
-        if let Some(files) = self.file_index.get_modfiles(&game.to_string(), &mod_id).await {
+        if let Some(files) = self.metadata_index.get_modfiles(&game.to_string(), &mod_id).await {
             let old_files_start = fl.files.partition_point(|f| f.file_id < files.first().unwrap().file_id);
             fl.files.drain(..old_files_start);
             fl.files.shrink_to_fit();
@@ -124,11 +124,11 @@ impl Cache {
         }
     }
 
-    pub async fn save_file_list(&self, fl: &FileList, game: &str, mod_id: u32) -> Result<(), CacheError> {
+    pub async fn save_file_list(&self, fl: Arc<FileList>, game: &str, mod_id: u32) -> Result<(), CacheError> {
         let path = self.config.path_for(DataType::FileList(game, mod_id));
 
         fl.save_compressed(path).await?;
-        self.file_lists.insert((game, mod_id), fl.clone()).await;
+        self.file_lists.insert((game, mod_id), fl).await;
         Ok(())
     }
 
@@ -175,7 +175,7 @@ mod test {
         let config = ConfigBuilder::default().profile(profile).build().unwrap();
         let cache = Cache::new(config.clone(), Logger::default()).await?;
 
-        let fdata = cache.file_index.get_by_file_id(&file_id).await.unwrap();
+        let fdata = cache.metadata_index.get_by_file_id(&file_id).await.unwrap();
         assert_eq!(fdata.file_id, file_id);
         Ok(())
     }

@@ -93,7 +93,7 @@ impl DownloadTask {
         path.push(file_name);
 
         if path.exists() {
-            if self.cache.file_index.get_by_file_id(&self.dl_info.file_info.file_id).await.is_none() {
+            if self.cache.metadata_index.get_by_file_id(&self.dl_info.file_info.file_id).await.is_none() {
                 self.logger.log(format!("{} already exists but was missing its metadata.", file_name));
                 let _ = self.downloads.update_metadata(&self.dl_info.file_info).await;
             } else {

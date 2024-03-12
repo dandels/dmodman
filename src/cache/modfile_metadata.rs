@@ -2,7 +2,7 @@ use crate::api::{FileDetails, Md5Results};
 use crate::api::{UpdateStatus, UpdateStatusWrapper};
 use crate::cache::{ArchiveFile, Cacheable};
 use crate::config::{Config, DataType};
-use crate::install::{InstallStatus, InstalledMod};
+use crate::install::InstalledMod;
 use crate::Logger;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -17,7 +17,6 @@ pub struct ModFileMetadata {
     pub installed_mods: Arc<RwLock<HashMap<String, Arc<InstalledMod>>>>,
     pub md5results: Arc<RwLock<Option<Arc<Md5Results>>>>,
     pub mod_archives: Arc<RwLock<HashMap<String, Arc<ArchiveFile>>>>,
-    pub install_status: Arc<RwLock<InstallStatus>>,
     pub update_status: UpdateStatusWrapper,
 }
 
@@ -30,7 +29,6 @@ impl ModFileMetadata {
         installed_mod: Option<(String, Arc<InstalledMod>)>,
         md5results: Option<Arc<Md5Results>>,
         mod_archive: Option<Arc<ArchiveFile>>,
-        install_status: InstallStatus,
     ) -> Self {
         let mut installed_map = HashMap::new();
         if let Some((dir_name, ins_mod)) = installed_mod {
@@ -69,7 +67,6 @@ impl ModFileMetadata {
             mod_archives: Arc::new(mod_archives.into()),
             file_details: Arc::new(file_details.into()),
             md5results: Arc::new(md5results.into()),
-            install_status: Arc::new(install_status.into()),
             update_status,
             installed_mods: Arc::new(installed_map.into()),
         }
@@ -102,16 +99,24 @@ impl ModFileMetadata {
         }
     }
 
+    pub async fn name(&self) -> Option<String> {
+        if let Some(fd) = self.file_details.read().await.as_ref() {
+            return Some(fd.name.clone());
+        }
+        self.md5results.read().await.as_ref().map(|res| res.file_details.name.clone())
+    }
+
     pub async fn mod_name(&self) -> Option<String> {
-        let from_md5res = self.md5results.read().await.as_ref().and_then(|res| res.r#mod.name.clone());
-        if let None = from_md5res {
+        if let Some(mod_name) = self.md5results.read().await.as_ref().and_then(|res| res.r#mod.name.clone()) {
+            return Some(mod_name)
+        } else {
             for (_, im) in self.installed_mods.read().await.iter() {
                 if let Some(mod_name) = &im.mod_name {
                     return Some(mod_name.clone());
                 }
             }
         }
-        from_md5res
+        None
     }
 }
 
