@@ -4,8 +4,8 @@ pub mod installed_mod;
 pub use self::install_error::InstallError;
 pub use self::installed_mod::*;
 
-use crate::cache::{Cache, Cacheable};
-use crate::config::{Config, DataType};
+use crate::cache::{ArchiveEntry, ArchiveStatus, Cache, Cacheable};
+use crate::config::{Config, DataPath};
 use crate::Logger;
 use async_zip::base::read::WithoutEntry;
 use async_zip::error::ZipError;
@@ -42,7 +42,6 @@ impl Installer {
 
     pub async fn list_content(&self, archive_name: &String) -> Result<Vec<String>, ZipError> {
         let path = self.config.download_dir().join(archive_name);
-        //self.logger.log(format!("{path:?}"));
         task::spawn(async move {
             // TODO only works for .zip files
             let reader = ZipFileReader::new(path).await?;
@@ -58,11 +57,11 @@ impl Installer {
 
     pub async fn extract(
         &self,
-        archive_name: String,
+        archive_name: &str,
         dest_dir_name: String,
         overwrite: bool,
     ) -> Result<(), InstallError> {
-        let src_path = self.config.download_dir().join(&archive_name);
+        let src_path = self.config.download_dir().join(archive_name);
         let mut dest_path = self.config.install_dir();
         dest_path.push(&dest_dir_name);
 
@@ -75,10 +74,18 @@ impl Installer {
             return Err(InstallError::AlreadyExists);
         }
 
-        let archive_file = match self.cache.archives.get(&archive_name).await {
-            Some(af) => af,
+        let archive = match self.cache.archives.get(archive_name).await {
+            Some(entry) => match entry {
+                ArchiveEntry::File(archive) => archive,
+                ArchiveEntry::MetadataOnly(_) => {
+                    self.logger.log(format!("Archive {} no longer exists.", archive_name));
+                    return Err(InstallError::ArchiveDeleted);
+                }
+            },
+            /* Race condition between UI and backend if backend starts removing entries based on inotify events.
+             * unlikely to actually happen */
             None => {
-                self.logger.log(format!("Metadata for {} was deleted after starting extraction..?", &archive_name));
+                self.logger.log(format!("{} no longer exists in the database..?", archive_name));
                 return Ok(());
             }
         };
@@ -86,17 +93,14 @@ impl Installer {
         match ZipFileReader::new(src_path).await {
             Ok(zip_reader) => {
                 let mut mfd = None;
-                let im = match &archive_file.mod_data {
+                let im = match &archive.mod_data {
                     Some(metadata) => {
-                        mfd = self.cache.file_index.get_by_file_id(&metadata.file_id).await;
-                        if let Some(mfd) = &mfd {
-                            // TODO this approach doesn't work for files lacking mfd
-                            *mfd.install_status.write().await = InstallStatus::Extracting;
-                            self.cache.archives.has_changed.store(true, Ordering::Relaxed);
-                        }
-                        InstalledMod::new(&archive_file, &mfd).await
+                        mfd = self.cache.metadata_index.get_by_file_id(&metadata.file_id).await;
+                        *archive.status.write().await = ArchiveStatus::Extracting;
+                        self.cache.archives.has_changed.store(true, Ordering::Relaxed);
+                        InstalledMod::new(&archive, &mfd).await
                     }
-                    None => InstalledMod::new(&archive_file, &None).await,
+                    None => InstalledMod::new(&archive, &None).await,
                 };
                 if let Err(e) = im.save(DataPath::InstalledMod(&self.config, &dest_dir_name).into()).await {
                     self.logger.log(format!("Failed to save metadata for extracted directory {}, {e}", &dest_dir_name));
@@ -105,6 +109,7 @@ impl Installer {
                 jobs.insert(dest_path.clone());
 
                 let me = self.clone();
+                let archive_name = archive_name.to_string();
                 let _handle = task::spawn(async move {
                     me.logger.log(format!("Begin extracting: {:?}", &archive_name));
                     let mut tasks: Vec<JoinHandle<Result<usize, (usize, InstallError)>>> = vec![];
@@ -121,19 +126,17 @@ impl Installer {
 
                     for task in tasks {
                         if let Err((_index, e)) = task.await.unwrap() {
-                            me.logger
-                                .log(format!("WARN: Extract failed with error: {e}, the output might be incomplete.",));
+                            me.logger.log(format!("WARN: Extraction failed with error: {e}.",));
                             if let Some(mfd) = &mfd {
-                                // TODO This is only correct if the mod hasn't been installed to some other dir
-                                *mfd.install_status.write().await = InstallStatus::Downloaded;
+                                if mfd.installed_mods.read().await.is_empty() {
+                                    *archive.status.write().await = ArchiveStatus::Downloaded;
+                                }
                             }
                             return Err(e);
                         }
                     }
                     me.logger.log(format!("Finished extracting: {:?}", &archive_name));
-                    if let Some(mfd) = &mfd {
-                        *mfd.install_status.write().await = InstallStatus::Installed;
-                    }
+                    *archive.status.write().await = ArchiveStatus::Installed;
                     me.cache.archives.has_changed.store(true, Ordering::Relaxed);
                     let mut jobs = me.extract_jobs.write().await;
                     jobs.remove(&dest_path);
@@ -142,7 +145,7 @@ impl Installer {
                 });
             }
             Err(e) => {
-                //self.logger.log(format!("Unable to extract: {src_path:?}"));
+                self.logger.log(format!("Unable to extract: {archive_name}"));
                 self.logger.log(format!("{:?}", e));
             }
         }

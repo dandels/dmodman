@@ -1,7 +1,6 @@
 use crate::api::update_status::*;
 use crate::cache::{ArchiveFile, Cacheable, ModFileMetadata};
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
@@ -14,13 +13,6 @@ pub enum ModDirectory {
 pub enum ModRepository {
     Nexus,
     Unknown,
-}
-
-#[derive(Clone, Debug)]
-pub enum InstallStatus {
-    Downloaded,
-    Extracting,
-    Installed,
 }
 
 #[derive(Default, Debug, Deserialize, Serialize)]
@@ -107,16 +99,6 @@ impl InstalledMod {
 }
 
 impl Cacheable for InstalledMod {}
-
-impl Display for InstallStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InstallStatus::Downloaded => f.write_str(""),
-            InstallStatus::Extracting => f.write_str("Extracting..."),
-            InstallStatus::Installed => f.write_str("Installed"),
-        }
-    }
-}
 
 impl Default for ModDirectory {
     fn default() -> Self {
