@@ -49,7 +49,7 @@ The following steps are required for nxm scheme handling to work.
 2. Copy the included dmodman.desktop file to `~/.local/share/applications/` (or /usr/share/applications/).
 
 ## TODO & Contributing
-There is an incomplete and somewhat up to date list of things that need doing in [CONTRIBUTING.md][/CONTRIBUTING.md]
+There is an incomplete and somewhat up to date list of things that need doing in [CONTRIBUTING.md](/CONTRIBUTING.md)
 
 ## Logo
 NexusMods requires users to have application-specific API keys. Having a logo was a prerequisite for being featured on

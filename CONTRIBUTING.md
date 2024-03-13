@@ -19,8 +19,8 @@ I'm open to ideas, feedback, and kind words.
 ### File updates
 - [x] Important: use the API to query mods that have been updated in the past 1 month, combined with a timestamp for last update check
     - Freezes UI, Needs threading a bit earlier in the code
-- [ ] The displayed columns are arbitrary and not so relevant
-- [ ] Show details of currently selected file in the UI. The border of the UI block can be rendered on.
+- [x] The displayed columns are arbitrary and not so relevant
+- [x] Show details of currently selected file in the UI. The border of the UI block can be rendered on.
 - [ ] Permanently ignore updates (trivial to implement with a new enum variant)
 - [ ] Show archive connected to mod and vice versa
 - [ ] Delete metadata if file is no longer tracked
