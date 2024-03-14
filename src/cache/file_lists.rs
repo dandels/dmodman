@@ -61,8 +61,11 @@ impl FileLists {
     }
 
     pub async fn filedetails_for(&self, game: String, mod_id: u32, file_id: u64) -> Option<Arc<FileDetails>> {
-        self.get(game, mod_id).await.and_then(|list| {
-            list.files.get(list.files.binary_search_by(|fd| fd.file_id.cmp(&file_id)).unwrap()).cloned()
-        })
+        let list = self.get(game, mod_id).await?;
+        if let Ok(index) = list.files.binary_search_by(|fd| fd.file_id.cmp(&file_id)) {
+            list.files.get(index).cloned()
+        } else {
+            None
+        }
     }
 }
