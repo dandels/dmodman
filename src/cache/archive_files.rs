@@ -41,7 +41,7 @@ impl ArchiveEntry {
 
 #[derive(Clone)]
 pub struct ArchiveFiles {
-    config: Config,
+    config: Arc<Config>,
     logger: Logger,
     metadata_index: MetadataIndex,
     pub files: Arc<RwLock<IndexMap<String, ArchiveEntry>>>, // indexed by name
@@ -49,7 +49,7 @@ pub struct ArchiveFiles {
 }
 
 impl ArchiveFiles {
-    pub async fn new(config: Config, logger: Logger, installed: Installed, file_index: MetadataIndex) -> Self {
+    pub async fn new(config: Arc<Config>, logger: Logger, installed: Installed, file_index: MetadataIndex) -> Self {
         // TODO fix error handling here
         std::fs::create_dir_all(config.download_dir()).unwrap();
 
@@ -96,7 +96,7 @@ impl ArchiveFiles {
                         None
                     }
                 };
-                if let Some(af) = ArchiveFile::new(&logger, &installed, &path, mod_data).await {
+                if let Ok(af) = ArchiveFile::new(&logger, &installed, &path, mod_data).await {
                     let entry = ArchiveEntry::File(Arc::new(af));
                     file_index.try_add_mod_archive(entry.clone()).await;
                     files.insert(entry.file_name().clone(), entry);
@@ -152,19 +152,19 @@ impl ArchiveFile {
         installed: &Installed,
         path: &PathBuf,
         mod_data: Option<Arc<ArchiveMetadata>>,
-    ) -> Option<Self> {
+    ) -> Result<Self, std::io::Error> {
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
         let size: u64 = match File::open(path).await {
             Ok(file) => match file.metadata().await {
                 Ok(md) => md.len(),
                 Err(e) => {
                     logger.log(format!("Unable to get file metadata of {}: {e}", file_name));
-                    return None;
+                    return Err(e);
                 }
             },
             Err(e) => {
                 logger.log(format!("Unable to open {} for reading its metadata: {e}", file_name));
-                return None;
+                return Err(e);
             }
         };
 
@@ -179,7 +179,7 @@ impl ArchiveFile {
             }
         };
 
-        Some(Self {
+        Ok(Self {
             file_name,
             size,
             mod_data,

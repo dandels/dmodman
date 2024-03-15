@@ -8,12 +8,11 @@ use ratatui::style::Style;
 use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 pub struct InstalledModsTable<'a> {
     headers: Row<'a>,
     widths: [Constraint; 3],
-    pub currently_shown: IndexMap<String, Arc<ModDirectory>>,
+    pub currently_shown: IndexMap<String, ModDirectory>,
     pub installed: Installed,
     pub neighbors: NeighboringWidgets,
     pub block: Block<'a>,
@@ -63,13 +62,13 @@ impl<'a> InstalledModsTable<'a> {
             let lock = self.installed.mods.read().await;
             self.currently_shown = lock.clone();
             for (i, (dir_name, dir_type)) in lock.iter().enumerate() {
-                let row = match dir_type.as_ref() {
+                let row = match dir_type {
                     ModDirectory::Nexus(im) => Row::new(vec![
                         Cell::new(Span::raw(dir_name.clone())),
                         Cell::from(format_update_status_flags(&im.update_status)),
                         Cell::from(Text::from(im.version.as_ref().map(|v| v.to_string()).unwrap_or("".to_string()))),
                     ]),
-                    ModDirectory::Unknown => Row::new(vec![Span::raw(format!("unknown {}", &dir_name))]),
+                    _ => Row::new(vec![Span::raw(format!("{}", &dir_name))]),
                 }
                 .style(LIST_STYLES[i % 2]);
                 rows.push(row);
@@ -86,7 +85,7 @@ impl<'a> InstalledModsTable<'a> {
         false
     }
 
-    pub fn get_by_index(&self, index: usize) -> (&String, &Arc<ModDirectory>) {
+    pub fn get_by_index(&self, index: usize) -> (&String, &ModDirectory) {
         self.currently_shown.get_index(index).unwrap()
     }
 

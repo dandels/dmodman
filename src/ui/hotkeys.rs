@@ -4,6 +4,7 @@ use super::main_ui::*;
 use super::navigation::*;
 use crate::install::{InstallError, ModDirectory};
 use std::process::Command;
+use std::sync::atomic::Ordering;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 pub const ARCHIVES_KEYS: &[(&str, &str)] = &[
@@ -47,8 +48,10 @@ impl MainUI<'_> {
             self.handle_popup_dialog(event).await;
             return;
         }
-
-        if let Event::Key(Key::Char('q')) | Event::Key(Key::Ctrl('c')) = event {
+        if let Event::Key(Key::Ctrl('c')) = event {
+            self.should_run = false;
+        }
+        if let Event::Key(Key::Char('q')) = event {
             if self.installer.extract_jobs.read().await.is_empty() {
                 self.should_run = false;
             } else {
@@ -124,7 +127,7 @@ impl MainUI<'_> {
                         }
                         Focused::InstalledMods => {
                             let (_, md) = self.installed_mods_table.get_by_index(i);
-                            if let ModDirectory::Nexus(im) = md.as_ref() {
+                            if let ModDirectory::Nexus(im) = md {
                                 args = Some((im.game.clone(), im.mod_id))
                             }
                         }
@@ -137,6 +140,37 @@ impl MainUI<'_> {
                         if Command::new("xdg-open").arg(url).status().is_err() {
                             self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
                         }
+                    }
+                }
+            }
+            Event::Key(Key::Char('f')) => {
+                if let Some(i) = self.focused_widget().selected() {
+                    match self.tabs.focused() {
+                        Focused::ArchiveTable => {
+                            let (archive_name, _) = self.archives_view.get_by_index(i);
+                            if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(&archive_name).await {
+                                let query = self.query.clone();
+                                let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
+                                tokio::task::spawn(async move {
+                                    query.verify_metadata(mfd).await;
+                                    refresh_bottom_bar.store(true, Ordering::Relaxed);
+                                });
+                            }
+                        }
+                        Focused::InstalledMods => {
+                            let (_, mod_dir) = self.installed_mods_table.get_by_index(i);
+                            if let ModDirectory::Nexus(im) = mod_dir {
+                                if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&im.file_id).await {
+                                    let query = self.query.clone();
+                                    let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
+                                    tokio::task::spawn(async move {
+                                        query.verify_metadata(mfd).await;
+                                        refresh_bottom_bar.store(true, Ordering::Relaxed);
+                                    });
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -172,7 +206,7 @@ impl MainUI<'_> {
                         }
                         Focused::InstalledMods => {
                             let (_, mod_dir) = self.installed_mods_table.get_by_index(i);
-                            if let ModDirectory::Nexus(im) = mod_dir.as_ref() {
+                            if let ModDirectory::Nexus(im) = mod_dir {
                                 self.updater.ignore_file(im.file_id).await;
                             }
                         }
@@ -195,7 +229,7 @@ impl MainUI<'_> {
                         }
                         Focused::InstalledMods => {
                             let (_, mod_dir) = self.installed_mods_table.get_by_index(i);
-                            if let ModDirectory::Nexus(im) = mod_dir.as_ref() {
+                            if let ModDirectory::Nexus(im) = mod_dir {
                                 if let Some(files) = self.cache.metadata_index.get_modfiles(&im.game, &im.mod_id).await
                                 {
                                     self.updater.update_mod(im.game.clone(), im.mod_id, files).await;

@@ -1,4 +1,4 @@
-use super::Queriable;
+use crate::api::Queriable;
 use serde::{Deserialize, Serialize};
 use crate::cache::Cacheable;
 

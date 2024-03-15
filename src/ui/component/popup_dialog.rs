@@ -6,10 +6,11 @@ use ratatui::widgets::{Block, List, ListState, Paragraph};
 use std::path::Path;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use tui_textarea::{CursorMove, TextArea};
+use std::sync::Arc;
 
 #[derive(Default)]
 pub struct PopupDialog<'a> {
-    config: Config,
+    config: Arc<Config>,
     pub textarea: TextArea<'a>,
     pub text_label: Paragraph<'a>,
     pub list: List<'a>,
@@ -20,7 +21,7 @@ pub struct PopupDialog<'a> {
 }
 
 impl PopupDialog<'_> {
-    pub fn new(config: Config, suggested_values: Vec<String>, label: String) -> Self {
+    pub fn new(config: Arc<Config>, suggested_values: Vec<String>, label: String) -> Self {
         let txt_default = "".to_string();
         let txt = suggested_values.first().unwrap_or(&txt_default);
         let mut textarea = TextArea::from([txt]);

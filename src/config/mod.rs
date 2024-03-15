@@ -208,8 +208,8 @@ impl Config {
         };
 
         Ok(Self {
-            apikey: config.apikey,
-            profile: config.profile.unwrap_or("default".to_string()),
+            apikey: config.apikey.into(),
+            profile: config.profile.unwrap_or("default".to_string()).into(),
             download_dir,
             install_dir,
         })

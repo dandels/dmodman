@@ -8,7 +8,8 @@ pub trait Cacheable: Serialize + DeserializeOwned + Send
 where
     Self: 'static,
 {
-    async fn save(&self, path: PathBuf) -> Result<(), Error> {
+    async fn save<T: Into<PathBuf>>(&self, path: T) -> Result<(), Error> {
+        let path = path.into();
         let data = serde_json::to_string_pretty(&self)?;
         tokio::task::spawn_blocking(move || {
             fs::create_dir_all(path.parent().unwrap().to_str().unwrap())?;
@@ -20,7 +21,8 @@ where
         .unwrap()
     }
 
-    async fn save_compressed(&self, path: PathBuf) -> Result<(), Error> {
+    async fn save_compressed<T: Into<PathBuf>>(&self, path: T) -> Result<(), Error> {
+        let path = path.into();
         let data = serde_json::to_string_pretty(&self)?;
         tokio::task::spawn_blocking(move || {
             fs::create_dir_all(path.parent().unwrap().to_str().unwrap())?;
@@ -34,7 +36,8 @@ where
         .unwrap()
     }
 
-    async fn save_changes(&self, path: PathBuf) -> Result<(), Error> {
+    async fn save_changes<T: Into<PathBuf>>(&self, path: T) -> Result<(), Error> {
+        let path = path.into();
         let data = serde_json::to_string_pretty(&self)?;
         tokio::task::spawn_blocking(move || {
             let mut file = File::options().write(true).open(path)?;
@@ -45,7 +48,8 @@ where
         .unwrap()
     }
 
-    async fn load(path: PathBuf) -> Result<Self, Error> {
+    async fn load<T: Into<PathBuf>>(path: T) -> Result<Self, Error> {
+        let path = path.into();
         tokio::task::spawn_blocking(move || {
             if let Ok(zst_file) = File::open(path.with_extension("json.zst")) {
                 let decoder = zstd::Decoder::new(zst_file)?;
@@ -66,6 +70,7 @@ mod tests {
     use crate::api::{ApiError, FileList, ModInfo};
     use crate::config::{ConfigBuilder, DataPath};
     use crate::Logger;
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn read_cached_mod_info() -> Result<(), ApiError> {
@@ -74,7 +79,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::load(Logger::default()).unwrap().profile(profile).build().unwrap();
-        let path = DataPath::ModInfo(&config, game, mod_id).into();
+        let path: PathBuf = DataPath::ModInfo(&config, game, mod_id).into();
         println!("{:?}", path);
 
         let mi: ModInfo = ModInfo::load(path).await?;
@@ -89,7 +94,7 @@ mod tests {
         let mod_id = 46599;
 
         let config = ConfigBuilder::default().profile(profile).build().unwrap();
-        let path = DataPath::FileList(&config, game, mod_id).into();
+        let path = DataPath::FileList(&config, game, mod_id);
 
         let fl = FileList::load(path).await?;
         let mut upds = fl.file_updates.clone();

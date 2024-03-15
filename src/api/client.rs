@@ -1,21 +1,16 @@
-use crate::config::Config;
-
-use super::query::Search;
 use super::request_counter::RequestCounter;
 use super::ApiError;
-
+use crate::config::Config;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
-use url::Url;
-
 use std::sync::Arc;
+use url::Url;
 
 /* API reference:
  * https://app.swaggerhub.com/apis-docs/NexusMods/nexus-mods_public_api_params_in_form_data/1.0
  */
 
 const API_URL: &str = "https://api.nexusmods.com/v1/";
-const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 
 #[derive(Clone)]
 pub struct Client {
@@ -26,7 +21,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn new(config: &Config) -> Self {
+    pub async fn new(config: &Arc<Config>) -> Self {
         let version = String::from(env!("CARGO_CRATE_NAME")) + " " + env!("CARGO_PKG_VERSION");
 
         let mut headers = HeaderMap::new();
@@ -80,18 +75,5 @@ impl Client {
          *     resp.status().canonical_reason()
          * ); */
         Ok(resp)
-    }
-
-    /* This is unused but should work. Most API requests are easy to implement with serde & traits, but this lacks UI
-     * and a sufficiently compelling use case.
-     * For example, premium users could search and install mods directly through this application.
-     * (Others would have to visit the Nexus, as only premium users can generate download URLs without getting a nxm://
-     * URL from the website.) */
-    #[allow(dead_code)]
-    pub async fn mod_search(&self, query: String) -> Result<Search, ApiError> {
-        let base: Url = Url::parse(SEARCH_URL).unwrap();
-        let url = base.join(&query).unwrap();
-        let builder = self.build_request(url)?;
-        Ok(builder.send().await?.json().await?)
     }
 }

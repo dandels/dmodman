@@ -1,17 +1,17 @@
 use super::DownloadState;
-use super::{Client, DownloadInfo, DownloadProgress, Downloads};
+use super::{DownloadInfo, DownloadProgress, Downloads};
+use crate::api::{Client, Query};
 use crate::cache::{Cache, Cacheable};
 use crate::config::{Config, DataPath};
+use crate::util;
 use crate::Logger;
-
+use reqwest::header::RANGE;
+use reqwest::{Response, StatusCode};
 use std::fmt::{Debug, Display};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-
-use reqwest::header::RANGE;
-use reqwest::{Response, StatusCode};
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::{fs, fs::File};
@@ -19,31 +19,35 @@ use tokio::{task, task::JoinHandle};
 use tokio_stream::StreamExt;
 
 pub struct DownloadTask {
+    #[allow(dead_code)]
     cache: Cache,
     client: Client,
-    config: Config,
+    config: Arc<Config>,
     logger: Logger,
     downloads: Downloads,
+    query: Query,
     join_handle: Option<JoinHandle<()>>,
     pub dl_info: DownloadInfo,
 }
 
 impl DownloadTask {
     pub fn new(
-        cache: &Cache,
-        client: &Client,
-        config: &Config,
-        logger: &Logger,
+        cache: Cache,
+        client: Client,
+        config: Arc<Config>,
+        logger: Logger,
         dl_info: DownloadInfo,
         downloads: Downloads,
+        query: Query,
     ) -> Self {
         Self {
-            cache: cache.clone(),
-            client: client.clone(),
-            config: config.clone(),
-            logger: logger.clone(),
+            cache,
+            client,
+            config,
+            logger,
             dl_info,
             downloads,
+            query,
             join_handle: None,
         }
     }
@@ -88,25 +92,15 @@ impl DownloadTask {
 
     pub async fn file_exists(&self) -> bool {
         let file_name = &self.dl_info.file_info.file_name;
-
-        let mut path = self.config.download_dir();
-        path.push(file_name);
-
-        if path.exists() {
-            if self.cache.metadata_index.get_by_file_id(&self.dl_info.file_info.file_id).await.is_none() {
-                self.logger.log(format!("{} already exists but was missing its metadata.", file_name));
-                let _ = self.downloads.update_metadata(&self.dl_info.file_info).await;
-            } else {
-                self.logger.log(format!("{} already exists and won't be downloaded.", file_name));
-            }
-            return true;
-        }
-
-        false
+        self.config.download_dir().join(file_name).exists()
     }
 
     pub async fn start(&mut self) -> Result<(), ()> {
+        let file_name = self.dl_info.file_info.file_name.clone();
         if self.file_exists().await {
+            self.logger.log(format!("{file_name} already exists and won't be downloaded."));
+            self.logger.log("Verifying mod metadata...");
+            let _ = self.downloads.update_metadata(&self.dl_info.file_info).await;
             return Err(());
         }
 
@@ -119,7 +113,6 @@ impl DownloadTask {
 
         self.dl_info.set_state(DownloadState::Downloading);
 
-        let file_name = self.dl_info.file_info.file_name.clone();
         path.push(&file_name);
         let mut part_path = self.config.download_dir();
         part_path.push(format!("{}.part", file_name));
@@ -159,13 +152,14 @@ impl DownloadTask {
         let dl_info = self.dl_info.clone();
         let logger = self.logger.clone();
         let file_name = file_name.clone();
+        let query = self.query.clone();
         let handle: JoinHandle<()> = task::spawn(async move {
             // The actual downloading is done here
             if let Err(()) = transfer_data(file, resp, &logger, &downloads, &dl_info).await {
                 return;
             }
 
-            if fs::rename(part_path.clone(), path).await.is_err() {
+            if fs::rename(part_path.clone(), &path).await.is_err() {
                 logger.log(format!("Download of {} complete, but unable to remove .part extension.", file_name));
             }
 
@@ -178,6 +172,24 @@ impl DownloadTask {
             dl_info.set_state(DownloadState::Done);
             downloads.has_changed.store(true, Ordering::Relaxed);
 
+            match util::md5sum(path).await {
+                Ok(md5) => {
+                    // Errors are logged by Query
+                    if let Err(_) = query
+                        .md5search(
+                            &dl_info.file_info.game,
+                            &md5,
+                            &dl_info.file_info.file_name,
+                            dl_info.file_info.file_id,
+                        )
+                        .await
+                    {
+                        // We wanted the mod info that came with the md5result, so let's query for it directly
+                        let _ = query.mod_info(&dl_info.file_info.game, dl_info.file_info.mod_id).await;
+                    }
+                }
+                Err(e) => logger.log(format!("Error when checking hash for {}. {e}", file_name)),
+            }
             if let Err(e) = downloads.update_metadata(&dl_info.file_info).await {
                 logger.log(format!("Unable to update metadata for downloaded file {}: {}", file_name, e));
             }
@@ -242,7 +254,7 @@ impl DownloadTask {
     }
 
     async fn save_dl_info(&self) {
-        if let Err(e) = self.dl_info.save(DataPath::DownloadInfo(&self.config, &self.dl_info).into()).await {
+        if let Err(e) = self.dl_info.save(DataPath::DownloadInfo(&self.config, &self.dl_info)).await {
             self.logger
                 .log(format!("Error when saving download state for {}: {}", self.dl_info.file_info.file_name, e));
         }

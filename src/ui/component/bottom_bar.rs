@@ -6,12 +6,18 @@ use crate::Cache;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+const STYLE_OUTOFDATE: Style = Style::new().fg(Color::Red);
+const STYLE_HASNEWFILE: Style = Style::new().fg(Color::Yellow);
 
 pub struct BottomBar<'a> {
     cache: Cache,
     pub widget: Paragraph<'a>,
     prev_focused: Focused,
     prev_selected_index: Option<usize>,
+    pub selected_has_changed: Arc<AtomicBool>,
 }
 
 impl<'a> BottomBar<'a> {
@@ -21,6 +27,7 @@ impl<'a> BottomBar<'a> {
             widget: Paragraph::default(),
             prev_focused: focused,
             prev_selected_index: None,
+            selected_has_changed: Default::default(),
         }
     }
 
@@ -31,27 +38,23 @@ impl<'a> BottomBar<'a> {
         focused: &Focused,
         focused_index: Option<usize>,
     ) -> bool {
-        if *focused != self.prev_focused || !focused_index.eq(&self.prev_selected_index) {
+        if *focused != self.prev_focused
+            || !focused_index.eq(&self.prev_selected_index)
+            || self.selected_has_changed.swap(false, Ordering::Relaxed)
+        {
             if let Some(focused_index) = focused_index {
                 match focused {
+                    // TODO get rid of copypaste
                     Focused::InstalledMods => {
                         let (_, mod_dir) = installed.get_by_index(focused_index);
-                        let style_outofdate = Style::default().fg(Color::Red);
-                        let style_hasnewfile = Style::default().fg(Color::Yellow);
-                        if let ModDirectory::Nexus(im) = mod_dir.as_ref() {
-                            let modname = im.mod_name.as_ref().and_then(|name| {
-                                Some(StatusField::new("Mod", name.clone()).style(Style::default().fg(Color::White)))
-                            });
-
-                            let flags = match im.update_status.to_enum() {
-                                UpdateStatus::OutOfDate(_) => {
-                                    Some(StatusField::new("Flags", "Out of date".to_string()).style(style_outofdate))
+                        if let ModDirectory::Nexus(im) = mod_dir {
+                            let mut modname = StatusField::from_mod_name(im.mod_name.clone());
+                            if modname.is_none() {
+                                if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&im.file_id).await {
+                                    modname = StatusField::from_mod_name(mfd.mod_name().await);
                                 }
-                                UpdateStatus::HasNewFile(_) => Some(
-                                    StatusField::new("Flags", "Mod has new file".to_string()).style(style_hasnewfile),
-                                ),
-                                _ => None,
-                            };
+                            }
+                            let flags = StatusField::from_update_status(im.update_status.to_enum());
                             self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
                         } else {
                             self.widget = Paragraph::default();
@@ -59,13 +62,15 @@ impl<'a> BottomBar<'a> {
                     }
                     Focused::ArchiveTable => {
                         let (_, archive) = archives.get_by_index(focused_index);
-                        let mut modname: Option<StatusField<'a>> = None;
                         if let Some(metadata) = archive.metadata() {
                             if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&metadata.file_id).await {
-                                modname = mfd.mod_name().await.and_then(|n| Some(StatusField::new("Mod", n.clone())));
+                                let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
+                                let flags = StatusField::from_update_status(mfd.update_status.to_enum());
+                                self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
                             }
+                        } else {
+                            self.widget = Paragraph::default();
                         }
-                        self.widget = Paragraph::new(Line::from(format_fields(vec![modname])));
                     }
                     _ => {
                         self.widget = Paragraph::default();
@@ -98,6 +103,22 @@ impl<'a> StatusField<'a> {
     pub fn style(mut self, style: Style) -> Self {
         self.value = self.value.style(style);
         self
+    }
+
+    pub fn from_mod_name(name: Option<String>) -> Option<Self> {
+        name.map(|name| StatusField::new("Mod", name.clone()).style(Style::default().fg(Color::White)))
+    }
+
+    pub fn from_update_status(update_status: UpdateStatus) -> Option<Self> {
+        match update_status {
+            UpdateStatus::OutOfDate(_) => {
+                Some(StatusField::new("Flags", "Out of date".to_string()).style(STYLE_OUTOFDATE))
+            }
+            UpdateStatus::HasNewFile(_) => {
+                Some(StatusField::new("Flags", "Mod has new file".to_string()).style(STYLE_HASNEWFILE))
+            }
+            _ => None,
+        }
     }
 }
 

@@ -1,11 +1,16 @@
+use crate::Cache;
 use crate::api::update_status::*;
-use crate::cache::{ArchiveFile, Cacheable, ModFileMetadata};
+use crate::cache::{ArchiveFile, ArchiveMetadata, Cacheable};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum ModDirectory {
     Nexus(Arc<InstalledMod>),
+    // Installed with dmodman but not a regular Nexus file
+    Foreign(String), // archive name
+    // Some other directory found in the installs dir
     Unknown,
 }
 
@@ -15,7 +20,7 @@ pub enum ModRepository {
     Unknown,
 }
 
-#[derive(Default, Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct InstalledMod {
     pub game: String,
     pub mod_id: u32,
@@ -31,74 +36,49 @@ pub struct InstalledMod {
     pub update_status: UpdateStatusWrapper,
 }
 
-impl InstalledMod {
-    pub async fn new(archive_info: &ArchiveFile, mod_file_data: &Option<Arc<ModFileMetadata>>) -> Self {
-        match &archive_info.mod_data {
-            Some(metadata) => {
-                let (version, category_id, category_name, update_status_opt) = match mod_file_data {
-                    Some(mfd) => mfd
-                        .file_details
-                        .read()
-                        .await
-                        .as_ref()
-                        .map(|fd| {
-                            (
-                                fd.version.clone(),
-                                Some(fd.category_id),
-                                fd.category_name.clone(),
-                                Some(mfd.update_status.clone()),
-                            )
-                        })
-                        .unwrap_or_default(),
-                    None => Default::default(),
-                };
-                let update_status = match update_status_opt {
-                    Some(status) => match mod_file_data {
-                        Some(mfd) => mfd.update_status.clone().return_later(status),
-                        None => status,
-                    },
-                    None => {
-                        archive_info.mod_data.as_ref().and_then(|md| Some(md.update_status.clone())).unwrap_or_default()
-                    }
-                }
-                .into();
-                let mod_name = match mod_file_data {
-                    Some(mfd) => mfd.md5results.read().await.as_ref().map(|res| res.r#mod.name.clone()).flatten(),
-                    None => None,
-                };
-                let name = if let Some(mfd) = mod_file_data {
-                    mfd.file_details.read().await.as_ref().and_then(|fd| Some(fd.name.clone()))
-                } else {
-                    None
-                };
-                Self {
-                    installation_file: archive_info.file_name.clone(),
-                    game: metadata.game.clone(),
-                    mod_id: metadata.mod_id,
-                    file_id: metadata.file_id,
-                    name,
-                    mod_name,
-                    version,
-                    category_id,
-                    category_name,
-                    repository: ModRepository::Nexus,
-                    last_update_check: AtomicU64::new(0).into(),
-                    update_status,
-                }
-            }
-            None => Self {
-                installation_file: archive_info.file_name.clone(),
-                update_status: mod_file_data
-                    .as_ref()
-                    .and_then(|mfd| Some(mfd.update_status.clone()))
-                    .unwrap_or_default(),
-                ..Default::default()
-            },
+impl ModDirectory {
+    pub async fn new(cache: Cache, archive: Arc<ArchiveFile>) -> Self {
+        if let None = archive.mod_data {
+            return ModDirectory::Foreign(archive.file_name.clone())
         }
+        let ArchiveMetadata { game, mod_id, file_id, .. } = archive.mod_data.as_ref().unwrap().as_ref();
+        let mfd = cache.metadata_index.get_by_archive_name(&archive.file_name).await.unwrap();
+        let (version, category_id, category_name, update_status) = {
+            if let Some(fd) = mfd.file_details.read().await.as_ref() {
+                (
+                fd.version.clone(),
+                Some(fd.category_id),
+                fd.category_name.clone(),
+                Some(mfd.update_status.clone()),
+                )
+            } else {
+                (None, None, None, None) // any other way to do this?
+            }
+        };
+        let update_status = match update_status {
+            Some(status) => mfd.update_status.clone().return_later(status),
+            None => mfd.update_status.clone(),
+        };
+        let mod_name = mfd.mod_name().await;
+        let name = mfd.name().await;
+        ModDirectory::Nexus(InstalledMod {
+            installation_file: archive.file_name.clone(),
+            game: game.clone(),
+            mod_id: *mod_id,
+            file_id: *file_id,
+            name,
+            mod_name,
+            version,
+            category_id,
+            category_name,
+            repository: ModRepository::Nexus,
+            last_update_check: AtomicU64::new(0).into(),
+            update_status,
+        }.into())
     }
 }
 
-impl Cacheable for InstalledMod {}
+impl Cacheable for ModDirectory {}
 
 impl Default for ModDirectory {
     fn default() -> Self {

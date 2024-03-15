@@ -1,7 +1,7 @@
 use super::component::traits::*;
 use super::component::*;
 use super::navigation::*;
-use crate::api::{Client, Downloads, UpdateChecker};
+use crate::api::{Client, Downloads, UpdateChecker, Query};
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::install::Installer;
@@ -23,9 +23,10 @@ pub struct MainUI<'a> {
     // Structs handling app logic
     pub installer: Installer,
     pub cache: Cache,
-    pub config: Config,
+    pub config: Arc<Config>,
     pub downloads: Downloads,
     pub logger: Logger,
+    pub query: Query,
     pub updater: UpdateChecker,
 
     // UI widgets
@@ -50,12 +51,13 @@ impl MainUI<'_> {
     pub async fn new(
         cache: Cache,
         client: Client,
-        config: Config,
+        config: Arc<Config>,
         downloads: Downloads,
         logger: Logger,
-        installer: Installer,
+        query: Query,
     ) -> Self {
-        let updater = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), logger.clone());
+        let installer = Installer::new(cache.clone(), config.clone(), logger.clone()).await;
+        let updater = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), logger.clone(), query.clone());
 
         let tabs = Tabs::new();
 
@@ -74,6 +76,7 @@ impl MainUI<'_> {
             config,
             downloads,
             installer,
+            query,
             top_bar,
             hotkey_bar,
             archives_view,

@@ -14,16 +14,15 @@ pub enum DataPath<'a> {
     DownloadLink(&'a Config, &'a str, u32, u64), // game, mod_id, file_id
     FileList(&'a Config, &'a str, u32),          // game, mod_id
     Md5Results(&'a Config, &'a str, u64),        // game, file_id
+    ModInfo(&'a Config, &'a str, u32),           // game, mod_id
     Updated(&'a Config, &'a str),                // game
 
     // Local formats
-    InstalledMod(&'a Config, &'a String),
+    ModDirMetadata(&'a Config, &'a String),
     ArchiveMetadata(&'a Config, &'a String),
     DownloadInfo(&'a Config, &'a DownloadInfo),
 
-    // Unused API responses
-    ModInfo(&'a Config, &'a str, u32), // game, mod_id
-    GameInfo(&'a Config, &'a str),     // game
+    GameInfo(&'a Config, &'a str), // game
 
     // Old paths to be checked for backwards compatibility
     FileListCompat(&'a Config, &'a str, u32), // game, mod_id
@@ -60,7 +59,7 @@ impl From<DataPath<'_>> for PathBuf {
                 path = config.metadata_dir();
                 path.push(format!("{}.json", game));
             }
-            DataPath::InstalledMod(ref config, dir_name) => {
+            DataPath::ModDirMetadata(ref config, dir_name) => {
                 path = config.install_dir();
                 path.push(dir_name);
                 path.push(".dmodman-meta.json");

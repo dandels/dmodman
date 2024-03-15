@@ -1,6 +1,7 @@
 use super::{CacheError, Cacheable};
 use crate::api::{FileDetails, FileList};
 use crate::config::{Config, DataPath};
+use crate::Logger;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::fs;
@@ -10,18 +11,19 @@ type Map<K, V> = Arc<RwLock<HashMap<K, V>>>;
 
 #[derive(Clone)]
 pub struct FileLists {
-    #[allow(clippy::type_complexity)]
     map: Map<(String, u32), Option<Arc<FileList>>>,
-    config: Config,
+    config: Arc<Config>,
+    logger: Logger,
 }
 
 impl FileLists {
-    pub async fn new(config: Config) -> Result<Self, CacheError> {
+    pub async fn new(config: Arc<Config>, logger: Logger) -> Result<Self, CacheError> {
         fs::create_dir_all(config.data_dir()).await?;
 
         Ok(Self {
             map: Default::default(),
             config,
+            logger,
         })
     }
 
@@ -34,29 +36,35 @@ impl FileLists {
         let mut lock = self.map.write().await;
         match lock.get(&(game.clone(), mod_id)).cloned() {
             Some(fl) => fl,
-            None => match FileList::load(DataPath::FileList(&self.config, &game, mod_id).into()).await {
-                Ok(fl) => {
-                    let fl = Arc::new(fl);
-                    lock.insert((game, mod_id), Some(fl.clone()));
-                    Some(fl)
-                }
-                Err(_) => {
-                    // BACKWARDS COMPATIBILITY
-                    // Try once more with pre-v0.3.0 path
-                    match FileList::load(DataPath::FileListCompat(&self.config, &game, mod_id).into()).await {
-                        Ok(fl) => {
-                            let fl = Arc::new(fl);
-                            lock.insert((game, mod_id), Some(fl.clone()));
-                            Some(fl)
-                        }
-                        Err(_) => {
-                            // Cache negative result to reduce IO
-                            lock.insert((game, mod_id), None);
-                            None
+            None => {
+                let path: std::path::PathBuf = DataPath::FileList(&self.config, &game, mod_id).into();
+                let fl_res = FileList::load(path.clone()).await;
+                match fl_res {
+                    Ok(fl) => {
+                        let fl = Arc::new(fl);
+                        lock.insert((game, mod_id), Some(fl.clone()));
+                        Some(fl)
+                    }
+                    Err(e) => {
+                        // BACKWARDS COMPATIBILITY
+                        // Try once more with pre-v0.3.0 path
+                        match FileList::load(DataPath::FileListCompat(&self.config, &game, mod_id)).await {
+                            Ok(fl) => {
+                                let fl = Arc::new(fl);
+                                lock.insert((game, mod_id), Some(fl.clone()));
+                                Some(fl)
+                            }
+                            Err(_) => {
+                                self.logger.log(format!("Failed to read file list from {path:?}:"));
+                                self.logger.log(format!("    {e}"));
+                                // Cache negative result to reduce IO
+                                lock.insert((game, mod_id), None);
+                                None
+                            }
                         }
                     }
                 }
-            },
+            }
         }
     }
 

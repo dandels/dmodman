@@ -7,15 +7,14 @@ mod nxm_socket;
 mod ui;
 mod util;
 
+use api::{Client, Downloads, Query};
+use cache::Cache;
+use config::{Config, ConfigBuilder};
+use logger::Logger;
 use std::env::args;
 use std::error::Error;
 use std::io::ErrorKind;
-
-use api::{Client, Downloads};
-use cache::Cache;
-use config::{Config, ConfigBuilder};
-use install::Installer;
-use logger::Logger;
+use std::sync::Arc;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
@@ -59,10 +58,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             logger.log("No API key configured. API connections are disabled.");
         }
     }
+    let config = Arc::new(config);
 
+    // TODO The config is copied around quite much
     let cache = Cache::new(config.clone(), logger.clone()).await?;
     let client = Client::new(&config).await;
-    let downloads = Downloads::new(cache.clone(), client.clone(), config.clone(), logger.clone()).await;
+    let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
+    let downloads = Downloads::new(cache.clone(), client.clone(), config.clone(), logger.clone(), query.clone()).await;
 
     // Try bind to /run/user/$uid. If it already exists then send any nxm:// link through the socket and quit.
     let nxm_socket = match nxm_socket::try_bind().await {
@@ -98,8 +100,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             });
         }
 
-        let archives = Installer::new(cache.clone(), config.clone(), logger.clone()).await;
-        ui::MainUI::new(cache, client, config, downloads, logger, archives).await.run().await;
+        ui::MainUI::new(cache, client, config, downloads, logger, query).await.run().await;
     } else {
         nxm_socket::listen_for_downloads(nxm_socket, downloads, logger).await;
     }

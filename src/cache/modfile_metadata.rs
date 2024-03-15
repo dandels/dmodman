@@ -1,8 +1,7 @@
-use crate::api::{FileDetails, Md5Results};
-use crate::api::{UpdateStatus, UpdateStatusWrapper};
+use crate::api::{FileDetails, ModInfo, UpdateStatus, UpdateStatusWrapper};
 use crate::cache::{ArchiveFile, Cacheable};
 use crate::config::{Config, DataPath};
-use crate::install::InstalledMod;
+use crate::install::{InstalledMod, ModDirectory};
 use crate::Logger;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -15,7 +14,7 @@ pub struct ModFileMetadata {
     pub file_id: u64,
     pub file_details: Arc<RwLock<Option<Arc<FileDetails>>>>,
     pub installed_mods: Arc<RwLock<HashMap<String, Arc<InstalledMod>>>>,
-    pub md5results: Arc<RwLock<Option<Arc<Md5Results>>>>,
+    pub mod_info: Arc<RwLock<Option<Arc<ModInfo>>>>,
     pub mod_archives: Arc<RwLock<HashMap<String, Arc<ArchiveFile>>>>,
     pub update_status: UpdateStatusWrapper,
 }
@@ -27,7 +26,7 @@ impl ModFileMetadata {
         file_id: u64,
         file_details: Option<Arc<FileDetails>>,
         installed_mod: Option<(String, Arc<InstalledMod>)>,
-        md5results: Option<Arc<Md5Results>>,
+        mod_info: Option<Arc<ModInfo>>,
         mod_archive: Option<Arc<ArchiveFile>>,
     ) -> Self {
         let mut installed_map = HashMap::new();
@@ -66,19 +65,14 @@ impl ModFileMetadata {
             file_id,
             mod_archives: Arc::new(mod_archives.into()),
             file_details: Arc::new(file_details.into()),
-            md5results: Arc::new(md5results.into()),
+            mod_info: Arc::new(mod_info.into()),
             update_status,
             installed_mods: Arc::new(installed_map.into()),
         }
     }
 
     pub async fn uploaded_timestamp(&self) -> Option<u64> {
-        if let Some(fd) = self.file_details.read().await.as_ref() {
-            return Some(fd.uploaded_timestamp);
-        } else if let Some(res) = self.md5results.read().await.as_ref() {
-            return Some(res.file_details.uploaded_timestamp);
-        }
-        None
+        self.file_details.read().await.as_ref().map(|fd| fd.uploaded_timestamp)
     }
 
     pub async fn propagate_update_status(&self, config: &Config, logger: &Logger, status: &UpdateStatus) {
@@ -86,29 +80,26 @@ impl ModFileMetadata {
         for (_, archive) in self.mod_archives.write().await.iter() {
             if let Some(metadata) = &archive.mod_data {
                 metadata.update_status.set(status.clone());
-                if let Err(e) = metadata.save_changes(DataPath::ArchiveMetadata(&config, &archive.file_name).into()).await {
+                if let Err(e) = metadata.save_changes(DataPath::ArchiveMetadata(&config, &archive.file_name)).await {
                     logger.log(format!("Couldn't save UpdateStatus for {}: {}", archive.file_name, e));
                 }
             }
         }
         for (dir_name, installed) in self.installed_mods.write().await.iter() {
             installed.update_status.set(status.clone());
-            if let Err(e) = installed.save_changes(DataPath::InstalledMod(&config, dir_name).into()).await {
+            if let Err(e) = ModDirectory::Nexus(installed.clone()).save_changes(DataPath::ModDirMetadata(&config, dir_name)).await {
                 logger.log(format!("Couldn't save UpdateStatus for {}: {}", dir_name, e));
             }
         }
     }
 
     pub async fn name(&self) -> Option<String> {
-        if let Some(fd) = self.file_details.read().await.as_ref() {
-            return Some(fd.name.clone());
-        }
-        self.md5results.read().await.as_ref().map(|res| res.file_details.name.clone())
+        self.file_details.read().await.as_ref().map(|fd| fd.name.clone())
     }
 
     pub async fn mod_name(&self) -> Option<String> {
-        if let Some(mod_name) = self.md5results.read().await.as_ref().and_then(|res| res.r#mod.name.clone()) {
-            return Some(mod_name)
+        if let Some(mod_name) = self.mod_info.read().await.as_ref().map(|mi| mi.name.clone()).flatten() {
+            return Some(mod_name);
         } else {
             for (_, im) in self.installed_mods.read().await.iter() {
                 if let Some(mod_name) = &im.mod_name {
@@ -117,6 +108,10 @@ impl ModFileMetadata {
             }
         }
         None
+    }
+
+    pub async fn file_details(&self) -> Option<Arc<FileDetails>> {
+        self.file_details.read().await.as_ref().map(|fd| fd.clone())
     }
 }
 

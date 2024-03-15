@@ -24,14 +24,14 @@ use tokio::{task, task::JoinHandle};
 #[derive(Clone)]
 pub struct Installer {
     cache: Cache,
-    config: Config,
+    config: Arc<Config>,
     logger: Logger,
     pub extract_jobs: Arc<RwLock<HashSet<PathBuf>>>,
     // used by UI to ask if table needs to be redrawn
 }
 
 impl Installer {
-    pub async fn new(cache: Cache, config: Config, logger: Logger) -> Self {
+    pub async fn new(cache: Cache, config: Arc<Config>, logger: Logger) -> Self {
         Self {
             cache,
             config,
@@ -89,27 +89,21 @@ impl Installer {
                 return Ok(());
             }
         };
-
         match ZipFileReader::new(src_path).await {
             Ok(zip_reader) => {
-                let mut mfd = None;
-                let im = match &archive.mod_data {
-                    Some(metadata) => {
-                        mfd = self.cache.metadata_index.get_by_file_id(&metadata.file_id).await;
-                        *archive.status.write().await = ArchiveStatus::Extracting;
-                        self.cache.archives.has_changed.store(true, Ordering::Relaxed);
-                        InstalledMod::new(&archive, &mfd).await
-                    }
-                    None => InstalledMod::new(&archive, &None).await,
-                };
-                if let Err(e) = im.save(DataPath::InstalledMod(&self.config, &dest_dir_name).into()).await {
+                jobs.insert(dest_path.clone());
+                drop(jobs);
+
+                *archive.status.write().await = ArchiveStatus::Extracting;
+                self.cache.archives.has_changed.store(true, Ordering::Relaxed);
+                let mod_dir = ModDirectory::new(self.cache.clone(), archive.clone()).await;
+                if let Err(e) = mod_dir.save(DataPath::ModDirMetadata(&self.config, &dest_dir_name)).await {
                     self.logger.log(format!("Failed to save metadata for extracted directory {}, {e}", &dest_dir_name));
                 }
 
-                jobs.insert(dest_path.clone());
-
                 let me = self.clone();
                 let archive_name = archive_name.to_string();
+                tokio::fs::create_dir_all(&dest_path).await.unwrap();
                 let _handle = task::spawn(async move {
                     me.logger.log(format!("Begin extracting: {:?}", &archive_name));
                     let mut tasks: Vec<JoinHandle<Result<usize, (usize, InstallError)>>> = vec![];
@@ -118,29 +112,45 @@ impl Installer {
                         let logger = me.logger.clone();
                         let base_dir = dest_path.clone();
                         let file_name = entry.filename().clone().into_string().unwrap();
-                        tokio::fs::create_dir_all(&dest_path).await.unwrap();
-                        tasks.push(task::spawn(async move {
-                            extract_zip_entry(logger, base_dir, file_name, zip_reader, i).await
-                        }));
+                        match entry.dir() {
+                            Ok(is_dir) => {
+                                if is_dir {
+                                    // TODO path traversal vulnerability, this needs to be sanitized
+                                    if let Err(e) = tokio::fs::create_dir_all(base_dir.join(&file_name)).await {
+                                        me.logger.log(format!("Failed to extract directory {file_name}: {e}"));
+                                        let mut jobs = me.extract_jobs.write().await;
+                                        jobs.remove(&dest_path);
+                                        return Err(e.into());
+                                    }
+                                } else {
+                                    tasks.push(task::spawn(async move {
+                                        extract_zip_entry(logger, base_dir, file_name, zip_reader, i).await
+                                    }));
+                                }
+                            }
+                            Err(e) => {
+                                me.logger.log(format!("Failed to read archive file, aborting: {e}"));
+                            }
+                        }
                     }
 
                     for task in tasks {
                         if let Err((_index, e)) = task.await.unwrap() {
                             me.logger.log(format!("WARN: Extraction failed with error: {e}.",));
-                            if let Some(mfd) = &mfd {
-                                if mfd.installed_mods.read().await.is_empty() {
-                                    *archive.status.write().await = ArchiveStatus::Downloaded;
-                                }
-                            }
+                            // TODO figure out accurate installation status
+                            *archive.status.write().await = ArchiveStatus::Downloaded;
+
+                            let mut jobs = me.extract_jobs.write().await;
+                            jobs.remove(&dest_path);
                             return Err(e);
                         }
                     }
-                    me.logger.log(format!("Finished extracting: {:?}", &archive_name));
                     *archive.status.write().await = ArchiveStatus::Installed;
                     me.cache.archives.has_changed.store(true, Ordering::Relaxed);
                     let mut jobs = me.extract_jobs.write().await;
                     jobs.remove(&dest_path);
-                    me.cache.installed.add(dest_dir_name, Arc::new(ModDirectory::Nexus(im.into()))).await;
+                    me.cache.installed.add(dest_dir_name, mod_dir).await;
+                    me.logger.log(format!("Finished extracting: {:?}", &archive_name));
                     Ok(())
                 });
             }

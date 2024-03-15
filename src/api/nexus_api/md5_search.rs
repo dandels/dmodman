@@ -1,22 +1,23 @@
-use serde::{Deserialize, Serialize};
-
 use super::ModInfo;
 use crate::api::Queriable;
 use crate::cache::Cacheable;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Md5Search {
-    pub results: Vec<Md5Results>,
+    pub results: Vec<Md5Result>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Md5Results {
-    pub r#mod: ModInfo, // Needs to be named "mod" for serialization to succeed
-    pub file_details: Md5FileDetails,
+pub struct Md5Result {
+    #[serde(alias = "mod")] // field is called "mod" in the response
+    pub mod_info: Arc<ModInfo>,
+    pub file_details: Arc<Md5FileDetails>,
 }
 
-/* This is mostly the same as FileDetails, but it doesn't have a description field or size_kb field.
+/* This is mostly the same as FileDetails, but it doesn't have an id, description or size_kb field.
  * FileDetails on the other hand lacks the md5 sum.
  */
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -30,17 +31,17 @@ pub struct Md5FileDetails {
     pub size: u64,
     pub file_name: String,
     pub uploaded_timestamp: u64,
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     pub uploaded_time: String,
     pub mod_version: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     pub external_virus_scan_url: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip)]
     pub changelog_html: Option<String>,
     pub md5: String,
 }
 
-impl Cacheable for Md5Results {}
+impl Cacheable for Md5Result {}
 impl Queriable for Md5Search {
     const FORMAT_STRING: &'static str = "games/{}/mods/md5_search/{}.json";
 }

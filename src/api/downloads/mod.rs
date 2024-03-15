@@ -9,13 +9,12 @@ pub use self::download_progress::*;
 use self::download_task::*;
 pub use self::file_info::*;
 pub use self::nxm_url::*;
-
-use crate::api::query::{DownloadLink, FileList, Md5Search, Queriable};
+use crate::api::Query;
 use crate::api::{ApiError, Client, UpdateStatus};
 use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cache, Cacheable};
 use crate::config::{Config, DataPath};
 use crate::{util, Logger};
-
+use indexmap::IndexMap;
 use std::ffi::OsStr;
 use std::io::ErrorKind;
 use std::str::FromStr;
@@ -23,11 +22,8 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-
-use indexmap::IndexMap;
 use tokio::fs;
 use tokio::sync::RwLock;
-use url::Url;
 
 #[derive(Clone)]
 pub struct Downloads {
@@ -36,11 +32,12 @@ pub struct Downloads {
     logger: Logger,
     cache: Cache,
     client: Client,
-    config: Config,
+    config: Arc<Config>,
+    query: Query,
 }
 
 impl Downloads {
-    pub async fn new(cache: Cache, client: Client, config: Config, logger: Logger) -> Self {
+    pub async fn new(cache: Cache, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
         Self {
             tasks: Arc::new(RwLock::new(IndexMap::new())),
             has_changed: Arc::new(AtomicBool::new(true)),
@@ -48,6 +45,7 @@ impl Downloads {
             client,
             config,
             logger,
+            query,
         }
     }
 
@@ -73,7 +71,7 @@ impl Downloads {
             }
         }
 
-        let url = match self.request_download_link(&nxm).await {
+        let url = match self.query.download_link(&nxm).await {
             Ok(url) => url,
             Err(_e) => return,
         };
@@ -100,8 +98,7 @@ impl Downloads {
                     if let Err(()) = task.start().await {
                         self.logger.log(format!("Failed to restart download for {}", &file_name));
                     }
-                    if let Err(e) = task.dl_info.save(DataPath::DownloadInfo(&self.config, &task.dl_info).into()).await
-                    {
+                    if let Err(e) = task.dl_info.save(DataPath::DownloadInfo(&self.config, &task.dl_info)).await {
                         self.logger.log(format!("Couldn't store new download url for {}: {}", &file_name, e));
                     }
                     return;
@@ -113,96 +110,40 @@ impl Downloads {
     }
 
     pub async fn add(&self, dl_info: DownloadInfo) {
-        let mut task =
-            DownloadTask::new(&self.cache, &self.client, &self.config, &self.logger, dl_info.clone(), self.clone());
-
-        if task.file_exists().await {
-            return;
-        }
+        let mut task = DownloadTask::new(
+            self.cache.clone(),
+            self.client.clone(),
+            self.config.clone(),
+            self.logger.clone(),
+            dl_info.clone(),
+            self.clone(),
+            self.query.clone(),
+        );
 
         match dl_info.get_state() {
             DownloadState::Paused => {}
-            _ => if let Ok(()) = task.start().await {},
+            _ => { let _ = task.start().await; }
         }
         self.tasks.write().await.insert(dl_info.file_info.file_id, task);
         self.has_changed.store(true, Ordering::Relaxed);
     }
 
-    async fn request_download_link(&self, nxm: &NxmUrl) -> Result<Url, ApiError> {
-        match DownloadLink::request(
-            &self.client,
-            // TODO get rid of passing an array as argument
-            &[
-                &nxm.domain_name,
-                &nxm.mod_id.to_string(),
-                &nxm.file_id.to_string(),
-                &nxm.query,
-            ],
-        )
-        .await
-        {
-            Ok(dl_links) => {
-                self.cache.save_download_links(&dl_links, &nxm.domain_name, nxm.mod_id, nxm.file_id).await?;
-                /* The API returns multiple locations for Premium users. The first option is by default the Premium-only
-                 * global CDN, unless the user has selected a preferred download location.
-                 * For small files the download URL is the same regardless of location choice.
-                 * Free-tier users only get one location choice.
-                 * Anyway, we can just pick the first location. */
-                let location = dl_links.locations.first().unwrap();
-                match Url::parse(&location.URI) {
-                    Ok(url) => Ok(url),
-                    Err(e) => {
-                        self.logger.log(format!(
-                            "Failed to parse URI in response from Nexus: {}. \
-                                                Please file a bug about this.",
-                            &location.URI
-                        ));
-                        Err(e.into())
-                    }
-                }
+    async fn refresh_update_status(&self, fi: &FileInfo) -> UpdateStatus {
+        if let Some(file_list) = self.cache.file_lists.get(&fi.game, fi.mod_id).await {
+            if file_list.files.is_empty() {
+                return UpdateStatus::Invalid(0);
             }
-            Err(e) => {
-                self.logger.log(format!("Failed to query download links from Nexus: {}", e));
-                Err(e)
-            }
-        }
-    }
+            /* Assume the user has noticed the other files in this mod.
+             * For files that aren't out of date, clear the HasNewFile flag and set UpdateStatus to UpToDate(time) where
+             * time is the timestamp of the newest file in the mod. */
+            let latest_timestamp = file_list.files.last().unwrap().uploaded_timestamp;
 
-    async fn update_metadata(&self, fi: &FileInfo) -> Result<(), ApiError> {
-        let (game, mod_id) = (&fi.game, fi.mod_id);
-
-        // Try use cached value for this mod, otherwise query API
-        let file_list: Option<Arc<FileList>> = 'fl: {
-            if let Some(fl) = self.cache.file_lists.get(game, mod_id).await {
-                // TODO maybe get the file details here while at it..?
-                if fl.files.binary_search_by(|fd| fd.file_id.cmp(&fi.file_id)).is_ok() {
-                    break 'fl Some(fl);
-                }
+            if let Ok(_) = &file_list.file_updates.binary_search_by(|upd| fi.file_id.cmp(&upd.old_file_id)) {
+                return UpdateStatus::OutOfDate(latest_timestamp);
             }
-            match FileList::request(&self.client, &[game, &mod_id.to_string()]).await {
-                Ok(mut fl) => {
-                    self.cache.format_file_list(&mut fl, game, mod_id).await;
-                    let fl = Arc::new(fl);
-                    if let Err(e) = self.cache.save_file_list(fl.clone(), game, mod_id).await {
-                        self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
-                    }
-                    Some(fl)
-                }
-                Err(e) => {
-                    self.logger.log(format!("Unable to query file list for {} mod {}: {}", game, mod_id, e));
-                    None
-                }
-            }
-        };
-
-        /* Assume the user has noticed the other files in this mod.
-         * For files that aren't out of date, clear the HasNewFile flag and set UpdateStatus to UpToDate(time) where
-         * time is the timestamp of the newest file in the mod. */
-        // TODO if user downloads outdated file it won't be shown as outdated
-        let latest_timestamp = file_list.and_then(|fl| fl.files.last().cloned()).unwrap().uploaded_timestamp;
-        {
-            if let Some(filedata_heap) = self.cache.metadata_index.get_modfiles(game, &mod_id).await {
+            if let Some(filedata_heap) = self.cache.metadata_index.get_modfiles(&fi.game, &fi.mod_id).await {
                 for fdata in filedata_heap.iter() {
+                    // TODO recover from UpdateStatus::Invalid
                     if let UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) = fdata.update_status.to_enum() {
                         fdata
                             .propagate_update_status(
@@ -216,69 +157,49 @@ impl Downloads {
                     }
                 }
             }
+            return UpdateStatus::UpToDate(latest_timestamp);
+        } else {
+            self.logger.log("Couldn't check update status for {mod_id}: file list doesn't exist in db.");
+            return UpdateStatus::Invalid(0);
+        }
+    }
+
+    async fn update_metadata(&self, fi: &FileInfo) -> Result<(), ApiError> {
+        let (game, mod_id) = (&fi.game, fi.mod_id);
+
+        // If the mod info for this file doesn't exist, fetch it from the API
+        if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&fi.file_id).await {
+            if mfd.mod_info.read().await.is_none() {
+                match self.query.mod_info(&mfd.game, mfd.mod_id).await {
+                    Ok(_) => self.logger.log(format!("{} was missing its mod info.", fi.file_name)),
+                    Err(e) => self.logger.log(format!("Failed to query mod info for {}: {e}", fi.file_name)),
+                }
+            }
         }
 
-        let metadata = Arc::new(ArchiveMetadata::new(fi.clone(), UpdateStatus::UpToDate(latest_timestamp)));
+        // same for file list
+        if let Some(fl) = self.cache.file_lists.get(game, mod_id).await {
+            if fl.files.binary_search_by(|fd| fd.file_id.cmp(&fi.file_id)).is_err() {
+                match self.query.file_list(&game, mod_id).await {
+                    Ok(_) => self.logger.log(format!("{} was missing its file list.", fi.file_name)),
+                    Err(e) => self.logger.log(format!("Failed to query file list for {}: {e}", fi.file_name)),
+                }
+            }
+        }
+        let update_status = self.refresh_update_status(&fi).await;
+        let metadata = Arc::new(ArchiveMetadata::new(fi.clone(), update_status));
         let path = self.config.download_dir().join(&fi.file_name);
         // Failing this would mean that the just downloaded file is inaccessible
-        if let Some(archive) =
+        if let Ok(archive) =
             ArchiveFile::new(&self.logger, &self.cache.installed, &path, Some(metadata.clone())).await
         {
-            self.verify_hash(&metadata).await;
-            if let Err(e) =
-                metadata.save(DataPath::ArchiveMetadata(&self.config, &archive.file_name).into()).await
-            {
+            if let Err(e) = metadata.save(DataPath::ArchiveMetadata(&self.config, &archive.file_name)).await {
                 self.logger.log(format!("Unable to save metadata for {}: {e}", &fi.file_name));
             }
             let entry = ArchiveEntry::File(Arc::new(archive));
             self.cache.archives.add_archive(entry.clone()).await;
         }
         Ok(())
-    }
-
-    async fn verify_hash(&self, metadata: &ArchiveMetadata) {
-        let mut path = self.config.download_dir();
-        path.push(&metadata.file_name);
-        match util::md5sum(path).await {
-            Ok(md5) => match Md5Search::request(&self.client, &[&metadata.game, &md5]).await {
-                Ok(query_res) => {
-                    match query_res.results.iter().find(|fd| fd.file_details.file_id == metadata.file_id) {
-                        Some(md5result) => {
-                            self.cache.save_md5result(md5result).await;
-                            if !(md5.eq(&md5result.file_details.md5)
-                                && metadata.file_name.eq(&md5result.file_details.file_name))
-                            {
-                                self.logger.log(format!(
-                                    "Warning: API returned unexpected response when checking hash for {}",
-                                    &metadata.file_name
-                                ));
-                                let mi = &md5result.r#mod;
-                                let fd = &md5result.file_details;
-                                self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name));
-                            }
-                        }
-                        None => {
-                            self.logger.log(format!(
-                                "Failed to verify hash for {}. Found this instead:",
-                                metadata.file_name
-                            ));
-                            for res in query_res.results {
-                                let mi = &res.r#mod;
-                                let fd = &res.file_details;
-                                self.logger.log(format!("\t{:?}: {} ({})", mi.name, fd.name, fd.file_name));
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    self.logger.log(format!("Unable to verify integrity of {}: {e}", &metadata.file_name));
-                    self.logger.log("This could mean the download got corrupted. See README for details.");
-                }
-            },
-            Err(e) => {
-                self.logger.log(format!("Error when checking hash for {}. {e}", metadata.file_name));
-            }
-        }
     }
 
     pub async fn delete(&self, i: usize) {

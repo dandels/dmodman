@@ -1,5 +1,5 @@
 use crate::api::ApiError;
-use crate::api::Client;
+use crate::api::Query;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
@@ -40,8 +40,8 @@ pub struct SearchQuery {
 
 #[allow(dead_code)]
 impl SearchQuery {
-    pub async fn send(&self, client: Client) -> Result<Search, ApiError> {
-        client.mod_search(self.format()).await
+    pub async fn send(&self, query: Query) -> Result<Search, ApiError> {
+        query.mod_search(self.format()).await
     }
 
     fn format(&self) -> String {
