@@ -84,7 +84,7 @@ impl Cache {
          * The update checker also needs the file updates sorted. */
         fl.files.sort();
         fl.file_updates.sort();
-        if let Some(files) = self.metadata_index.get_modfiles(&game, &mod_id).await {
+        if let Some(files) = self.metadata_index.get_modfiles(game, &mod_id).await {
             for mfd in &files {
                 let mut fd_lock = mfd.file_details.write().await;
                 if fd_lock.is_none() {

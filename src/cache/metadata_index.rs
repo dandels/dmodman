@@ -67,17 +67,17 @@ impl MetadataIndex {
     }
 
     // TODO (circular) references to other cache structs to fill all fields within this one function
-    pub async fn fill_mod_file_data(&self, game: &String, mod_id: u32, file_id: u64, mfdata: &ModFileMetadata) {
+    pub async fn fill_mod_file_data(&self, game: &str, mod_id: u32, file_id: u64, mfdata: &ModFileMetadata) {
         {
             let mut fd_lock = mfdata.file_details.write().await;
             if fd_lock.is_none() {
-                *fd_lock = self.file_lists.filedetails_for(game.clone(), mod_id, file_id).await;
+                *fd_lock = self.file_lists.filedetails_for(game.to_string(), mod_id, file_id).await;
             }
         }
         {
             let mut modinfo_lock = mfdata.mod_info.write().await;
             if modinfo_lock.is_none() {
-                *modinfo_lock = self.mod_info_map.get(game.clone(), mod_id).await;
+                *modinfo_lock = self.mod_info_map.get(game, mod_id).await;
             }
         }
     }

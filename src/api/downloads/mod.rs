@@ -138,7 +138,7 @@ impl Downloads {
              * time is the timestamp of the newest file in the mod. */
             let latest_timestamp = file_list.files.last().unwrap().uploaded_timestamp;
 
-            if let Ok(_) = &file_list.file_updates.binary_search_by(|upd| fi.file_id.cmp(&upd.old_file_id)) {
+            if file_list.file_updates.binary_search_by(|upd| fi.file_id.cmp(&upd.old_file_id)).is_ok() {
                 return UpdateStatus::OutOfDate(latest_timestamp);
             }
             if let Some(filedata_heap) = self.cache.metadata_index.get_modfiles(&fi.game, &fi.mod_id).await {
@@ -157,10 +157,10 @@ impl Downloads {
                     }
                 }
             }
-            return UpdateStatus::UpToDate(latest_timestamp);
+            UpdateStatus::UpToDate(latest_timestamp)
         } else {
             self.logger.log("Couldn't check update status for {mod_id}: file list doesn't exist in db.");
-            return UpdateStatus::Invalid(0);
+            UpdateStatus::Invalid(0)
         }
     }
 
@@ -180,13 +180,13 @@ impl Downloads {
         // same for file list
         if let Some(fl) = self.cache.file_lists.get(game, mod_id).await {
             if fl.files.binary_search_by(|fd| fd.file_id.cmp(&fi.file_id)).is_err() {
-                match self.query.file_list(&game, mod_id).await {
+                match self.query.file_list(game, mod_id).await {
                     Ok(_) => self.logger.log(format!("{} was missing its file list.", fi.file_name)),
                     Err(e) => self.logger.log(format!("Failed to query file list for {}: {e}", fi.file_name)),
                 }
             }
         }
-        let update_status = self.refresh_update_status(&fi).await;
+        let update_status = self.refresh_update_status(fi).await;
         let metadata = Arc::new(ArchiveMetadata::new(fi.clone(), update_status));
         let path = self.config.download_dir().join(&fi.file_name);
         // Failing this would mean that the just downloaded file is inaccessible

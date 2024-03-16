@@ -52,7 +52,7 @@ impl MainUI<'_> {
             self.should_run = false;
         }
         if let Event::Key(Key::Char('q')) = event {
-            if self.installer.extract_jobs.read().await.is_empty() {
+            if self.installer.extract_jobs.read().unwrap().is_empty() {
                 self.should_run = false;
             } else {
                 self.logger.log("Refusing to quit, archive extraction is still in progress.");
@@ -148,7 +148,7 @@ impl MainUI<'_> {
                     match self.tabs.focused() {
                         Focused::ArchiveTable => {
                             let (archive_name, _) = self.archives_view.get_by_index(i);
-                            if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(&archive_name).await {
+                            if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(archive_name).await {
                                 let query = self.query.clone();
                                 let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
                                 tokio::task::spawn(async move {
@@ -268,15 +268,12 @@ impl MainUI<'_> {
     async fn handle_downloads_keys(&mut self, event: Event) {
         let key = if let Event::Key(key) = event { key } else { return };
 
-        match key {
-            Key::Char('p') => {
-                if let Focused::DownloadTable = self.tabs.focused() {
-                    if let Some(i) = self.focused_widget().selected() {
-                        self.downloads.toggle_pause_for(i).await;
-                    }
+        if let Key::Char('p') = key {
+            if let Focused::DownloadTable = self.tabs.focused() {
+                if let Some(i) = self.focused_widget().selected() {
+                    self.downloads.toggle_pause_for(i).await;
                 }
             }
-            _ => {}
         }
     }
 
@@ -290,7 +287,7 @@ impl MainUI<'_> {
                     let (file_name, archive) = self.archives_view.get_by_index(i);
                     let dialog_title = "Directory name".to_string();
                     let mut suggested_values = vec![];
-                    if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(&file_name).await {
+                    if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(file_name).await {
                         if let Some(name) = mfd.name().await {
                             suggested_values.push(name);
                         }
@@ -311,14 +308,16 @@ impl MainUI<'_> {
             Key::Char('L') => {
                 if let Some(i) = self.focused_widget().selected() {
                     let (_file_name, archive) = self.archives_view.get_by_index(i);
-                    match self.installer.list_content(&archive.file_name()).await {
-                        Ok(content) => {
-                            for c in content {
-                                self.logger.log(format!("{}", c));
+                    if let Some(res) = self.installer.list_content(archive.file_name()).await {
+                        match res {
+                            Ok(content) => {
+                                for c in content {
+                                    self.logger.log(c.to_string());
+                                }
                             }
-                        }
-                        Err(e) => {
-                            self.logger.log(format!("{:?}", e));
+                            Err(e) => {
+                                self.logger.log(format!("{:?}", e));
+                            }
                         }
                     }
                 }
@@ -343,7 +342,7 @@ impl MainUI<'_> {
                         let dest_dir = self.popup_dialog.get_content();
                         let index = self.archives_view.selected().unwrap();
                         let (file_name, _archive) = self.archives_view.get_by_index(index);
-                        if let Err(e) = self.installer.extract(file_name, dest_dir.to_string(), true).await {
+                        if let Err(e) = self.installer.extract(file_name.to_string(), dest_dir.to_string(), true).await {
                             self.logger.log(format!("Error when extracting {file_name}: {e}"));
                         }
                         self.input_mode = InputMode::Normal;
@@ -371,7 +370,7 @@ impl MainUI<'_> {
                     let dest_dir = self.popup_dialog.get_content();
                     let index = self.archives_view.selected().unwrap();
                     let (file_name, _archive) = self.archives_view.get_by_index(index);
-                    match self.installer.extract(file_name, dest_dir.to_string(), false).await {
+                    match self.installer.extract(file_name.to_string(), dest_dir.to_string(), false).await {
                         Ok(()) => self.input_mode = InputMode::Normal,
                         Err(InstallError::AlreadyExists) => {
                             self.confirm_dialog =
@@ -381,6 +380,7 @@ impl MainUI<'_> {
                         }
                         Err(e) => {
                             self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));
+                            self.input_mode = InputMode::Normal;
                         }
                     }
                 }

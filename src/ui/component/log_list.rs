@@ -34,7 +34,7 @@ impl<'a> LogList<'a> {
                 .up(Focused::InstalledMods),
         );
         neighbors.map.insert(Tab::Archives, Neighbors::default().up(Focused::ArchiveTable));
-        let widget = List::default().block(block.clone()).highlight_style(highlight_style.clone());
+        let widget = List::default().block(block.clone()).highlight_style(highlight_style);
 
         Self {
             list_items: vec![],

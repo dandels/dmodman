@@ -32,15 +32,20 @@ pub struct FileDetails {
     pub size: u64,
     pub file_name: String,
     pub uploaded_timestamp: u64,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub uploaded_time: String,
     pub mod_version: Option<String>,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub external_virus_scan_url: Option<String>,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub description: Option<String>,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub size_kb: u64,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub changelog_html: Option<String>,
 }

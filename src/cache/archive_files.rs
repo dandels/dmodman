@@ -125,7 +125,7 @@ impl ArchiveFiles {
     pub async fn delete(&self, file_name: &str) {
         let mut lock = self.files.write().await;
         if let Some(_archive_file) = lock.get(file_name) {
-            let path = self.config.download_dir().join(&file_name);
+            let path = self.config.download_dir().join(file_name);
             match fs::remove_file(path).await {
                 Ok(()) => {
                     lock.swap_remove(file_name);

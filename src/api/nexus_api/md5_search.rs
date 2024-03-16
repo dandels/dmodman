@@ -32,11 +32,14 @@ pub struct Md5FileDetails {
     pub file_name: String,
     pub uploaded_timestamp: u64,
     #[serde(skip)]
+    #[allow(dead_code)]
     pub uploaded_time: String,
     pub mod_version: Option<String>,
     #[serde(skip)]
+    #[allow(dead_code)]
     pub external_virus_scan_url: Option<String>,
     #[serde(skip)]
+    #[allow(dead_code)]
     pub changelog_html: Option<String>,
     pub md5: String,
 }

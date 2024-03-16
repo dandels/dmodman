@@ -29,7 +29,7 @@ impl Installed {
                         match mod_dir {
                             ModDirectory::Nexus(im) => {
                                 metadata_index.add_installed(dir_name.clone(), im.file_id, im.clone()).await;
-                                installed.push((dir_name, ModDirectory::Nexus(im.clone()).into()));
+                                installed.push((dir_name, ModDirectory::Nexus(im.clone())));
                                 by_file_id.push((im.file_id, im));
                             }
                             _ => {
@@ -82,7 +82,7 @@ impl Installed {
                     self.metadata_index.delete_if_unreferenced(&mfd.file_id).await;
                 }
             }
-            let path = self.config.install_dir().join(&dir_name);
+            let path = self.config.install_dir().join(dir_name);
             if let Err(e) = fs::remove_dir_all(path).await {
                 self.logger.log(format!("Error {e} when removing {dir_name}"));
             }

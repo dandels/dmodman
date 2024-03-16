@@ -7,13 +7,17 @@ use url::Url;
 
 #[derive(Debug)]
 pub struct NxmUrl {
+    #[allow(dead_code)]
     pub url: Url,
     pub query: String,
     pub domain_name: String, // this is the game name
     pub mod_id: u32,
     pub file_id: u64,
+    #[allow(dead_code)]
     pub key: String,
+    #[allow(dead_code)]
     pub expires: u64,
+    #[allow(dead_code)]
     pub user_id: u32,
 }
 

@@ -68,7 +68,7 @@ impl<'a> InstalledModsTable<'a> {
                         Cell::from(format_update_status_flags(&im.update_status)),
                         Cell::from(Text::from(im.version.as_ref().map(|v| v.to_string()).unwrap_or("".to_string()))),
                     ]),
-                    _ => Row::new(vec![Span::raw(format!("{}", &dir_name))]),
+                    _ => Row::new(vec![Span::raw((&dir_name).to_string())]),
                 }
                 .style(LIST_STYLES[i % 2]);
                 rows.push(row);

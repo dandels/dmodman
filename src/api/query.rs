@@ -91,7 +91,7 @@ impl Query {
     /* Searches for a file matching this
      */
     pub async fn md5search(&self, game: &str, md5: &str, file_name: &str, file_id: u64) -> Result<Md5Result, ApiError> {
-        match Md5Search::request(&self.client, &[&game, &md5]).await {
+        match Md5Search::request(&self.client, &[game, md5]).await {
             Ok(query_res) => match query_res.results.iter().find(|fd| fd.file_details.file_id == file_id) {
                 Some(md5result) => {
                     // hash OK
@@ -101,7 +101,7 @@ impl Query {
                          * missing, but dealing with just one kind is a lot simpler.
                          */
                         self.cache.save_modinfo(md5result.mod_info.clone()).await;
-                        return Ok(md5result.clone());
+                        Ok(md5result.clone())
                     } else {
                         self.logger.log(format!(
                             "Warning: API returned unexpected response when checking hash for {}",

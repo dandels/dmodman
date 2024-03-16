@@ -175,14 +175,14 @@ impl DownloadTask {
             match util::md5sum(path).await {
                 Ok(md5) => {
                     // Errors are logged by Query
-                    if let Err(_) = query
+                    if (query
                         .md5search(
                             &dl_info.file_info.game,
                             &md5,
                             &dl_info.file_info.file_name,
                             dl_info.file_info.file_id,
                         )
-                        .await
+                        .await).is_err()
                     {
                         // We wanted the mod info that came with the md5result, so let's query for it directly
                         let _ = query.mod_info(&dl_info.file_info.game, dl_info.file_info.mod_id).await;

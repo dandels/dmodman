@@ -7,8 +7,10 @@ use crate::cache::Cacheable;
 pub struct ModInfo {
     pub name: Option<String>,
     pub summary: Option<String>,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub description: Option<String>,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub picture_url: Option<String>,
     pub mod_id: u32,
@@ -22,13 +24,16 @@ pub struct ModInfo {
     pub updated_time: String,
     pub author: String,
     pub uploaded_by: String,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub uploaded_users_profile_url: Option<String>,
     pub contains_adult_content: bool,
     pub status: String,
     pub available: bool,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub user: Option<UserInfo>,
+    #[allow(dead_code)]
     #[serde(skip)]
     pub endorsement: Option<Endorsement>,
 }

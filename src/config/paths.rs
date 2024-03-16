@@ -32,55 +32,55 @@ impl From<DataPath<'_>> for PathBuf {
     fn from(value: DataPath) -> Self {
         let mut path;
         match &value {
-            DataPath::DownloadInfo(ref config, di) => {
+            DataPath::DownloadInfo(config, di) => {
                 path = config.download_dir();
                 path.push(format!("{}.part.json", di.file_info.file_name));
             }
-            DataPath::DownloadLink(ref config, game, mod_id, file_id) => {
+            DataPath::DownloadLink(config, game, mod_id, file_id) => {
                 path = config.metadata_for_profile();
                 path.push(game);
                 path.push(DL_LINKS);
                 path.push(format!("{}-{}.json", mod_id, file_id));
             }
-            DataPath::FileList(ref config, game, mod_id) => {
+            DataPath::FileList(config, game, mod_id) => {
                 path = config.metadata_for_profile();
                 path.push(game);
                 path.push(FILE_LISTS);
                 path.push(format!("{}.json", mod_id));
             }
             // For version <= 0.2.3
-            DataPath::FileListCompat(ref config, game, mod_id) => {
+            DataPath::FileListCompat(config, game, mod_id) => {
                 path = config.data_dir();
                 path.push(game);
                 path.push(FILE_LISTS);
                 path.push(format!("{}.json", mod_id));
             }
-            DataPath::GameInfo(ref config, game) => {
+            DataPath::GameInfo(config, game) => {
                 path = config.metadata_dir();
                 path.push(format!("{}.json", game));
             }
-            DataPath::ModDirMetadata(ref config, dir_name) => {
+            DataPath::ModDirMetadata(config, dir_name) => {
                 path = config.install_dir();
                 path.push(dir_name);
                 path.push(".dmodman-meta.json");
             }
-            DataPath::ArchiveMetadata(ref config, file_name) => {
+            DataPath::ArchiveMetadata(config, file_name) => {
                 path = config.download_dir();
                 path.push(format!("{}.json", file_name));
             }
-            DataPath::Md5Results(ref config, game, file_id) => {
+            DataPath::Md5Results(config, game, file_id) => {
                 path = config.metadata_dir();
                 path.push(game);
                 path.push(MD5_RESULTS);
                 path.push(format!("{}.json", file_id));
             }
-            DataPath::ModInfo(ref config, game, mod_id) => {
+            DataPath::ModInfo(config, game, mod_id) => {
                 path = config.metadata_dir();
                 path.push(game);
                 path.push(MOD_INFO);
                 path.push(format!("{}.json", mod_id));
             }
-            DataPath::Updated(ref config, game) => {
+            DataPath::Updated(config, game) => {
                 path = config.data_dir();
                 path.push(game);
                 path.push("updated.json");

@@ -208,8 +208,8 @@ impl Config {
         };
 
         Ok(Self {
-            apikey: config.apikey.into(),
-            profile: config.profile.unwrap_or("default".to_string()).into(),
+            apikey: config.apikey,
+            profile: config.profile.unwrap_or("default".to_string()),
             download_dir,
             install_dir,
         })
@@ -298,9 +298,11 @@ pub mod tests {
     use std::env;
 
     pub fn setup_env() {
-        env::set_var("HOME", format!("{}/test/", env!("CARGO_MANIFEST_DIR")));
-        env::set_var("XDG_DATA_DIR", "$HOME/data");
-        env::set_var("XDG_DOWNLOAD_DIR", "$HOME/downloads");
+        unsafe {
+            env::set_var("HOME", format!("{}/test/", env!("CARGO_MANIFEST_DIR")));
+            env::set_var("XDG_DATA_DIR", "$HOME/data");
+            env::set_var("XDG_DOWNLOAD_DIR", "$HOME/downloads");
+        }
     }
 
     #[test]
@@ -326,7 +328,7 @@ pub mod tests {
 
     #[test]
     fn expand_env_variable() -> Result<(), ConfigError> {
-        env::set_var("MY_VAR", "/opt/games/dmodman");
+        unsafe { env::set_var("MY_VAR", "/opt/games/dmodman"); }
         let config = ConfigBuilder::default().download_dir("$MY_VAR").profile("skyrim").build()?;
         assert_eq!(PathBuf::from("/opt/games/dmodman/skyrim"), config.download_dir());
         Ok(())
@@ -334,7 +336,7 @@ pub mod tests {
 
     #[test]
     fn expand_tilde() -> Result<(), ConfigError> {
-        env::set_var("HOME", "/home/dmodman_test");
+        unsafe { env::set_var("HOME", "/home/dmodman_test"); }
         let config = ConfigBuilder::default().download_dir("~/downloads").profile("stardew valley").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/downloads/stardew valley"), config.download_dir());
         Ok(())
@@ -342,8 +344,10 @@ pub mod tests {
 
     #[test]
     fn expand_complex_path() -> Result<(), ConfigError> {
-        env::set_var("HOME", "/root/subdir");
-        env::set_var("FOO_VAR", "foo/bar");
+        unsafe {
+            env::set_var("HOME", "/root/subdir");
+            env::set_var("FOO_VAR", "foo/bar");
+        }
         let config =
             ConfigBuilder::default().download_dir("~/secret$FOO_VAR").profile("?!\"¤%😀 my profile").build()?;
         assert_eq!(PathBuf::from("/root/subdir/secretfoo/bar/?!\"¤%😀 my profile"), config.download_dir());
@@ -352,9 +356,11 @@ pub mod tests {
 
     #[test]
     fn default_config() -> Result<(), ConfigError> {
-        env::set_var("HOME", "/home/dmodman_test");
-        env::set_var("XDG_DATA_DIR", "$HOME/.local/share");
-        env::set_var("XDG_DOWNLOAD_DIR", "$HOME/Downloads");
+        unsafe {
+            env::set_var("HOME", "/home/dmodman_test");
+            env::set_var("XDG_DATA_DIR", "$HOME/.local/share");
+            env::set_var("XDG_DOWNLOAD_DIR", "$HOME/Downloads");
+        }
         let config = ConfigBuilder::default().build()?;
         println!("dirs {:?}", dirs::download_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/Downloads/dmodman"), config.download_dir());
@@ -368,7 +374,7 @@ pub mod tests {
     #[test]
     fn append_profile_to_dirs() -> Result<(), ConfigError> {
         setup_env();
-        env::set_var("HOME", "/home/dmodman_test");
+        unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("append").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_dls/append"), config.download_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_ins/append"), config.install_dir());
@@ -377,7 +383,7 @@ pub mod tests {
 
     #[test]
     fn relative_paths() -> Result<(), ConfigError> {
-        env::set_var("HOME", "/home/dmodman_test");
+        unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("relative_test").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/relative_dls/"), config.download_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/relative_ins/"), config.install_dir());
@@ -386,7 +392,7 @@ pub mod tests {
 
     #[test]
     fn absolute_paths() -> Result<(), ConfigError> {
-        env::set_var("HOME", "/home/dmodman_test");
+        unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("absolute_test").build()?;
         assert_eq!(PathBuf::from("/absolute_dls"), config.download_dir());
         assert_eq!(PathBuf::from("/absolute_ins"), config.install_dir());
@@ -395,7 +401,7 @@ pub mod tests {
 
     #[test]
     fn profile_specific_install_dir() -> Result<(), ConfigError> {
-        env::set_var("HOME", "/home/dmodman_test");
+        unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("insdir_only_test").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/insdir_only"), config.install_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_dls"), config.download_dir());

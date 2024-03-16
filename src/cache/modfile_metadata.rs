@@ -36,7 +36,7 @@ impl ModFileMetadata {
 
         let update_status = {
             let mut latest_status: UpdateStatus = UpdateStatus::UpToDate(0);
-            for (_, ins_mod) in &installed_map {
+            for ins_mod in installed_map.values() {
                 let ins_status = ins_mod.update_status.to_enum();
                 if latest_status.time() < ins_status.time() {
                     latest_status = ins_status;
@@ -80,14 +80,14 @@ impl ModFileMetadata {
         for (_, archive) in self.mod_archives.write().await.iter() {
             if let Some(metadata) = &archive.mod_data {
                 metadata.update_status.set(status.clone());
-                if let Err(e) = metadata.save_changes(DataPath::ArchiveMetadata(&config, &archive.file_name)).await {
+                if let Err(e) = metadata.save_changes(DataPath::ArchiveMetadata(config, &archive.file_name)).await {
                     logger.log(format!("Couldn't save UpdateStatus for {}: {}", archive.file_name, e));
                 }
             }
         }
         for (dir_name, installed) in self.installed_mods.write().await.iter() {
             installed.update_status.set(status.clone());
-            if let Err(e) = ModDirectory::Nexus(installed.clone()).save_changes(DataPath::ModDirMetadata(&config, dir_name)).await {
+            if let Err(e) = ModDirectory::Nexus(installed.clone()).save_changes(DataPath::ModDirMetadata(config, dir_name)).await {
                 logger.log(format!("Couldn't save UpdateStatus for {}: {}", dir_name, e));
             }
         }
@@ -98,7 +98,7 @@ impl ModFileMetadata {
     }
 
     pub async fn mod_name(&self) -> Option<String> {
-        if let Some(mod_name) = self.mod_info.read().await.as_ref().map(|mi| mi.name.clone()).flatten() {
+        if let Some(mod_name) = self.mod_info.read().await.as_ref().and_then(|mi| mi.name.clone()) {
             return Some(mod_name);
         } else {
             for (_, im) in self.installed_mods.read().await.iter() {

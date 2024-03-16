@@ -78,7 +78,7 @@ impl UpdateChecker {
                          * FileIndex.game_to_mods_map  */
 
                         for (game, mod_map) in mods_by_game.iter() {
-                            match Updated::request(&me.client, &[&game]).await {
+                            match Updated::request(&me.client, &[game]).await {
                                 Ok(updated_mods) => {
                                     // Uncomment to save Updated lists
                                     //if let Err(e) =
@@ -195,7 +195,7 @@ impl UpdateChecker {
      *    If none of the other update conditions are true, we set the file's update status to UpToDate or HasNewFile */
     async fn check_mod(
         &self,
-        to_check: &Vec<Arc<ModFileMetadata>>,
+        to_check: &[Arc<ModFileMetadata>],
         file_list: &FileList,
     ) -> Vec<(Arc<ModFileMetadata>, UpdateStatus)> {
         if to_check.is_empty() {
@@ -220,14 +220,14 @@ impl UpdateChecker {
 
         for mfd in to_check.iter().rev() {
             let update_status = mfd.update_status.to_enum();
-            //match update_status {
-            //    // No need to check files that are already known to have updates
-            //    UpdateStatus::OutOfDate(_) | UpdateStatus::HasNewFile(_) => {
-            //        checked.push((mfd.clone(), update_status));
-            //        continue;
-            //    }
-            //    _ => {}
-            //}
+            match update_status {
+                // No need to check files that are already known to have updates
+                UpdateStatus::OutOfDate(_) => {
+                    checked.push((mfd.clone(), update_status));
+                    continue;
+                }
+                _ => {}
+            }
 
             let mut has_update = false;
 
@@ -235,6 +235,7 @@ impl UpdateChecker {
             const OLD_VERSION: u32 = 4;
             const ARCHIVED: u32 = 7;
             if let Some(file_details) = mfd.file_details().await {
+                // Maybe add a separate update status for this?
                 if file_details.category_id == OLD_VERSION || file_details.category_id == ARCHIVED {
                     has_update = true;
                 } else {
@@ -243,7 +244,7 @@ impl UpdateChecker {
                      * We're iterating both the files to check and the update lists in reverse, and the next file to
                      * check can reuse the index of the previous newer_updates_index, because that file is older than
                      * this one. */
-                    if let Some(index) = newer_updates_start_index {
+                    if let Some(mut index) = newer_updates_start_index {
                         while index > 0 {
                             let upd = &updates[index];
                             /* The timestamp in the file updates might be slightly later than the one in the FileList, so we
@@ -252,6 +253,7 @@ impl UpdateChecker {
                                 && mfd.file_id != upd.new_file_id
                             {
                                 newer_updates_start_index = Some(index - 1);
+                                index -= 1;
                             } else {
                                 break;
                             }
@@ -313,7 +315,7 @@ impl UpdateChecker {
                  * If it still wasn't added then the file is probably so old that the API no longer lists it.
                  */
                 if let Some(name) = mfd.name().await {
-                    self.logger.log(format!("{}", name));
+                    self.logger.log(name);
                 }
                 checked.push((mfd.clone(), UpdateStatus::OutOfDate(latest_remote_time)));
             }
