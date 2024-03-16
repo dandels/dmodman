@@ -13,7 +13,7 @@ use async_zip::tokio::read::fs::ZipFileReader;
 use async_zip::tokio::read::ZipEntryReader;
 use futures_lite::AsyncReadExt as FuturesReadExt;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs::File;
@@ -112,11 +112,11 @@ impl Installer {
                         let logger = me.logger.clone();
                         let base_dir = dest_path.clone();
                         let file_name = entry.filename().clone().into_string().unwrap();
+                        let target_path = base_dir.join(normalize_path(&file_name));
                         match entry.dir() {
                             Ok(is_dir) => {
                                 if is_dir {
-                                    // TODO path traversal vulnerability, this needs to be sanitized
-                                    if let Err(e) = tokio::fs::create_dir_all(base_dir.join(&file_name)).await {
+                                    if let Err(e) = tokio::fs::create_dir_all(target_path).await {
                                         me.logger.log(format!("Failed to extract directory {file_name}: {e}"));
                                         let mut jobs = me.extract_jobs.write().await;
                                         jobs.remove(&dest_path);
@@ -124,7 +124,7 @@ impl Installer {
                                     }
                                 } else {
                                     tasks.push(task::spawn(async move {
-                                        extract_zip_entry(logger, base_dir, file_name, zip_reader, i).await
+                                        extract_zip_entry(logger, target_path, zip_reader, i).await
                                     }));
                                 }
                             }
@@ -165,23 +165,12 @@ impl Installer {
 
 async fn extract_zip_entry(
     logger: Logger,
-    base_dir: PathBuf,
-    file_name: String,
+    target_path: PathBuf,
     reader: ZipFileReader,
     index: usize,
 ) -> Result<usize, (usize, InstallError)> {
-    // TODO Sanitize path
-    // this fails because canonicalize() checks if it exists
-    //let path = base_dir.join(match PathBuf::from(&file_name).canonicalize() {
-    //    Ok(p) => p,
-    //    Err(e) => {
-    //        logger.log(format!("File name was {:?}, err {:?}", &file_name, &e));
-    //        return Err((index, e.into()));
-    //    }
-    //});
-    let path = base_dir.join(&file_name);
     let mut entry_reader: ZipEntryReader<File, WithoutEntry> = reader.reader_without_entry(index).await.unwrap();
-    match File::create(path.clone()).await {
+    match File::create(target_path.clone()).await {
         Ok(file) => {
             // TODO is it possible and desirable to use a BufReader for the zip file? The trait bounds are a bit crazy
             // though.
@@ -195,21 +184,54 @@ async fn extract_zip_entry(
                             return Ok(index);
                         }
                         if let Err(e) = writer.write(&mut buf[..bytes_read]).await {
-                            logger.log(format!("Writing {:?} reported error {e}", &path));
+                            logger.log(format!("Writing {:?} reported error {e}", &target_path));
                             logger.log(format!("{e}"));
                             return Err((index, e.into()));
                         }
                     }
                     Err(e) => {
-                        logger.log(format!("Extracting {:?} failed with {e}", &path));
+                        logger.log(format!("Extracting {:?} failed with {e}", &target_path));
                         return Err((index, e.into()));
                     }
                 }
             }
         }
         Err(e) => {
-            logger.log(format!("Failed to create file {:?}", &path));
+            logger.log(format!("Failed to create file {:?}", &target_path));
             return Err((index, e.into()));
         }
     }
+}
+
+/* The standard library does unfortunately not offer a way to normalize a path.
+ * path.canonicalize() checks if the file exists, which is not what we want here.
+ *
+ * Credits to the Cargo project (MIT licensed), particularly Alex Crichton who seems to have written this.
+ * https://github.com/rust-lang/cargo/blob/fede83ccf973457de319ba6fa0e36ead454d2e20/src/cargo/util/paths.rs#L61 */
+fn normalize_path(file_name: &String) -> PathBuf {
+    let path = Path::new(file_name);
+    let mut components = path.components().peekable();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ret.pop();
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret
 }
