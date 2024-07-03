@@ -39,7 +39,7 @@ impl DownloadInfo {
             file_info,
             url,
             state: Arc::new(DL_STATE_DOWNLOADING.into()),
-            progress: DownloadProgress::default(),
+            progress: DownloadProgress::new(Arc::new(0.into()), None),
         }
     }
 

@@ -4,31 +4,27 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct DownloadProgress {
     pub bytes_read: Arc<AtomicU64>,
-    pub size: String,
-    size_unit: usize,
+    size_and_unit: Option<(String, usize)>,
 }
 
 impl DownloadProgress {
     pub fn new(bytes_read: Arc<AtomicU64>, content_length: Option<u64>) -> Self {
-        let size = match content_length {
-            Some(total) => format::human_readable(total),
-            None => ("?".to_string(), 3), // fall back to formatting size as mebibytes
-        };
+        let size_and_unit = content_length.map(format::human_readable);
         Self {
             bytes_read,
-            size: size.0,
-            size_unit: size.1,
+            size_and_unit,
         }
     }
 }
 
 impl fmt::Display for DownloadProgress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let print =
-            format!("{}/{}", format::bytes_as_unit(self.bytes_read.load(Ordering::Relaxed), self.size_unit), self.size);
-        write!(f, "{}", print)
+        match &self.size_and_unit {
+            Some((size, size_unit)) => write!(f, "{}/{size}", format::bytes_as_unit(self.bytes_read.load(Ordering::Relaxed), *size_unit)),
+            None => f.write_str("")
+        }
     }
 }

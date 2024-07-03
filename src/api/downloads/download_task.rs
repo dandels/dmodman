@@ -100,6 +100,7 @@ impl DownloadTask {
         if self.file_exists().await {
             self.logger.log(format!("{file_name} already exists and won't be downloaded."));
             self.logger.log("Verifying mod metadata...");
+            self.dl_info.set_state(DownloadState::Done);
             let _ = self.downloads.update_metadata(&self.dl_info.file_info).await;
             return Err(());
         }
@@ -182,7 +183,8 @@ impl DownloadTask {
                             &dl_info.file_info.file_name,
                             dl_info.file_info.file_id,
                         )
-                        .await).is_err()
+                        .await)
+                        .is_err()
                     {
                         // We wanted the mod info that came with the md5result, so let's query for it directly
                         let _ = query.mod_info(&dl_info.file_info.game, dl_info.file_info.mod_id).await;

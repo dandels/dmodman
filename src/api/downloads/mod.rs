@@ -122,7 +122,9 @@ impl Downloads {
 
         match dl_info.get_state() {
             DownloadState::Paused => {}
-            _ => { let _ = task.start().await; }
+            _ => {
+                let _ = task.start().await;
+            }
         }
         self.tasks.write().await.insert(dl_info.file_info.file_id, task);
         self.has_changed.store(true, Ordering::Relaxed);
