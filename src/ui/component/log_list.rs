@@ -15,7 +15,6 @@ pub struct LogList<'a> {
     pub state: ListState,
     pub highlight_style: Style,
     pub widget: List<'a>,
-    pub needs_redraw: bool,
     pub len: usize,
 }
 
@@ -44,7 +43,6 @@ impl<'a> LogList<'a> {
             state: ListState::default(),
             highlight_style,
             widget,
-            needs_redraw: true,
             len: 0,
         }
     }

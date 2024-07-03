@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-// efficient ways to look up data pointing to the same Arc<ModFileData>'s
-
 type Map<K, V> = Arc<RwLock<HashMap<K, V>>>;
 
 #[derive(Clone)]
@@ -22,8 +20,8 @@ pub struct MetadataIndex {
     file_lists: FileLists,
     mod_info_map: ModInfoMap,
 
-    pub by_file_id: Map<u64, Arc<ModFileMetadata>>, // is this one needed?
-    pub by_archive_name: Map<String, Arc<ModFileMetadata>>,
+    by_file_id: Map<u64, Arc<ModFileMetadata>>,
+    by_archive_name: Map<String, Arc<ModFileMetadata>>,
     // (game, mod_id) -> BinaryHeap that keeps the modfiles sorted by timestamp. Used by the update checker.
     pub by_game_and_mod_sorted: Map<String, IndexMap<u32, Vec<Arc<ModFileMetadata>>>>,
 }

@@ -15,7 +15,6 @@ pub struct PopupDialog<'a> {
     pub text_label: Paragraph<'a>,
     pub list: List<'a>,
     pub state: ListState,
-    pub needs_redraw: bool,
     pub len: usize,
     suggested_values: Vec<String>,
 }
@@ -51,7 +50,6 @@ impl PopupDialog<'_> {
             config,
             textarea,
             text_label,
-            needs_redraw: true,
             list,
             state: ListState::default().with_selected(Some(0)),
             len,
@@ -75,7 +73,7 @@ impl PopupDialog<'_> {
         let textarea_err_style = Style::default().fg(Color::Red);
         let textarea_warn_style = Style::default().fg(Color::Yellow);
 
-        // Test if contents evaluates to
+        // Set highlight and warning message if input matches an existing file
         if Some(content).eq(&path.file_name().and_then(|s| s.to_str())) {
             match self.config.install_dir().join(path).try_exists() {
                 Ok(exists) => {

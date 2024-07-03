@@ -10,9 +10,7 @@ pub struct TopBar<'a> {
     pub tabs_widget: Tabs<'a>,
     request_counter: RequestCounter,
     pub counter_widget: Paragraph<'a>,
-    pub highlight_style: Style,
     prev_selected_tab: usize,
-    pub len: usize,
 }
 
 impl<'a> TopBar<'a> {
@@ -20,7 +18,6 @@ impl<'a> TopBar<'a> {
         let highlight_style = Style::new().bg(Color::White).fg(Color::Black);
 
         let tabnames = vec!["Main", "Archives"];
-        let len = tabnames.len();
         let prev_selected_tab = 0;
         let tabs_widget = Tabs::new(tabnames).select(prev_selected_tab).highlight_style(highlight_style);
         let counter_widget = Self::create_widget(&request_counter).await;
@@ -29,9 +26,7 @@ impl<'a> TopBar<'a> {
             tabs_widget,
             request_counter: request_counter.clone(),
             counter_widget,
-            highlight_style,
             prev_selected_tab,
-            len,
         }
     }
 

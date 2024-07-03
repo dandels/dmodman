@@ -92,7 +92,10 @@ impl ArchiveFiles {
                 let mod_data = match ArchiveMetadata::load(json_file).await {
                     Ok(md) => Some(Arc::new(md)),
                     Err(e) => {
-                        logger.log(format!("{} is missing its metadata: {e}", file_name));
+                        // Only log error if it's for some other reason than NotFound
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            logger.log(format!("{} is missing its metadata: {e}", file_name));
+                        }
                         None
                     }
                 };
@@ -192,6 +195,7 @@ impl ArchiveFile {
 pub enum ArchiveStatus {
     Downloaded,
     Extracting,
+    Error,
     Installed,
 }
 
@@ -200,6 +204,7 @@ impl Display for ArchiveStatus {
         match self {
             ArchiveStatus::Downloaded => f.write_str(""),
             ArchiveStatus::Extracting => f.write_str("Extracting..."),
+            ArchiveStatus::Error => f.write_str("Error"),
             ArchiveStatus::Installed => f.write_str("Installed"),
         }
     }
