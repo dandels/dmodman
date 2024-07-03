@@ -1,5 +1,5 @@
 use super::common::*;
-use crate::api::Downloads;
+use crate::api::{Downloads, FileInfo};
 use crate::ui::navigation::*;
 use ratatui::layout::Constraint;
 use ratatui::style::Style;
@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering;
 pub struct DownloadTable<'a> {
     headers: Row<'a>,
     widths: [Constraint; 3],
+    pub currently_shown: Vec<FileInfo>,
     pub downloads: Downloads,
     pub block: Block<'a>,
     pub state: TableState,
@@ -44,6 +45,7 @@ impl<'a> DownloadTable<'a> {
         Self {
             headers,
             widths,
+            currently_shown: Vec::new(),
             downloads,
             block,
             neighbors,
@@ -57,7 +59,10 @@ impl<'a> DownloadTable<'a> {
     pub async fn refresh(&mut self) -> bool {
         if self.downloads.has_changed.swap(false, Ordering::Relaxed) {
             let mut rows: Vec<Row> = vec![];
-            for (i, task) in self.downloads.tasks.read().await.values().enumerate() {
+            let lock = self.downloads.tasks.read().await;
+            let mut shown = Vec::with_capacity(lock.len());
+            for (i, task) in lock.values().enumerate() {
+                shown.push(task.dl_info.file_info.clone());
                 rows.push(
                     Row::new(vec![
                         task.dl_info.file_info.file_name.to_owned(),
@@ -67,6 +72,7 @@ impl<'a> DownloadTable<'a> {
                     .style(LIST_STYLES[i % 2]),
                 )
             }
+            self.currently_shown = shown;
 
             self.len = rows.len();
             self.widget = Table::new(rows, self.widths)
@@ -78,8 +84,13 @@ impl<'a> DownloadTable<'a> {
         false
     }
 
+    pub fn get_by_index(&self, index: usize) -> &FileInfo {
+        self.currently_shown.get(index).unwrap()
+    }
+
     pub async fn delete_by_index(&mut self, index: usize) {
-        self.downloads.delete(index).await;
+        let fi = self.get_by_index(index);
+        self.downloads.delete(fi.file_id).await;
         self.len = self.len.saturating_sub(1);
     }
 }

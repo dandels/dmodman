@@ -63,7 +63,7 @@ impl ArchiveTable<'_> {
             self.currently_shown = archives_lock.clone();
             for (i, (archive_name, entry)) in archives_lock.iter().enumerate() {
                 let install_status = match &entry {
-                    ArchiveEntry::File(archive) => archive.status.read().await.to_string(),
+                    ArchiveEntry::File(archive) => archive.install_state.read().await.to_string(),
                     ArchiveEntry::MetadataOnly(_) => "Deleted".to_string(),
                 };
                 let update_status = match entry.metadata() {
@@ -100,8 +100,9 @@ impl ArchiveTable<'_> {
         self.currently_shown.get_index(index).unwrap()
     }
 
-    pub async fn delete_by_index(&self, index: usize) {
-        let (name, _archive) = self.get_by_index(index);
+    pub async fn delete_by_index(&mut self, index: usize) {
+        let (name, _) = self.get_by_index(index);
         self.cache.archives.delete(name).await;
+        self.len = self.len.saturating_sub(1);
     }
 }

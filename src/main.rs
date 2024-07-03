@@ -60,7 +60,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     let config = Arc::new(config);
 
-    // TODO The config is copied around quite much
     let cache = Cache::new(config.clone(), logger.clone()).await?;
     let client = Client::new(&config).await;
     let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());

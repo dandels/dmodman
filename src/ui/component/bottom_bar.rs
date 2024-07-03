@@ -1,4 +1,4 @@
-use super::{ArchiveTable, InstalledModsTable};
+use super::{ArchiveTable, DownloadTable, InstalledModsTable};
 use crate::api::UpdateStatus;
 use crate::install::ModDirectory;
 use crate::ui::navigation::Focused;
@@ -35,6 +35,7 @@ impl<'a> BottomBar<'a> {
         &mut self,
         archives: &ArchiveTable<'_>,
         installed: &InstalledModsTable<'_>,
+        downloads: &DownloadTable<'_>,
         focused: &Focused,
         focused_index: Option<usize>,
     ) -> bool {
@@ -68,6 +69,16 @@ impl<'a> BottomBar<'a> {
                                 let flags = StatusField::from_update_status(mfd.update_status.to_enum());
                                 self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
                             }
+                        } else {
+                            self.widget = Paragraph::default();
+                        }
+                    }
+                    Focused::DownloadTable => {
+                        let file_info = downloads.get_by_index(focused_index);
+                        if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&file_info.file_id).await {
+                            let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
+                            let flags = StatusField::from_update_status(mfd.update_status.to_enum());
+                            self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
                         } else {
                             self.widget = Paragraph::default();
                         }

@@ -89,8 +89,9 @@ impl<'a> InstalledModsTable<'a> {
         self.currently_shown.get_index(index).unwrap()
     }
 
-    pub async fn delete_by_index(&self, index: usize) {
+    pub async fn delete_by_index(&mut self, index: usize) {
         let (dir_name, _) = self.get_by_index(index);
         self.installed.delete(dir_name).await;
+        self.len = self.len.saturating_sub(1);
     }
 }

@@ -127,7 +127,7 @@ impl MainUI<'_> {
             self.redraw_terminal |= self.top_bar.refresh(&self.tabs).await;
             self.redraw_terminal |= self.hotkey_bar.refresh(&self.input_mode, self.tabs.focused()).await;
             self.redraw_terminal |=
-                self.bottom_bar.refresh(&self.archives_view, &self.installed_mods_table, self.tabs.focused(), self.focused_widget().selected()).await;
+                self.bottom_bar.refresh(&self.archives_view, &self.installed_mods_table, &self.downloads_view, self.tabs.focused(), self.focused_widget().selected()).await;
             self.redraw_terminal |= self.log_view.refresh().await;
 
             let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);

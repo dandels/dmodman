@@ -292,7 +292,10 @@ impl MainUI<'_> {
                             suggested_values.push(name);
                         }
                         if let Some(modname) = mfd.mod_name().await {
-                            suggested_values.push(modname.clone());
+                            // Sometimes the mod and mod file name are the same
+                            if !suggested_values.contains(&modname) {
+                                suggested_values.push(modname.clone());
+                            }
                         }
                     } else {
                         self.logger.log(format!("Warn: mod for {} doesn't exist in db", &file_name));
