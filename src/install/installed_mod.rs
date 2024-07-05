@@ -48,14 +48,17 @@ impl ModDirectory {
         } = archive.mod_data.as_ref().unwrap().as_ref();
         let mfd = cache.metadata_index.get_by_archive_name(&archive.file_name).await.unwrap();
         let (version, category_id, category_name, update_status) = {
-            if let Some(fd) = mfd.file_details.read().await.as_ref() {
+            if let Some(fd) = mfd.file_details().await {
                 (fd.version.clone(), Some(fd.category_id), fd.category_name.clone(), Some(mfd.update_status.clone()))
             } else {
                 (None, None, None, None) // any other way to do this?
             }
         };
         let update_status = match update_status {
-            Some(status) => mfd.update_status.clone().return_later(status),
+            Some(status) => {
+                mfd.update_status.sync_with(&status);
+                status
+            },
             None => mfd.update_status.clone(),
         };
         let mod_name = mfd.mod_name().await;

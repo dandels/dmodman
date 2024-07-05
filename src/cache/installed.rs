@@ -15,29 +15,26 @@ pub struct Installed {
     metadata_index: MetadataIndex,
     pub mods: Arc<RwLock<IndexMap<String, ModDirectory>>>, // Key = Directory name
     pub has_changed: Arc<AtomicBool>,
+    archives_has_changed: Arc<AtomicBool>,
 }
 
 impl Installed {
-    pub async fn new(config: Arc<Config>, logger: Logger, metadata_index: MetadataIndex) -> Self {
+    pub async fn new(config: Arc<Config>, logger: Logger, metadata_index: MetadataIndex, archives_has_changed: Arc<AtomicBool>) -> Self {
         let mut installed: Vec<(String, ModDirectory)> = vec![];
         let mut by_file_id: Vec<(u64, Arc<InstalledMod>)> = vec![];
         if let Ok(mut install_dir) = fs::read_dir(config.install_dir()).await {
             while let Ok(Some(mod_dir)) = install_dir.next_entry().await {
                 let dir_name = mod_dir.file_name().to_string_lossy().to_string();
-                match ModDirectory::load(DataPath::ModDirMetadata(&config, &dir_name)).await {
-                    Ok(mod_dir) => {
-                        match mod_dir {
-                            ModDirectory::Nexus(im) => {
-                                metadata_index.add_installed(dir_name.clone(), im.file_id, im.clone()).await;
-                                installed.push((dir_name, ModDirectory::Nexus(im.clone())));
-                                by_file_id.push((im.file_id, im));
-                            }
-                            _ => {
-                                installed.push((dir_name, mod_dir));
-                            }
+                if let Ok(mod_dir) = ModDirectory::load(DataPath::ModDirMetadata(&config, &dir_name)).await {
+                    match mod_dir {
+                        ModDirectory::Nexus(im) => {
+                            metadata_index.add_installed(dir_name.clone(), im.file_id, im.clone()).await;
+                            installed.push((dir_name, ModDirectory::Nexus(im.clone())));
+                            by_file_id.push((im.file_id, im));
                         }
-                    }
-                    Err(_) => {
+                        _ => {
+                            installed.push((dir_name, mod_dir));
+                        }
                     }
                 }
             }
@@ -48,6 +45,7 @@ impl Installed {
             metadata_index,
             mods: Arc::new(IndexMap::from_iter(installed).into()),
             has_changed: Arc::new(true.into()),
+            archives_has_changed,
         }
     }
 
@@ -65,26 +63,22 @@ impl Installed {
 
     pub async fn delete(&self, dir_name: &String) {
         let mut mods_lock = self.mods.write().await;
+        let path = self.config.install_dir().join(dir_name);
+        if let Err(e) = fs::remove_dir_all(path).await {
+            self.logger.log(format!("Error {e} when removing {dir_name}"));
+            return;
+        }
         if let Some(mod_dir) = mods_lock.swap_remove(dir_name) {
             if let ModDirectory::Nexus(im) = mod_dir {
                 let mfd = self
                     .metadata_index
                     .get_by_file_id(&im.file_id)
                     .await
-                    .expect(&format!("{} should have been present in the metadata index.", &im.file_id));
-                let maybe_unreferenced;
-                {
-                    let mut mfd_installed_lock = mfd.installed_mods.write().await;
-                    mfd_installed_lock.remove(dir_name);
-                    maybe_unreferenced = mfd_installed_lock.is_empty();
-                }; // drop lock here since delete_if_unreferenced() will need it
-                if maybe_unreferenced {
-                    self.metadata_index.delete_if_unreferenced(&mfd.file_id).await;
+                    .unwrap_or_else(|| panic!("{} should have been present in the metadata index.", &im.file_id));
+                if mfd.remove_installed(dir_name).await {
+                    self.archives_has_changed.store(true, Ordering::Relaxed);
                 }
-            }
-            let path = self.config.install_dir().join(dir_name);
-            if let Err(e) = fs::remove_dir_all(path).await {
-                self.logger.log(format!("Error {e} when removing {dir_name}"));
+                self.metadata_index.remove_if_unreferenced(&mfd.file_id).await;
             }
             self.has_changed.store(true, Ordering::Relaxed);
         } else {

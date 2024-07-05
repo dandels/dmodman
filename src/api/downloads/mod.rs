@@ -11,7 +11,7 @@ pub use self::file_info::*;
 pub use self::nxm_url::*;
 use crate::api::Query;
 use crate::api::{ApiError, Client, UpdateStatus};
-use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cache, Cacheable};
+use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cache, Cacheable, ModFileMetadata};
 use crate::config::{Config, DataPath};
 use crate::{util, Logger};
 use indexmap::IndexMap;
@@ -161,7 +161,8 @@ impl Downloads {
             }
             UpdateStatus::UpToDate(latest_timestamp)
         } else {
-            self.logger.log("Couldn't check update status for {mod_id}: file list doesn't exist in db.");
+            self.logger
+                .log(format!("Couldn't check update status for {}: file list doesn't exist in db.", fi.mod_id));
             UpdateStatus::Invalid(0)
         }
     }
@@ -169,44 +170,51 @@ impl Downloads {
     async fn update_metadata(&self, fi: &FileInfo) -> Result<(), ApiError> {
         let (game, mod_id) = (&fi.game, fi.mod_id);
 
+        let mfd = self
+            .cache
+            .metadata_index
+            .get_by_file_id(&fi.file_id)
+            .await
+            .unwrap_or(ModFileMetadata::from(fi).into());
+
+        self.cache.metadata_index.add_to_collections(Some(fi.file_name.clone()), mfd.clone()).await;
+
         // If the mod info for this file doesn't exist, fetch it from the API
-        if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&fi.file_id).await {
-            if mfd.mod_info.read().await.is_none() {
-                match self.query.mod_info(&mfd.game, mfd.mod_id).await {
-                    Ok(_) => self.logger.log(format!("{} was missing its mod info.", fi.file_name)),
-                    Err(e) => self.logger.log(format!("Failed to query mod info for {}: {e}", fi.file_name)),
-                }
+        if mfd.mod_info.read().await.is_none() {
+            if let Err(e) = self.query.mod_info(&fi.game, fi.mod_id).await {
+                self.logger.log(format!("Failed to query mod info for {}: {e}", fi.file_name));
             }
         }
 
-        // same for file list
-        if let Some(fl) = self.cache.file_lists.get(game, mod_id).await {
-            if fl.files.binary_search_by(|fd| fd.file_id.cmp(&fi.file_id)).is_err() {
-                match self.query.file_list(game, mod_id).await {
-                    Ok(_) => self.logger.log(format!("{} was missing its file list.", fi.file_name)),
-                    Err(e) => self.logger.log(format!("Failed to query file list for {}: {e}", fi.file_name)),
-                }
+        // Same for file list
+        if mfd.file_details().await.is_none() {
+            if let Err(e) = self.query.file_list(game, mod_id).await {
+                self.logger.log(format!("Failed to query file list for {}: {e}", fi.file_name));
             }
         }
+
         let update_status = self.refresh_update_status(fi).await;
-        let metadata = Arc::new(ArchiveMetadata::new(fi.clone(), update_status));
+
+        // Create the archive.json metadata file in the downloads directory
+        let archive_json = Arc::new(ArchiveMetadata::new(fi.clone(), update_status));
         let path = self.config.download_dir().join(&fi.file_name);
-        // Failing this would mean that the just downloaded file is inaccessible
         if let Ok(archive) =
-            ArchiveFile::new(&self.logger, &self.cache.installed, &path, Some(metadata.clone())).await
+            ArchiveFile::new(&self.logger, &self.cache.installed, &path, Some(archive_json.clone())).await
         {
-            if let Err(e) = metadata.save(DataPath::ArchiveMetadata(&self.config, &archive.file_name)).await {
+            if let Err(e) = archive_json.save(DataPath::ArchiveMetadata(&self.config, &archive.file_name)).await {
                 self.logger.log(format!("Unable to save metadata for {}: {e}", &fi.file_name));
             }
             let entry = ArchiveEntry::File(Arc::new(archive));
             self.cache.archives.add_archive(entry.clone()).await;
+        } else {
+            self.logger.log(format!("Error: recently downloaded file {} is inaccessible..?", &fi.file_name));
         }
         Ok(())
     }
 
-    pub async fn delete(&self, i: usize) {
+    pub async fn delete(&self, file_id: u64) {
         let mut tasks_lock = self.tasks.write().await;
-        let (_, mut task) = tasks_lock.shift_remove_index(i).unwrap();
+        let mut task = tasks_lock.shift_remove(&file_id).unwrap();
         if let DownloadState::Done = task.dl_info.get_state() {
             self.has_changed.store(true, Ordering::Relaxed);
             return;

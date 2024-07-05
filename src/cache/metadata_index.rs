@@ -65,17 +65,18 @@ impl MetadataIndex {
     }
 
     // TODO (circular) references to other cache structs to fill all fields within this one function
-    pub async fn fill_mod_file_data(&self, game: &str, mod_id: u32, file_id: u64, mfdata: &ModFileMetadata) {
+    pub async fn fill_mod_file_data(&self, mfd: &ModFileMetadata) {
         {
-            let mut fd_lock = mfdata.file_details.write().await;
-            if fd_lock.is_none() {
-                *fd_lock = self.file_lists.filedetails_for(game.to_string(), mod_id, file_id).await;
+            if mfd.file_details().await.is_none() {
+                if let Some(fd) = self.file_lists.filedetails_for(mfd.game.to_owned(), mfd.mod_id, mfd.file_id).await {
+                    mfd.set_file_details(fd).await;
+                }
             }
         }
         {
-            let mut modinfo_lock = mfdata.mod_info.write().await;
+            let mut modinfo_lock = mfd.mod_info.write().await;
             if modinfo_lock.is_none() {
-                *modinfo_lock = self.mod_info_map.get(game, mod_id).await;
+                *modinfo_lock = self.mod_info_map.get(&mfd.game, mfd.mod_id).await;
             }
         }
     }
@@ -90,70 +91,35 @@ impl MetadataIndex {
             }
             ArchiveEntry::MetadataOnly(metadata) => metadata,
         };
-        let ArchiveMetadata {
-            ref file_name,
-            ref game,
-            mod_id,
-            file_id,
-            .. // avoid touching UpdateStatusWrapper
-        } = metadata.as_ref();
-        let game = game.clone();
-        let file_name = file_name.clone();
-
-        let mfdata = match self.get_by_file_id(&metadata.file_id).await {
-            Some(mfdata) => mfdata,
-            None => match &archive_entry {
-                ArchiveEntry::File(archive) => Arc::new(ModFileMetadata::new(
+        let mfd = match self.get_by_file_id(&metadata.file_id).await {
+            Some(mfd) => mfd,
+            None => {
+                let mfd = Arc::new(ModFileMetadata::new(
                     metadata.game.clone(),
                     metadata.mod_id,
                     metadata.file_id,
-                    None,
-                    None,
-                    None,
-                    Some(archive.clone()),
-                )),
-                ArchiveEntry::MetadataOnly(_) => Arc::new(ModFileMetadata::new(
-                    metadata.game.clone(),
-                    metadata.mod_id,
-                    metadata.file_id,
-                    None,
-                    None,
-                    None,
-                    None,
-                )),
+                ));
+                if let ArchiveEntry::File(archive) = &archive_entry {
+                    mfd.add_archive(archive.clone()).await;
+                }
+                mfd
             },
         };
 
-        self.fill_mod_file_data(&game, *mod_id, *file_id, &mfdata).await;
+        self.fill_mod_file_data(&mfd).await;
 
         if let ArchiveEntry::File(archive) = &archive_entry {
-            let mut lock = mfdata.mod_archives.write().await;
-            lock.insert(metadata.file_name.clone(), archive.clone());
+            mfd.add_archive(archive.clone()).await;
         }
 
-        self.add_to_collections(Some(file_name), mfdata.clone()).await;
-        Some(mfdata)
+        self.add_to_collections(Some(metadata.file_name.clone()), mfd.clone()).await;
+        Some(mfd)
     }
 
     pub async fn add_installed(&self, dir_name: String, file_id: u64, im: Arc<InstalledMod>) -> Arc<ModFileMetadata> {
-        let mfd = match self.get_by_file_id(&file_id).await {
-            Some(mfd) => mfd,
-            None => ModFileMetadata::new(
-                im.game.clone(),
-                im.mod_id,
-                im.file_id,
-                None,
-                Some((dir_name.clone(), im.clone())),
-                None,
-                None,
-            )
-            .into(),
-        };
-        for (_, archive) in mfd.mod_archives.write().await.iter() {
-            *archive.status.write().await = ArchiveStatus::Installed;
-        }
-        self.fill_mod_file_data(&mfd.game, mfd.mod_id, mfd.file_id, &mfd).await;
-        mfd.installed_mods.write().await.insert(dir_name, im.clone());
+        let mfd = self.get_by_file_id(&file_id).await.unwrap_or(Arc::new((&*im).into()));
+        mfd.add_installed_dir(dir_name.clone(), im.clone()).await;
+        self.fill_mod_file_data(&mfd).await;
         self.add_to_collections(Some(im.installation_file.clone()), mfd.clone()).await;
         mfd
     }
@@ -170,9 +136,9 @@ impl MetadataIndex {
         self.by_archive_name.read().await.get(name).cloned()
     }
 
-    pub async fn delete_if_unreferenced(&self, file_id: &u64) {
+    pub async fn remove_if_unreferenced(&self, file_id: &u64) {
         if let Some(mfd) = self.get_by_file_id(file_id).await {
-            if mfd.installed_mods.read().await.is_empty() && mfd.mod_archives.read().await.is_empty() {
+            if mfd.is_unreferenced().await {
                 /* the entry in self.by_archive_name should be taken care of by the archives struct because
                  * mfd.mod_archives is empty. */
                 self.by_file_id.write().await.remove(&mfd.file_id);

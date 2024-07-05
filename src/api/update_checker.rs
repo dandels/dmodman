@@ -111,6 +111,9 @@ impl UpdateChecker {
                     });
                 } else {
                     self.logger.log("Over a month since last update check, checking each mod.");
+                    if let Err(e) = self.cache.save_last_updated(time.as_secs()).await {
+                        self.logger.log(format!("Failed to save last updated status: {}", e));
+                    }
                     for (game, mods) in self.cache.metadata_index.by_game_and_mod_sorted.read().await.iter() {
                         for (mod_id, files) in mods {
                             self.update_mod(game.clone(), *mod_id, files.clone()).await;
@@ -220,13 +223,9 @@ impl UpdateChecker {
 
         for mfd in to_check.iter().rev() {
             let update_status = mfd.update_status.to_enum();
-            match update_status {
-                // No need to check files that are already known to have updates
-                UpdateStatus::OutOfDate(_) => {
-                    checked.push((mfd.clone(), update_status));
-                    continue;
-                }
-                _ => {}
+            if let UpdateStatus::OutOfDate(_) = update_status {
+                checked.push((mfd.clone(), update_status));
+                continue;
             }
 
             let mut has_update = false;

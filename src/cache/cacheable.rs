@@ -36,18 +36,6 @@ where
         .unwrap()
     }
 
-    async fn save_changes<T: Into<PathBuf>>(&self, path: T) -> Result<(), Error> {
-        let path = path.into();
-        let data = serde_json::to_string_pretty(&self)?;
-        tokio::task::spawn_blocking(move || {
-            let mut file = File::options().write(true).open(path)?;
-            file.write_all(data.as_bytes())?;
-            Ok(())
-        })
-        .await
-        .unwrap()
-    }
-
     async fn load<T: Into<PathBuf>>(path: T) -> Result<Self, Error> {
         let path = path.into();
         tokio::task::spawn_blocking(move || {

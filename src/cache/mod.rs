@@ -21,8 +21,7 @@ pub use modinfo_map::*;
 use crate::api::{DownloadLink, FileList, Md5Result, ModInfo};
 use crate::config::{Config, DataPath};
 use crate::Logger;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::fs;
 use tokio::fs::File;
@@ -44,15 +43,27 @@ pub struct Cache {
 
 impl Cache {
     pub async fn new(config: Arc<Config>, logger: Logger) -> Result<Self, CacheError> {
+        let archives_has_changed = Arc::new(AtomicBool::new(true));
+
         let file_lists = FileLists::new(config.clone(), logger.clone()).await?;
         let md5result = Md5ResultMap::new(config.clone(), logger.clone());
         let mod_info = ModInfoMap::new(config.clone(), logger.clone());
+
         let metadata_index =
             MetadataIndex::new(config.clone(), logger.clone(), file_lists.clone(), mod_info.clone()).await;
-        let installed = Installed::new(config.clone(), logger.clone(), metadata_index.clone()).await;
-        let archives =
-            ArchiveFiles::new(config.clone(), logger.clone(), installed.clone(), metadata_index.clone()).await;
-        let last_update_check = load_last_updated(&config);
+
+        let installed =
+            Installed::new(config.clone(), logger.clone(), metadata_index.clone(), archives_has_changed.clone()).await;
+
+        let archives = ArchiveFiles::new(
+            config.clone(),
+            logger.clone(),
+            installed.clone(),
+            metadata_index.clone(),
+            archives_has_changed,
+        )
+        .await;
+        let last_update_check = Arc::new(try_read_last_updated(&config).into());
 
         Ok(Self {
             archives,
@@ -85,33 +96,31 @@ impl Cache {
         fl.files.sort();
         fl.file_updates.sort();
         if let Some(files) = self.metadata_index.get_modfiles(game, &mod_id).await {
-            for mfd in &files {
-                let mut fd_lock = mfd.file_details.write().await;
-                if fd_lock.is_none() {
-                    if let Ok(index) = fl.files.binary_search_by(|fd| fd.file_id.cmp(&mfd.file_id)) {
-                        *fd_lock = Some(fl.files.get(index).unwrap().clone());
-                    }
-                }
-            }
-
             /* FileLists can contain thousands of lines that we will never use
              * Delete records of files or updates that are older than what we have downloaded.
              * This saves space, memory, and a lot of time spent compressing. */
-            let old_files_start = fl.files.partition_point(|f| f.file_id < files.first().unwrap().file_id);
+            let oldest_file = files.first().unwrap();
+            let old_files_start = fl.files.partition_point(|f| f.file_id < oldest_file.file_id);
             fl.files.drain(..old_files_start);
             fl.files.shrink_to_fit();
 
-            let mut earliest_timestamp = u64::MAX;
+            let mut earliest_timestamp = oldest_file.uploaded_timestamp().await.unwrap_or_default();
             for mfd in files {
                 // Fill the FileDetails for files that might be missing it
-                let mut fd_lock = mfd.file_details.write().await;
-                if fd_lock.is_none() {
-                    if let Ok(i) = fl.files.binary_search_by(|f| f.file_id.cmp(&mfd.file_id)) {
-                        *fd_lock = Some(fl.files.get(i).unwrap().clone());
+                let fd = match mfd.file_details().await {
+                    Some(fd) => Some(fd),
+                    None => {
+                        if let Ok(i) = fl.files.binary_search_by(|f| f.file_id.cmp(&mfd.file_id)) {
+                            let fd = fl.files[i].clone();
+                            mfd.set_file_details(fd.clone()).await;
+                            Some(fd)
+                        } else {
+                            None
+                        }
                     }
-                }
+                };
 
-                if let Some(fd) = fd_lock.as_ref() {
+                if let Some(fd) = fd {
                     if earliest_timestamp < fd.uploaded_timestamp {
                         earliest_timestamp = fd.uploaded_timestamp;
                     }
@@ -169,15 +178,21 @@ impl Cache {
         let mut file = File::create(path).await?;
         file.write_all(format!("{}", time).as_bytes()).await
     }
+
+    // Loads timestamp from $XDG_CACHE_DIR/dmodman/$profile/last_updated
+    pub fn load_last_updated(&self, config: &Config) -> Arc<AtomicU64> {
+        let val = try_read_last_updated(config);
+        self.last_update_check.store(val, Ordering::Relaxed);
+        Arc::new(AtomicU64::new(val))
+    }
 }
 
-// Loads timestamp from $XDG_CACHE_DIR/dmodman/$profile/last_updated
-fn load_last_updated(config: &Config) -> Arc<AtomicU64> {
+fn try_read_last_updated(config: &Config) -> u64 {
     let mut path = config.cache_for_profile();
     path.push("last_updated");
     match std::fs::read_to_string(path) {
-        Ok(contents) => AtomicU64::new(contents.parse::<u64>().unwrap_or_default()).into(),
-        Err(_) => AtomicU64::new(0).into(),
+        Ok(contents) => contents.parse::<u64>().unwrap_or_default(),
+        Err(_) => 0
     }
 }
 

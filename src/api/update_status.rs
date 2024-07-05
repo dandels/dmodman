@@ -37,7 +37,7 @@ impl UpdateStatus {
 #[derive(Clone, Debug)]
 pub struct UpdateStatusWrapper {
     status: Arc<AtomicU8>,
-    pub time: Arc<AtomicU64>,
+    time: Arc<AtomicU64>,
 }
 
 impl UpdateStatusWrapper {
@@ -55,6 +55,10 @@ impl UpdateStatusWrapper {
         }
     }
 
+    pub fn time(&self) -> u64 {
+        self.time.load(Ordering::Relaxed)
+    }
+
     pub fn to_enum(&self) -> UpdateStatus {
         let time = self.time.load(Ordering::Relaxed);
         match self.status.load(Ordering::Relaxed) {
@@ -66,11 +70,11 @@ impl UpdateStatusWrapper {
         }
     }
 
-    pub fn return_later(self, other: Self) -> Self {
+    pub fn sync_with(&self, other: &Self) {
         if self.time.load(Ordering::Relaxed) < other.time.load(Ordering::Relaxed) {
-            other
+            self.set(other.to_enum());
         } else {
-            self
+            other.set(self.to_enum());
         }
     }
 

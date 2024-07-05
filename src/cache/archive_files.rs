@@ -18,28 +18,6 @@ use tokio::fs::File;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
-pub enum ArchiveEntry {
-    File(Arc<ArchiveFile>),
-    MetadataOnly(Arc<ArchiveMetadata>),
-}
-
-impl ArchiveEntry {
-    pub fn file_name(&self) -> &String {
-        match self {
-            ArchiveEntry::File(archive) => &archive.file_name,
-            ArchiveEntry::MetadataOnly(metadata) => &metadata.file_name,
-        }
-    }
-
-    pub fn metadata(&self) -> Option<Arc<ArchiveMetadata>> {
-        match self {
-            ArchiveEntry::File(archive) => archive.mod_data.clone(),
-            ArchiveEntry::MetadataOnly(metadata) => Some(metadata.clone()),
-        }
-    }
-}
-
-#[derive(Clone)]
 pub struct ArchiveFiles {
     config: Arc<Config>,
     logger: Logger,
@@ -49,7 +27,13 @@ pub struct ArchiveFiles {
 }
 
 impl ArchiveFiles {
-    pub async fn new(config: Arc<Config>, logger: Logger, installed: Installed, file_index: MetadataIndex) -> Self {
+    pub async fn new(
+        config: Arc<Config>,
+        logger: Logger,
+        installed: Installed,
+        file_index: MetadataIndex,
+        has_changed: Arc<AtomicBool>,
+    ) -> Self {
         // TODO fix error handling here
         std::fs::create_dir_all(config.download_dir()).unwrap();
 
@@ -111,7 +95,7 @@ impl ArchiveFiles {
             logger,
             metadata_index: file_index,
             files: Arc::new(RwLock::new(files)),
-            has_changed: Arc::new(true.into()),
+            has_changed,
         }
     }
 
@@ -129,15 +113,22 @@ impl ArchiveFiles {
         let mut lock = self.files.write().await;
         if let Some(_archive_file) = lock.get(file_name) {
             let path = self.config.download_dir().join(file_name);
-            match fs::remove_file(path).await {
-                Ok(()) => {
-                    lock.swap_remove(file_name);
-                    self.has_changed.store(true, Ordering::Relaxed);
-                }
-                Err(e) => {
+            if path.exists() {
+                if let Err(e) = fs::remove_file(&path).await {
                     self.logger.log(format!("Error when removing file: {e}"));
+                    return;
                 }
             }
+            let json_file_name = path.file_name().unwrap().to_string_lossy();
+            let json_file = path.with_file_name(format!("{}.json", json_file_name));
+            if json_file.exists() {
+                if let Err(e) = fs::remove_file(&json_file).await {
+                    self.logger.log(format!("Error when removing file: {e}"));
+                    return;
+                }
+            }
+            lock.swap_remove(file_name);
+            self.has_changed.store(true, Ordering::Relaxed);
         }
     }
 }
@@ -146,7 +137,7 @@ pub struct ArchiveFile {
     pub file_name: String,
     pub size: u64,
     pub mod_data: Option<Arc<ArchiveMetadata>>,
-    pub status: Arc<RwLock<ArchiveStatus>>,
+    pub install_state: Arc<RwLock<ArchiveStatus>>,
 }
 
 impl ArchiveFile {
@@ -186,8 +177,30 @@ impl ArchiveFile {
             file_name,
             size,
             mod_data,
-            status: Arc::new(install_status.into()),
+            install_state: Arc::new(install_status.into()),
         })
+    }
+}
+
+#[derive(Clone)]
+pub enum ArchiveEntry {
+    File(Arc<ArchiveFile>),
+    MetadataOnly(Arc<ArchiveMetadata>),
+}
+
+impl ArchiveEntry {
+    pub fn file_name(&self) -> &String {
+        match self {
+            ArchiveEntry::File(archive) => &archive.file_name,
+            ArchiveEntry::MetadataOnly(metadata) => &metadata.file_name,
+        }
+    }
+
+    pub fn metadata(&self) -> Option<Arc<ArchiveMetadata>> {
+        match self {
+            ArchiveEntry::File(archive) => archive.mod_data.clone(),
+            ArchiveEntry::MetadataOnly(metadata) => Some(metadata.clone()),
+        }
     }
 }
 
