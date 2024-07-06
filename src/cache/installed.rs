@@ -1,6 +1,6 @@
 use crate::cache::{Cacheable, MetadataIndex};
 use crate::config::DataPath;
-use crate::install::installed_mod::*;
+use crate::extract::installed_mod::*;
 use crate::{Config, Logger};
 use indexmap::IndexMap;
 use std::sync::atomic::{AtomicBool, Ordering};

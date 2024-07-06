@@ -1,6 +1,6 @@
 use super::*;
 use crate::config::Config;
-use crate::install::*;
+use crate::extract::*;
 use crate::Logger;
 use indexmap::IndexMap;
 use std::collections::HashMap;

@@ -3,7 +3,7 @@ use super::component::{ConfirmDialog, PopupDialog};
 use super::main_ui::*;
 use super::navigation::*;
 use crate::cache::ArchiveEntry;
-use crate::install::{InstallError, ModDirectory};
+use crate::extract::{InstallError, ModDirectory};
 use std::process::Command;
 use std::sync::atomic::Ordering;
 use termion::event::{Event, Key, MouseButton, MouseEvent};

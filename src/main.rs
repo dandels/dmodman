@@ -1,7 +1,7 @@
 mod api;
 mod cache;
 mod config;
-mod install;
+mod extract;
 mod logger;
 mod nxm_socket;
 mod ui;

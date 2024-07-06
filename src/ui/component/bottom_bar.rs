@@ -1,6 +1,6 @@
 use super::{ArchiveTable, DownloadTable, InstalledModsTable};
 use crate::api::UpdateStatus;
-use crate::install::ModDirectory;
+use crate::extract::ModDirectory;
 use crate::ui::navigation::Focused;
 use crate::Cache;
 use ratatui::style::{Color, Style};

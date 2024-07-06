@@ -2,7 +2,7 @@ use crate::api::downloads::FileInfo;
 use crate::api::{FileDetails, ModInfo, UpdateStatus, UpdateStatusWrapper};
 use crate::cache::{ArchiveFile, ArchiveStatus, Cacheable};
 use crate::config::{Config, DataPath};
-use crate::install::{InstalledMod, ModDirectory};
+use crate::extract::{InstalledMod, ModDirectory};
 use crate::Logger;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};

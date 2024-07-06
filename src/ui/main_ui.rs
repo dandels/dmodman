@@ -4,7 +4,7 @@ use super::navigation::*;
 use crate::api::{Client, Downloads, UpdateChecker, Query};
 use crate::cache::Cache;
 use crate::config::Config;
-use crate::install::Installer;
+use crate::extract::Installer;
 use crate::ui::rectangles::{Layouts, Rectangles};
 use crate::ui::*;
 use crate::Logger;

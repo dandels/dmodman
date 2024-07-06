@@ -1,8 +1,8 @@
-mod install_error;
+mod extract_error;
 pub mod installed_mod;
 mod libarchive;
 
-pub use self::install_error::InstallError;
+pub use self::extract_error::InstallError;
 pub use self::installed_mod::*;
 
 use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveStatus, Cache, Cacheable};
