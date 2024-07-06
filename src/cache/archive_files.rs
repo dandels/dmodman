@@ -216,7 +216,7 @@ impl Display for ArchiveStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ArchiveStatus::Downloaded => f.write_str(""),
-            ArchiveStatus::Extracting => f.write_str("Extracting..."),
+            ArchiveStatus::Extracting => f.write_str("Extracting"),
             ArchiveStatus::Error => f.write_str("Error"),
             ArchiveStatus::Installed => f.write_str("Installed"),
         }

@@ -5,7 +5,6 @@ authors = ["dandels <dandels (at) hotmail.com>"]
 edition = "2021"
 
 [dependencies]
-compress-tools = { version = "0.14.3" }
 dirs = "5.0"
 futures-util = "0.3"
 futures-lite = "2.2"
@@ -22,10 +21,9 @@ signal-hook = "0.3"
 signal-hook-tokio = { version = "0.3", features = [ "futures-v0_3" ] }
 tokio = { version = "1", features = ["fs", "macros", "net", "sync", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = ["fs"] }
-tokio-util = { version = "0.7", features = ["compat"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tokio-tungstenite = { version = "*", features = ["native-tls"] }
 toml = "0.8"
-#unrar = "0.5.3"
 url = { version = "2", features = [ "serde" ] }
 termion = "2" # v3 breaks tui-textarea's input()
 tui-textarea = { version = "0.4", default-features = false, features = ["termion"] }

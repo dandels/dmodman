@@ -9,21 +9,22 @@ use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveStatus, Cache, Cacheable};
 use crate::config::{Config, DataPath};
 use crate::Logger;
 use libarchive::*;
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::RwLock;
 use tokio::task;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct Installer {
     cache: Cache,
     config: Arc<Config>,
     logger: Logger,
-    pub extract_jobs: Arc<std::sync::RwLock<HashSet<String>>>,
-    // used by UI to ask if table needs to be redrawn
+    pub extract_jobs: Arc<RwLock<HashMap<String, CancellationToken>>>, // key: archive name
 }
 impl Installer {
     pub async fn new(cache: Cache, config: Arc<Config>, logger: Logger) -> Self {
@@ -35,7 +36,7 @@ impl Installer {
         }
     }
 
-    pub async fn list_content(&self, archive_name: &String) -> Option<Result<Vec<String>, InstallError>> {
+    pub async fn list_content(&self, archive_name: &str) -> Option<Result<Vec<String>, InstallError>> {
         if let Some(ArchiveEntry::File(archive)) = self.cache.archives.get(archive_name).await {
             let path = self.config.download_dir().join(&archive.file_name);
             return Some({
@@ -92,68 +93,97 @@ impl Installer {
             }
         };
 
-        let mut jobs = self.extract_jobs.write().unwrap();
-        if jobs.contains(&dest_dir_name) {
+        let mut jobs = self.extract_jobs.write().await;
+        if jobs.contains_key(&archive_name) {
             return Err(InstallError::InProgress);
         }
-        jobs.insert(dest_dir_name.clone());
-        drop(jobs);
 
         let me = self.clone();
+        let target_dir_name = dest_dir_name.clone();
+        let cancel_token = CancellationToken::new();
+        let cloned_token = cancel_token.clone();
+        jobs.insert(archive_name.clone(), cancel_token);
         task::spawn(async move {
-            let mod_dir = me.pre_extract(archive_file.clone(), &dest_path, &dest_dir_name).await;
-
-            let res: Result<(), InstallError> = match Archive::open(src_path.to_string_lossy().to_string()).await {
-                Ok(archive) => {
-                    //let mut reader = AsyncArchiveReader::new(archive);
-                    while let Some(entry_res) = archive.next().await {
-                        let entry = {
-                            if let Err(e) = entry_res {
-                                me.logger.log(format!("Unable to get next archive entry: {e}."));
-                                let err: InstallError = e.into();
-                                return Err(err);
-                            }
-                            entry_res.unwrap()
-                        };
-                        let target_path = dest_path.join(normalize_path(&entry.path().await));
-                        let name = target_path.file_name().unwrap().to_string_lossy();
-                        crate::logger::log_to_file(format!("Archive: {name}"));
-                        if entry.is_dir().await {
-                            drop(entry);
-                            if let Err(e) = fs::create_dir_all(&target_path).await {
-                                me.logger.log(format!("Failed to extract directory {name}: {e}"));
-                                let mut jobs = me.extract_jobs.write().unwrap();
-                                jobs.remove(&dest_dir_name);
-                                return Err(e.into());
-                            }
-                        } else {
-                            let parent = target_path.parent().unwrap_or(&dest_path);
-                            if !parent.exists() {
-                                std::fs::create_dir_all(parent).unwrap();
-                            }
-                            extract_entry(me.logger.clone(), target_path, archive.clone()).await.unwrap();
-                            crate::logger::log_to_file("Done with first file...?");
-                        }
+            /* The select macro runs both futures at once, then allows us to run a function after the first one
+             * finishes. It's well suited for cancelling a task and cleaning up afterwards.
+             */
+            tokio::select! {
+                _ = cloned_token.cancelled() => {
+                    if let Err(e) = fs::remove_dir_all(dest_path).await {
+                        me.logger.log(format!("Unable to remove target directory: {e}"));
                     }
+                },
+                _ = async {
+                    let mod_dir = me.pre_extract(archive_file.clone(), &dest_path, &target_dir_name).await;
+
+                    let res: Result<(), InstallError> = match Archive::open(src_path.to_string_lossy().to_string()).await {
+                        Ok(archive) => {
+                            //let mut reader = AsyncArchiveReader::new(archive);
+                            while let Some(entry_res) = archive.next().await {
+                                let entry = {
+                                    if let Err(e) = entry_res {
+                                        me.logger.log(format!("Unable to get next archive entry: {e}."));
+                                        let err: InstallError = e.into();
+                                        return Err(err);
+                                    }
+                                    entry_res.unwrap()
+                                };
+                                let target_path = dest_path.join(normalize_path(&entry.path().await));
+                                let name = target_path.file_name().unwrap().to_string_lossy();
+                                crate::logger::log_to_file(format!("Archive: {name}"));
+                                if entry.is_dir().await {
+                                    drop(entry);
+                                    if let Err(e) = fs::create_dir_all(&target_path).await {
+                                        me.logger.log(format!("Failed to extract directory {name}: {e}"));
+                                        let mut jobs = me.extract_jobs.write().await;
+                                        jobs.remove(&target_dir_name);
+                                        return Err(e.into());
+                                    }
+                                } else {
+                                    let parent = target_path.parent().unwrap_or(&dest_path);
+                                    if !parent.exists() {
+                                        std::fs::create_dir_all(parent).unwrap();
+                                    }
+                                    extract_entry(me.logger.clone(), target_path, archive.clone()).await.unwrap();
+                                    crate::logger::log_to_file("Done with first file...?");
+                                }
+                            }
+                            Ok(())
+                        }
+                        Err(e) => Err(e.into()),
+                    };
+
+                    if res.is_ok() {
+                        me.post_extract(archive_file, target_dir_name, mod_dir).await;
+                    } else {
+                        *archive_file.install_state.write().await = ArchiveStatus::Error;
+                        me.cache.archives.has_changed.store(true, Ordering::Relaxed);
+                        // TODO maybe clean up after a failed extraction?
+                        me.logger.log(format!("Aborted extracting \"{}\". Output directory has not been removed.", archive_name));
+                        me.extract_jobs.write().await.remove(&target_dir_name);
+                    }
+
                     Ok(())
+                } => {
                 }
-                Err(e) => Err(e.into()),
-            };
-
-            if res.is_ok() {
-                me.post_extract(archive_file, dest_dir_name, mod_dir).await;
-            } else {
-                *archive_file.install_state.write().await = ArchiveStatus::Error;
-                me.cache.archives.has_changed.store(true, Ordering::Relaxed);
-                // TODO maybe clean up after a failed extraction?
-                me.logger
-                    .log(format!("Aborted extracting \"{}\". Output directory has not been removed.", archive_name));
-                me.extract_jobs.write().unwrap().remove(&dest_dir_name);
             }
-
-            Ok(())
         });
         Ok(())
+    }
+
+    pub async fn cancel(&self, archive: &ArchiveFile) {
+        if let Some(token) = self.extract_jobs.write().await.remove(&archive.file_name) {
+            token.cancel();
+            if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(&archive.file_name).await {
+                if mfd.is_installed().await {
+                    *archive.install_state.write().await = ArchiveStatus::Installed;
+                    self.cache.archives.has_changed.store(true, Ordering::Relaxed);
+                    return;
+                }
+            }
+            *archive.install_state.write().await = ArchiveStatus::Downloaded;
+            self.cache.archives.has_changed.store(true, Ordering::Relaxed);
+        }
     }
 
     async fn pre_extract(
@@ -177,8 +207,7 @@ impl Installer {
         *archive.install_state.write().await = ArchiveStatus::Installed;
         self.cache.archives.has_changed.store(true, Ordering::Relaxed);
         self.cache.installed.add(dest_dir_name.clone(), mod_dir).await;
-        let mut jobs = self.extract_jobs.write().unwrap();
-        jobs.remove(&dest_dir_name);
+        self.extract_jobs.write().await.remove(&archive.file_name);
         self.logger.log(format!("Finished extracting: {:?}", &archive.file_name));
     }
 }

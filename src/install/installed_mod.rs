@@ -58,7 +58,7 @@ impl ModDirectory {
             Some(status) => {
                 mfd.update_status.sync_with(&status);
                 status
-            },
+            }
             None => mfd.update_status.clone(),
         };
         let mod_name = mfd.mod_name().await;

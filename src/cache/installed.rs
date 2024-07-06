@@ -49,7 +49,7 @@ impl Installed {
         }
     }
 
-    pub async fn get(&self, name: &String) -> Option<(String, ModDirectory)> {
+    pub async fn get(&self, name: &str) -> Option<(String, ModDirectory)> {
         self.mods.read().await.get_key_value(name).map(|(k, v)| (k.clone(), v.clone()))
     }
 

@@ -64,12 +64,16 @@ impl ModFileMetadata {
         self.installed_mods.write().await.insert(dir_name, mod_dir);
     }
 
-    pub async fn is_unreferenced(&self) -> bool {
-        self.installed_mods.read().await.is_empty() && self.mod_archives.read().await.is_empty()
-    }
-
     pub async fn file_details(&self) -> Option<Arc<FileDetails>> {
         self.file_details.read().await.clone()
+    }
+
+    pub async fn is_installed(&self) -> bool {
+        !self.installed_mods.read().await.is_empty()
+    }
+
+    pub async fn is_unreferenced(&self) -> bool {
+        self.installed_mods.read().await.is_empty() && self.mod_archives.read().await.is_empty()
     }
 
     pub async fn name(&self) -> Option<String> {
@@ -115,7 +119,7 @@ impl ModFileMetadata {
 
     // Returns whether archives need refresh
     pub async fn remove_installed(&self, dir_name: &str) -> bool {
-        let is_installed = {
+        let not_installed = {
             let mut im_lock = self.installed_mods.write().await;
             im_lock.remove(dir_name);
             im_lock.is_empty()
@@ -124,7 +128,7 @@ impl ModFileMetadata {
         let arch_lock = self.mod_archives.read().await;
         let archives_have_changed = !arch_lock.is_empty();
 
-        if !is_installed {
+        if not_installed {
             for archive in arch_lock.values() {
                 *archive.install_state.write().await = ArchiveStatus::Downloaded;
             }

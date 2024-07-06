@@ -2,6 +2,7 @@ use super::component::traits::Select;
 use super::component::{ConfirmDialog, PopupDialog};
 use super::main_ui::*;
 use super::navigation::*;
+use crate::cache::ArchiveEntry;
 use crate::install::{InstallError, ModDirectory};
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -52,7 +53,7 @@ impl MainUI<'_> {
             self.should_run = false;
         }
         if let Event::Key(Key::Char('q')) = event {
-            if self.installer.extract_jobs.read().unwrap().is_empty() {
+            if self.installer.extract_jobs.read().await.is_empty() {
                 self.should_run = false;
             } else {
                 self.logger.log("Refusing to quit, archive extraction is still in progress.");
@@ -325,6 +326,14 @@ impl MainUI<'_> {
                     }
                 }
             }
+            Key::Char('p') => {
+                if let Some(i) = self.focused_widget().selected() {
+                    let (_, archive) = self.archives_view.get_by_index(i);
+                    if let ArchiveEntry::File(archive) = archive {
+                        self.installer.cancel(archive).await;
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -345,7 +354,8 @@ impl MainUI<'_> {
                         let dest_dir = self.popup_dialog.get_content();
                         let index = self.archives_view.selected().unwrap();
                         let (file_name, _archive) = self.archives_view.get_by_index(index);
-                        if let Err(e) = self.installer.extract(file_name.to_string(), dest_dir.to_string(), true).await {
+                        if let Err(e) = self.installer.extract(file_name.to_string(), dest_dir.to_string(), true).await
+                        {
                             self.logger.log(format!("Error when extracting {file_name}: {e}"));
                         }
                         self.input_mode = InputMode::Normal;
