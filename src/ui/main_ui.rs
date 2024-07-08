@@ -118,18 +118,7 @@ impl MainUI<'_> {
 
         while self.should_run {
             // set redraw_terminal to true if any of the widgets have changed
-            if self.tabs.selected().unwrap() == 0 {
-                self.redraw_terminal |= self.installed_mods_table.refresh().await;
-                self.redraw_terminal |= self.downloads_view.refresh().await;
-            } else if self.tabs.selected().unwrap() == 1 {
-                self.redraw_terminal |= self.archives_view.refresh().await;
-            }
-            self.redraw_terminal |= self.top_bar.refresh(&self.tabs).await;
-            self.redraw_terminal |= self.hotkey_bar.refresh(&self.input_mode, self.tabs.focused()).await;
-            self.redraw_terminal |=
-                self.bottom_bar.refresh(&self.archives_view, &self.installed_mods_table, &self.downloads_view, self.tabs.focused(), self.focused_widget().selected()).await;
-            self.redraw_terminal |= self.log_view.refresh().await;
-
+            self.redraw_terminal = self.refresh_widgets().await;
             let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
 
             if self.redraw_terminal || recalculate_rects {
@@ -218,5 +207,28 @@ impl MainUI<'_> {
                 self.handle_events(event).await;
             }
         }
+    }
+
+    // Returns true if self.redraw_terminal is true or any widget has changed
+    async fn refresh_widgets(&mut self) -> bool {
+        self.redraw_terminal
+            | match self.nav.selected().unwrap() {
+                0 => self.installed_mods_table.refresh().await | self.downloads_table.refresh().await,
+                1 => self.archives_table.refresh().await,
+                _ => unreachable!("There are only 2 tabs"),
+            }
+            | self.top_bar.refresh(&self.nav).await
+            | self.hotkey_bar.refresh(&self.input_mode, self.nav.focused()).await
+            | self
+                .bottom_bar
+                .refresh(
+                    &self.archives_table,
+                    &self.installed_mods_table,
+                    &self.downloads_table,
+                    self.nav.focused(),
+                    self.focused_widget().selected(),
+                )
+                .await
+            | self.log_view.refresh().await
     }
 }

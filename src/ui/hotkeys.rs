@@ -76,10 +76,24 @@ impl MainUI<'_> {
                 self.change_focus_to(self.focused_widget().neighbor_left(&self.tabs.active()));
             }
             Event::Key(Key::Char('J')) => {
-                self.change_focus_to(self.focused_widget().neighbor_down(&self.tabs.active()));
+                if let Some(i) = self.focused_widget().selected() {
+                    if let Focused::InstalledMods = self.nav.focused() {
+                        self.cache.installed.move_to_index(i, i.saturating_add(1)).await;
+                        self.focused_widget_mut().next();
+                    }
+                }
             }
             Event::Key(Key::Char('K')) => {
-                self.change_focus_to(self.focused_widget().neighbor_up(&self.tabs.active()));
+                if let Some(i) = self.focused_widget().selected() {
+                    if let Focused::InstalledMods = self.nav.focused() {
+                        if i == 0 {
+                            self.cache.installed.move_to_index(i, self.focused_widget().len().saturating_sub(1)).await;
+                        } else {
+                            self.cache.installed.move_to_index(i, i.saturating_sub(1)).await;
+                        }
+                        self.focused_widget_mut().previous();
+                    }
+                }
             }
             Event::Key(Key::Char('L')) => {
                 self.change_focus_to(self.focused_widget().neighbor_right(&self.tabs.active()));

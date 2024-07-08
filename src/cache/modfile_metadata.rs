@@ -117,7 +117,7 @@ impl ModFileMetadata {
         }
     }
 
-    // Returns whether archives need refresh
+    /// Returns bool saying whether archives need refresh
     pub async fn remove_installed(&self, dir_name: &str) -> bool {
         let not_installed = {
             let mut im_lock = self.installed_mods.write().await;
@@ -125,11 +125,11 @@ impl ModFileMetadata {
             im_lock.is_empty()
         };
 
-        let arch_lock = self.mod_archives.read().await;
-        let archives_have_changed = !arch_lock.is_empty();
+        let archives_lock = self.mod_archives.read().await;
+        let archives_have_changed = !archives_lock.is_empty();
 
         if not_installed {
-            for archive in arch_lock.values() {
+            for archive in archives_lock.values() {
                 *archive.install_state.write().await = ArchiveStatus::Downloaded;
             }
         }

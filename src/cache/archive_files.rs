@@ -127,7 +127,7 @@ impl ArchiveFiles {
                     return;
                 }
             }
-            lock.swap_remove(file_name);
+            lock.shift_remove(file_name);
             self.has_changed.store(true, Ordering::Relaxed);
         }
     }

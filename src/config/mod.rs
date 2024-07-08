@@ -253,11 +253,31 @@ impl Config {
         self.install_dir.clone()
     }
 
+    pub fn read_load_order(&self) -> Result<Vec<String>, std::io::Error> {
+        let mut f = File::open(self.load_order_path())?;
+        let mut data = String::new();
+        f.read_to_string(&mut data)?;
+        Ok(data.split("\n").map(|s| s.to_string()).collect())
+    }
+
     pub fn save_apikey(&self) -> Result<(), std::io::Error> {
         fs::create_dir_all(config_dir())?;
         let mut f = File::create(apikey_file())?;
         f.write_all(self.apikey.as_ref().unwrap().as_bytes())?;
         f.flush()
+    }
+
+    pub fn save_load_order(&self, load_order: Vec<String>) -> Result<(), std::io::Error> {
+        let path = self.load_order_path();
+        fs::create_dir_all(path.parent().unwrap())?;
+        let mut f = File::create(path)?;
+        f.write_all(load_order.join("\n").as_bytes())
+    }
+    fn load_order_path(&self) -> PathBuf {
+        let mut path = config_dir();
+        path.push(&self.profile);
+        path.push("load_order.txt");
+        path
     }
 }
 
