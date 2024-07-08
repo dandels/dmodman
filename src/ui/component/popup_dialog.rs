@@ -4,9 +4,9 @@ use crate::Config;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, List, ListState, Paragraph};
 use std::path::Path;
+use std::sync::Arc;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use tui_textarea::{CursorMove, TextArea};
-use std::sync::Arc;
 
 #[derive(Default)]
 pub struct PopupDialog<'a> {
@@ -78,8 +78,7 @@ impl PopupDialog<'_> {
             match self.config.install_dir().join(path).try_exists() {
                 Ok(exists) => {
                     if exists {
-                        self.textarea
-                            .set_block(DEFAULT_BLOCK.title(" Already exists ").style(textarea_warn_style));
+                        self.textarea.set_block(DEFAULT_BLOCK.title(" Already exists ").style(textarea_warn_style));
                     } else {
                         self.textarea.set_block(DEFAULT_BLOCK.title(" Ok "));
                     }

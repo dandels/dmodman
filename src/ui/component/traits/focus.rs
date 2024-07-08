@@ -14,7 +14,7 @@ macro_rules! impl_focus {
 }
 
 impl_focus!(ArchiveTable<'_>);
-impl_focus!(DownloadTable<'_>);
+impl_focus!(DownloadsTable<'_>);
 impl_focus!(InstalledModsTable<'_>);
 impl_focus!(LogList<'_>);
 

@@ -73,7 +73,7 @@ impl MainUI<'_> {
                 self.focused_widget_mut().previous();
             }
             Event::Key(Key::Char('H')) => {
-                self.change_focus_to(self.focused_widget().neighbor_left(&self.tabs.active()));
+                self.change_focus_to(self.focused_widget().neighbor_left(&self.nav.active()));
             }
             Event::Key(Key::Char('J')) => {
                 if let Some(i) = self.focused_widget().selected() {
@@ -96,25 +96,25 @@ impl MainUI<'_> {
                 }
             }
             Event::Key(Key::Char('L')) => {
-                self.change_focus_to(self.focused_widget().neighbor_right(&self.tabs.active()));
+                self.change_focus_to(self.focused_widget().neighbor_right(&self.nav.active()));
             }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
                 let focused = self.focused_widget();
-                if let Some(left) = focused.neighbor_left(&self.tabs.active()) {
+                if let Some(left) = focused.neighbor_left(&self.nav.active()) {
                     self.change_focus_to(Some(left));
-                } else if let Some(up) = focused.neighbor_up(&self.tabs.active()) {
+                } else if let Some(up) = focused.neighbor_up(&self.nav.active()) {
                     self.change_focus_to(Some(up));
-                } else if let Some(down) = focused.neighbor_down(&self.tabs.active()) {
+                } else if let Some(down) = focused.neighbor_down(&self.nav.active()) {
                     self.change_focus_to(Some(down));
                 }
             }
             Event::Key(Key::Right) | Event::Key(Key::Char('l')) => {
                 let focused = self.focused_widget();
-                if let Some(right) = focused.neighbor_right(&self.tabs.active()) {
+                if let Some(right) = focused.neighbor_right(&self.nav.active()) {
                     self.change_focus_to(Some(right));
-                } else if let Some(up) = focused.neighbor_up(&self.tabs.active()) {
+                } else if let Some(up) = focused.neighbor_up(&self.nav.active()) {
                     self.change_focus_to(Some(up));
-                } else if let Some(down) = focused.neighbor_down(&self.tabs.active()) {
+                } else if let Some(down) = focused.neighbor_down(&self.nav.active()) {
                     self.change_focus_to(Some(down));
                 }
             }
@@ -134,9 +134,9 @@ impl MainUI<'_> {
             Event::Key(Key::Char('v')) => {
                 if let Some(i) = self.focused_widget().selected() {
                     let mut args: Option<(String, u32)> = None;
-                    match self.tabs.focused() {
+                    match self.nav.focused() {
                         Focused::ArchiveTable => {
-                            if let Some(metadata) = &self.archives_view.get_by_index(i).1.metadata() {
+                            if let Some(metadata) = &self.archives_table.get_by_index(i).1.metadata() {
                                 args = Some((metadata.game.clone(), metadata.mod_id));
                             }
                         }
@@ -160,9 +160,9 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Char('f')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.tabs.focused() {
+                    match self.nav.focused() {
                         Focused::ArchiveTable => {
-                            let (archive_name, _) = self.archives_view.get_by_index(i);
+                            let (archive_name, _) = self.archives_table.get_by_index(i);
                             if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(archive_name).await {
                                 let query = self.query.clone();
                                 let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
@@ -191,9 +191,9 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Delete) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.tabs.focused() {
+                    match self.nav.focused() {
                         Focused::ArchiveTable => {
-                            self.archives_view.delete_by_index(i).await;
+                            self.archives_table.delete_by_index(i).await;
                         }
                         Focused::InstalledMods => {
                             self.installed_mods_table.delete_by_index(i).await;
@@ -202,8 +202,7 @@ impl MainUI<'_> {
                             self.log_view.delete_selected();
                         }
                         Focused::DownloadTable => {
-                            self.downloads_view.delete_by_index(i).await;
-                            self.downloads_view.len = self.downloads_view.len.saturating_sub(1);
+                            self.downloads_table.delete_by_index(i).await;
                         }
                     }
                     // Ensure selected index isn't out of bounds after deletion
@@ -212,9 +211,9 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Char('i')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.tabs.focused() {
+                    match self.nav.focused() {
                         Focused::ArchiveTable => {
-                            let (_, archive) = self.archives_view.get_by_index(i);
+                            let (_, archive) = self.archives_table.get_by_index(i);
                             if let Some(metadata) = archive.metadata() {
                                 self.updater.ignore_file(metadata.file_id).await;
                             }
@@ -231,9 +230,9 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Char('U')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.tabs.focused() {
+                    match self.nav.focused() {
                         Focused::ArchiveTable => {
-                            let (_, archive) = self.archives_view.get_by_index(i);
+                            let (_, archive) = self.archives_table.get_by_index(i);
                             if let Some(metadata) = archive.metadata() {
                                 if let Some(files) =
                                     self.cache.metadata_index.get_modfiles(&metadata.game, &metadata.mod_id).await
@@ -264,7 +263,7 @@ impl MainUI<'_> {
                 //self.logger.log(format!("{:?}", key));
             }
         }
-        match self.tabs.focused() {
+        match self.nav.focused() {
             Focused::InstalledMods => {
                 // no keys to handle
             }
@@ -284,7 +283,7 @@ impl MainUI<'_> {
         let key = if let Event::Key(key) = event { key } else { return };
 
         if let Key::Char('p') = key {
-            if let Focused::DownloadTable = self.tabs.focused() {
+            if let Focused::DownloadTable = self.nav.focused() {
                 if let Some(i) = self.focused_widget().selected() {
                     self.downloads.toggle_pause_for(i).await;
                 }
@@ -299,7 +298,7 @@ impl MainUI<'_> {
             Key::Char('\n') => {
                 if let Some(i) = self.focused_widget().selected() {
                     //let mfi = self.cache.file_index.get_by_index(i).await;
-                    let (file_name, archive) = self.archives_view.get_by_index(i);
+                    let (file_name, archive) = self.archives_table.get_by_index(i);
                     let dialog_title = "Directory name".to_string();
                     let mut suggested_values = vec![];
                     if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(file_name).await {
@@ -325,7 +324,7 @@ impl MainUI<'_> {
             }
             Key::Char('L') => {
                 if let Some(i) = self.focused_widget().selected() {
-                    let (_file_name, archive) = self.archives_view.get_by_index(i);
+                    let (_file_name, archive) = self.archives_table.get_by_index(i);
                     if let Some(res) = self.installer.list_content(archive.file_name()).await {
                         match res {
                             Ok(content) => {
@@ -342,7 +341,7 @@ impl MainUI<'_> {
             }
             Key::Char('p') => {
                 if let Some(i) = self.focused_widget().selected() {
-                    let (_, archive) = self.archives_view.get_by_index(i);
+                    let (_, archive) = self.archives_table.get_by_index(i);
                     if let ArchiveEntry::File(archive) = archive {
                         self.installer.cancel(archive).await;
                     }
@@ -366,8 +365,8 @@ impl MainUI<'_> {
                 Key::Char('\n') => {
                     if let 0 = self.confirm_dialog.selected().unwrap() {
                         let dest_dir = self.popup_dialog.get_content();
-                        let index = self.archives_view.selected().unwrap();
-                        let (file_name, _archive) = self.archives_view.get_by_index(index);
+                        let index = self.archives_table.selected().unwrap();
+                        let (file_name, _archive) = self.archives_table.get_by_index(index);
                         if let Err(e) = self.installer.extract(file_name.to_string(), dest_dir.to_string(), true).await
                         {
                             self.logger.log(format!("Error when extracting {file_name}: {e}"));
@@ -395,8 +394,8 @@ impl MainUI<'_> {
                 }
                 Key::Char('\n') => {
                     let dest_dir = self.popup_dialog.get_content();
-                    let index = self.archives_view.selected().unwrap();
-                    let (file_name, _archive) = self.archives_view.get_by_index(index);
+                    let index = self.archives_table.selected().unwrap();
+                    let (file_name, _archive) = self.archives_table.get_by_index(index);
                     match self.installer.extract(file_name.to_string(), dest_dir.to_string(), false).await {
                         Ok(()) => self.input_mode = InputMode::Normal,
                         Err(InstallError::AlreadyExists) => {

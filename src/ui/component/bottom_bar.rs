@@ -1,4 +1,4 @@
-use super::{ArchiveTable, DownloadTable, InstalledModsTable};
+use super::{ArchiveTable, DownloadsTable, InstalledModsTable};
 use crate::api::UpdateStatus;
 use crate::extract::ModDirectory;
 use crate::ui::navigation::Focused;
@@ -35,7 +35,7 @@ impl<'a> BottomBar<'a> {
         &mut self,
         archives: &ArchiveTable<'_>,
         installed: &InstalledModsTable<'_>,
-        downloads: &DownloadTable<'_>,
+        downloads: &DownloadsTable<'_>,
         focused: &Focused,
         focused_index: Option<usize>,
     ) -> bool {

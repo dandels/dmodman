@@ -6,7 +6,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 use std::sync::atomic::Ordering;
 
-pub struct DownloadTable<'a> {
+pub struct DownloadsTable<'a> {
     headers: Row<'a>,
     widths: [Constraint; 3],
     pub currently_shown: Vec<FileInfo>,
@@ -19,7 +19,7 @@ pub struct DownloadTable<'a> {
     pub len: usize,
 }
 
-impl<'a> DownloadTable<'a> {
+impl<'a> DownloadsTable<'a> {
     pub fn new(downloads: Downloads) -> Self {
         let block = DEFAULT_BLOCK.title(" Downloads ").border_style(BLOCK_STYLE);
 

@@ -1,4 +1,4 @@
-use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadTable, LogList, InstalledModsTable, PopupDialog};
+use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadsTable, LogList, InstalledModsTable, PopupDialog};
 
 macro_rules! impl_stateful {
     ($T:ty) => {
@@ -24,7 +24,7 @@ macro_rules! impl_stateful {
 
 impl_stateful!(ArchiveTable<'_>);
 impl_stateful!(ConfirmDialog<'_>);
-impl_stateful!(DownloadTable<'_>);
+impl_stateful!(DownloadsTable<'_>);
 impl_stateful!(LogList<'_>);
 impl_stateful!(InstalledModsTable<'_>);
 impl_stateful!(PopupDialog<'_>);

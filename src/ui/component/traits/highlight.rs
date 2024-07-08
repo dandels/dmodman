@@ -1,5 +1,5 @@
 use crate::ui::component::common::*;
-use crate::ui::component::{ArchiveTable, DownloadTable, InstalledModsTable, LogList};
+use crate::ui::component::{ArchiveTable, DownloadsTable, InstalledModsTable, LogList};
 use ratatui::style::Style;
 
 macro_rules! impl_highlight {
@@ -15,7 +15,7 @@ macro_rules! impl_highlight {
                 self.widget = self
                     .widget
                     .clone()
-                    .highlight_style(Style::reset())
+                    .highlight_style(Style::default())
                     .block(self.block.clone().border_style(BLOCK_STYLE));
             }
         }
@@ -23,7 +23,7 @@ macro_rules! impl_highlight {
 }
 
 impl_highlight!(ArchiveTable<'_>);
-impl_highlight!(DownloadTable<'_>);
+impl_highlight!(DownloadsTable<'_>);
 impl_highlight!(InstalledModsTable<'_>);
 impl_highlight!(LogList<'_>);
 

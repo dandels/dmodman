@@ -1,5 +1,5 @@
 use crate::api::RequestCounter;
-use crate::ui::navigation::Tabs as TabNavigation;
+use crate::ui::navigation::Nav as TabNavigation;
 use ratatui::layout::Alignment;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -46,9 +46,9 @@ impl<'a> TopBar<'a> {
 
     pub async fn refresh(&mut self, tabs: &TabNavigation) -> bool {
         let mut ret = false;
-        if self.prev_selected_tab != tabs.active_index {
-            self.prev_selected_tab = tabs.active_index;
-            self.tabs_widget = self.tabs_widget.clone().select(tabs.active_index);
+        if self.prev_selected_tab != tabs.active_tab {
+            self.prev_selected_tab = tabs.active_tab;
+            self.tabs_widget = self.tabs_widget.clone().select(tabs.active_tab);
             ret = true;
         }
         if self.request_counter.has_changed.swap(false, Ordering::Relaxed) {

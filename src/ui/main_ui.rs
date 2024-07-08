@@ -1,7 +1,7 @@
 use super::component::traits::*;
 use super::component::*;
 use super::navigation::*;
-use crate::api::{Client, Downloads, UpdateChecker, Query};
+use crate::api::{Client, Downloads, Query, UpdateChecker};
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::extract::Installer;
@@ -31,9 +31,9 @@ pub struct MainUI<'a> {
 
     // UI widgets
     pub bottom_bar: BottomBar<'a>,
-    pub archives_view: ArchiveTable<'a>,
+    pub archives_table: ArchiveTable<'a>,
     pub confirm_dialog: ConfirmDialog<'a>,
-    pub downloads_view: DownloadTable<'a>,
+    pub downloads_table: DownloadsTable<'a>,
     pub installed_mods_table: InstalledModsTable<'a>,
     pub hotkey_bar: HotkeyBar<'a>,
     pub log_view: LogList<'a>,
@@ -41,7 +41,7 @@ pub struct MainUI<'a> {
     pub top_bar: TopBar<'a>,
 
     // UI state
-    pub tabs: Tabs,
+    pub nav: Nav,
     pub input_mode: InputMode,
     pub should_run: bool,
     pub redraw_terminal: bool,
@@ -59,14 +59,14 @@ impl MainUI<'_> {
         let installer = Installer::new(cache.clone(), config.clone(), logger.clone()).await;
         let updater = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), logger.clone(), query.clone());
 
-        let tabs = Tabs::new();
+        let nav = Nav::new();
 
         let archives_view = ArchiveTable::new(cache.clone()).await;
-        let bottom_bar = BottomBar::new(cache.clone(), tabs.focused().clone());
+        let bottom_bar = BottomBar::new(cache.clone(), nav.focused().clone());
         let confirm_dialog = ConfirmDialog::default();
-        let downloads_view = DownloadTable::new(downloads.clone());
+        let downloads_view = DownloadsTable::new(downloads.clone());
         let files_view = InstalledModsTable::new(cache.installed.clone());
-        let hotkey_bar = HotkeyBar::new(tabs.focused().clone());
+        let hotkey_bar = HotkeyBar::new(nav.focused().clone());
         let log_view = LogList::new(logger.clone());
         let popup_dialog = PopupDialog::default();
         let top_bar = TopBar::new(client.request_counter).await;
@@ -79,9 +79,9 @@ impl MainUI<'_> {
             query,
             top_bar,
             hotkey_bar,
-            archives_view,
+            archives_table: archives_view,
             installed_mods_table: files_view,
-            downloads_view,
+            downloads_table: downloads_view,
             log_view,
             bottom_bar,
             confirm_dialog,
@@ -89,7 +89,7 @@ impl MainUI<'_> {
             input_mode: InputMode::Normal,
             updater,
             logger,
-            tabs,
+            nav,
             should_run: true,
             redraw_terminal: true,
         }
@@ -137,22 +137,22 @@ impl MainUI<'_> {
                         }
                         match self.input_mode {
                             InputMode::Normal => {
-                                if let Tab::Main = self.tabs.selected().unwrap().into() {
+                                if let Tab::Main = self.nav.selected().unwrap().into() {
                                     frame.render_stateful_widget(
                                         &self.installed_mods_table.widget,
                                         rectangles.main_horizontal[0],
                                         &mut self.installed_mods_table.state,
                                     );
                                     frame.render_stateful_widget(
-                                        &self.downloads_view.widget,
+                                        &self.downloads_table.widget,
                                         rectangles.main_horizontal[1],
-                                        &mut self.downloads_view.state,
+                                        &mut self.downloads_table.state,
                                     );
-                                } else if let Tab::Archives = self.tabs.selected().unwrap().into() {
+                                } else if let Tab::Archives = self.nav.selected().unwrap().into() {
                                     frame.render_stateful_widget(
-                                        &self.archives_view.widget,
+                                        &self.archives_table.widget,
                                         rectangles.main_vertical[2],
-                                        &mut self.archives_view.state,
+                                        &mut self.archives_table.state,
                                     );
                                 }
                                 frame.render_stateful_widget(

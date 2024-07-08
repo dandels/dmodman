@@ -20,8 +20,7 @@ pub struct LogList<'a> {
 
 impl<'a> LogList<'a> {
     pub fn new(logger: Logger) -> Self {
-        let block = DEFAULT_BLOCK.title(" Log ").border_style(BLOCK_STYLE);
-        let highlight_style = Style::default();
+        let block = DEFAULT_BLOCK.title(" Log ");
 
         let mut neighbors = NeighboringWidgets::new();
         neighbors.map.insert(
@@ -33,7 +32,7 @@ impl<'a> LogList<'a> {
                 .up(Focused::InstalledMods),
         );
         neighbors.map.insert(Tab::Archives, Neighbors::default().up(Focused::ArchiveTable));
-        let widget = List::default().block(block.clone()).highlight_style(highlight_style);
+        let widget = List::default().block(block.clone());
 
         Self {
             list_items: vec![],
@@ -41,7 +40,7 @@ impl<'a> LogList<'a> {
             neighbors,
             block,
             state: ListState::default(),
-            highlight_style,
+            highlight_style: Style::default(),
             widget,
             len: 0,
         }
