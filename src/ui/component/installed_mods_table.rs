@@ -37,10 +37,7 @@ impl<'a> InstalledModsTable<'a> {
             Cell::from(header_text("Version")),
         ]);
 
-        let mut neighbors = NeighboringWidgets::new();
-        neighbors
-            .map
-            .insert(Tab::Main, Neighbors::default().down(Focused::LogList).right(Focused::DownloadTable));
+        let neighbors = NeighboringWidgets::new();
 
         Self {
             headers,

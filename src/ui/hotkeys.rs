@@ -99,24 +99,10 @@ impl MainUI<'_> {
                 self.change_focus_to(self.focused_widget().neighbor_right(&self.nav.active()));
             }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
-                let focused = self.focused_widget();
-                if let Some(left) = focused.neighbor_left(&self.nav.active()) {
-                    self.change_focus_to(Some(left));
-                } else if let Some(up) = focused.neighbor_up(&self.nav.active()) {
-                    self.change_focus_to(Some(up));
-                } else if let Some(down) = focused.neighbor_down(&self.nav.active()) {
-                    self.change_focus_to(Some(down));
-                }
+                self.change_focus_to(self.focused_widget().neighbor_left(&self.nav.active()));
             }
             Event::Key(Key::Right) | Event::Key(Key::Char('l')) => {
-                let focused = self.focused_widget();
-                if let Some(right) = focused.neighbor_right(&self.nav.active()) {
-                    self.change_focus_to(Some(right));
-                } else if let Some(up) = focused.neighbor_up(&self.nav.active()) {
-                    self.change_focus_to(Some(up));
-                } else if let Some(down) = focused.neighbor_down(&self.nav.active()) {
-                    self.change_focus_to(Some(down));
-                }
+                self.change_focus_to(self.focused_widget().neighbor_right(&self.nav.active()));
             }
             Event::Key(Key::Alt(ch)) => {
                 if let Some(nr) = ch.to_digit(10) {

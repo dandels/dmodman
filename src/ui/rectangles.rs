@@ -11,11 +11,10 @@ pub struct Layouts {
 impl Layouts {
     pub fn new() -> Self {
         let main_vertical = Layout::default().direction(Direction::Vertical).constraints([
-            Constraint::Length(1),      // tab bar
-            Constraint::Length(1),      // key bar
-            Constraint::Percentage(70), // main vertical container
-            Constraint::Fill(1),        // log view,
-            Constraint::Length(1),      // bottom bar
+            Constraint::Length(1), // tab bar
+            Constraint::Length(1), // key bar
+            Constraint::Fill(1),   // main vertical container
+            Constraint::Length(1), // bottom bar
         ]);
 
         let tables = Layout::default()
@@ -55,8 +54,8 @@ impl Rectangles {
         let dialog_vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // Paragraph with install dir path
-                Constraint::Length(3), // Input box
+                Constraint::Length(1),                                 // Paragraph with install dir path
+                Constraint::Length(3),                                 // Input box
                 Constraint::Length((list_height).try_into().unwrap()), // List with suggested values
             ])
             .flex(Flex::Center);

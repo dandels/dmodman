@@ -17,7 +17,7 @@ impl<'a> TopBar<'a> {
     pub async fn new(request_counter: RequestCounter) -> Self {
         let highlight_style = Style::new().bg(Color::White).fg(Color::Black);
 
-        let tabnames = vec!["Main", "Archives"];
+        let tabnames = vec!["Archives", "Installed", "Log"];
         let prev_selected_tab = 0;
         let tabs_widget = Tabs::new(tabnames).select(prev_selected_tab).highlight_style(highlight_style);
         let counter_widget = Self::create_widget(&request_counter).await;
@@ -44,6 +44,7 @@ impl<'a> TopBar<'a> {
         Paragraph::new(Line::from(cells)).alignment(Alignment::Right)
     }
 
+    // TODO do this when changing tab instead of checking every draw tick?
     pub async fn refresh(&mut self, tabs: &TabNavigation) -> bool {
         let mut ret = false;
         if self.prev_selected_tab != tabs.active_tab {

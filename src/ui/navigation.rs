@@ -64,8 +64,9 @@ pub enum Focused {
 
 #[derive(Eq, Hash, PartialEq)]
 pub enum Tab {
-    Main,
+    Installed,
     Archives,
+    Log,
 }
 
 #[derive(Eq, Hash, PartialEq)]
@@ -78,7 +79,8 @@ impl Nav {
     pub fn new() -> Self {
         Self {
             active_tab: 0,
-            focused_per_tab: vec![Focused::InstalledMods, Focused::ArchiveTable],
+            // Default focused element for each tab
+            focused_per_tab: vec![Focused::ArchiveTable, Focused::InstalledMods, Focused::LogList],
         }
     }
 
@@ -102,7 +104,7 @@ pub struct NeighboringWidgets {
 impl NeighboringWidgets {
     pub fn new() -> Self {
         Self {
-            map: HashMap::from([Tab::Main, Tab::Archives].map(|tab| (tab, Neighbors::default()))),
+            map: HashMap::from([Tab::Archives, Tab::Installed, Tab::Log].map(|tab| (tab, Neighbors::default()))),
         }
     }
 }
@@ -156,11 +158,17 @@ impl Select for Nav {
     }
 }
 
+// Defines the order of the tabs
+pub const TAB_ARCHIVES: usize = 0;
+pub const TAB_INSTALLED: usize = 1;
+pub const TAB_LOG: usize = 2;
+
 impl From<Tab> for usize {
     fn from(value: Tab) -> Self {
         match value {
-            Tab::Main => 0,
-            Tab::Archives => 1,
+            Tab::Archives => TAB_ARCHIVES,
+            Tab::Installed => TAB_INSTALLED,
+            Tab::Log => TAB_LOG,
         }
     }
 }
@@ -168,8 +176,9 @@ impl From<Tab> for usize {
 impl From<usize> for Tab {
     fn from(val: usize) -> Self {
         match val {
-            0 => Tab::Main,
-            1 => Tab::Archives,
+            TAB_ARCHIVES => Tab::Archives,
+            TAB_INSTALLED => Tab::Installed,
+            TAB_LOG => Tab::Log,
             _ => panic!("Undefined tab index."),
         }
     }

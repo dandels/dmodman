@@ -39,7 +39,7 @@ impl ArchiveTable<'_> {
         ];
 
         let mut neighbors = NeighboringWidgets::new();
-        neighbors.map.insert(Tab::Archives, Neighbors::default().down(Focused::LogList));
+        neighbors.map.insert(Tab::Archives, Neighbors::default().right(Focused::DownloadTable));
 
         Self {
             headers,

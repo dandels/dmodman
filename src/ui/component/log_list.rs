@@ -22,16 +22,7 @@ impl<'a> LogList<'a> {
     pub fn new(logger: Logger) -> Self {
         let block = DEFAULT_BLOCK.title(" Log ");
 
-        let mut neighbors = NeighboringWidgets::new();
-        neighbors.map.insert(
-            Tab::Main,
-            // Define nonexistent neighbors to left and right so hotkeys work as expected
-            Neighbors::default()
-                .left(Focused::InstalledMods)
-                .right(Focused::DownloadTable)
-                .up(Focused::InstalledMods),
-        );
-        neighbors.map.insert(Tab::Archives, Neighbors::default().up(Focused::ArchiveTable));
+        let neighbors = NeighboringWidgets::new();
         let widget = List::default().block(block.clone());
 
         Self {

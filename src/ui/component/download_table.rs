@@ -40,7 +40,7 @@ impl<'a> DownloadsTable<'a> {
         let mut neighbors = NeighboringWidgets::new();
         neighbors
             .map
-            .insert(Tab::Main, Neighbors::default().left(Focused::InstalledMods).down(Focused::LogList));
+            .insert(Tab::Archives, Neighbors::default().left(Focused::ArchiveTable));
 
         Self {
             headers,
