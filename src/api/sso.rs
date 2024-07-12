@@ -54,6 +54,7 @@ impl SsoClient {
         let msg = serde_json::to_string(&self.session_params).unwrap();
 
         self.socket.send(msg.into()).await?;
+        self.socket.flush().await?;
         // Unwrap here should be safe because the internal value shouldn't be a None
         let resp = self.socket.try_next().await?.unwrap();
 
