@@ -26,7 +26,7 @@ impl Logger {
     // TODO allow optionally logging to file (maybe with log levels?)
     pub fn log<S: Into<String> + Debug + Display>(&self, msg: S) {
         if !self.is_interactive {
-            println!("{:?}", msg);
+            println!("{}", msg);
             return;
         }
 

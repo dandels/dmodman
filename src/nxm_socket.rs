@@ -1,12 +1,9 @@
-use std::io::{Error, ErrorKind};
-use std::str;
-
-use tokio::io::Interest;
-use tokio::net::{UnixListener, UnixStream};
-use tokio::task;
-
 use crate::api::Downloads;
 use crate::Logger;
+use std::io::{Error, ErrorKind};
+use std::str;
+use tokio::io::Interest;
+use tokio::net::{UnixListener, UnixStream};
 
 // Listens for nxm:// urls to queue as downloads
 pub struct NxmSocketListener {
@@ -56,22 +53,20 @@ pub async fn try_bind() -> Result<NxmSocketListener, Error> {
 }
 
 pub async fn listen_for_downloads(nxm_sock: NxmSocketListener, downloads: Downloads, logger: Logger) {
-    task::spawn(async move {
-        loop {
-            match nxm_sock.listener.accept().await {
-                Ok((stream, _addr)) => {
-                    if let Ok(ready) = stream.ready(Interest::READABLE).await {
-                        if ready.is_readable() {
-                            handle_incoming_stream(stream, &downloads, &logger).await;
-                        }
-                    } // It doesn't seem like the two else {} paths here require dealing with
-                }
-                Err(e) => {
-                    logger.log(format!("nxm socket was unable to accept connection: {}", e));
-                }
+    loop {
+        match nxm_sock.listener.accept().await {
+            Ok((stream, _addr)) => {
+                if let Ok(ready) = stream.ready(Interest::READABLE).await {
+                    if ready.is_readable() {
+                        handle_incoming_stream(stream, &downloads, &logger).await;
+                    }
+                } // It doesn't seem like the two else {} paths here require dealing with
+            }
+            Err(e) => {
+                logger.log(format!("nxm socket was unable to accept connection: {}", e));
             }
         }
-    });
+    }
 }
 
 async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads, logger: &Logger) {
