@@ -9,7 +9,7 @@ mod util;
 
 use api::{Client, Downloads, Query};
 use cache::Cache;
-use config::{Config, ConfigBuilder};
+use config::{Config, ConfigBuilder, ConfigError};
 use logger::Logger;
 use std::env::args;
 use std::error::Error;
@@ -49,7 +49,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
      * It calls println!() instead when running as a daemon. */
     let logger = Logger::new(is_interactive);
 
-    let mut config: Config = ConfigBuilder::load(logger.clone())?.build()?;
+    let mut config = match ConfigBuilder::load(logger.clone()) {
+        Ok(config) => config.build(),
+        Err(e) => match e {
+            ConfigError::IO { source: _ } => ConfigBuilder::default().build(),
+            _ => Err(e),
+        },
+    }?;
     if config.apikey.is_none() {
         if let Some(apikey) = ui::sso::start_apikey_flow().await {
             config.apikey = Some(apikey);
