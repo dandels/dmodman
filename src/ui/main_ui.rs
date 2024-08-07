@@ -5,7 +5,7 @@ use crate::api::{Client, Downloads, Query, UpdateChecker};
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::extract::Installer;
-use crate::ui::rectangles::{Layouts, Rectangles};
+use crate::ui::rectangles::Rectangles;
 use crate::ui::*;
 use crate::Logger;
 use ratatui::widgets::Clear;
@@ -112,8 +112,7 @@ impl MainUI<'_> {
             }
         };
 
-        let layouts = Layouts::new();
-        let mut rectangles = Rectangles::default();
+        let mut rectangles = Rectangles::new();
 
         while self.should_run {
             // set redraw_terminal to true if any of the widgets have changed
@@ -125,7 +124,7 @@ impl MainUI<'_> {
                     .draw(|frame| {
                         self.redraw_terminal = false;
                         if recalculate_rects {
-                            rectangles.recalculate(&layouts, frame.size());
+                            rectangles.recalculate(frame.size());
                         }
                         if let InputMode::ReadLine = self.input_mode {
                             rectangles.recalculate_popup(self.popup_dialog.get_required_height(), frame.size());

@@ -21,9 +21,11 @@ impl_focus!(LogList<'_>);
 pub trait Focus: Highlight + Select {
     fn neighbor_map(&self) -> &HashMap<Tab, Neighbors>;
 
+    #[allow(dead_code)]
     fn neighbor_up(&self, tab: &Tab) -> Option<Focused> {
         self.neighbor_map().get(tab).and_then(|neighbors| neighbors.up.clone())
     }
+    #[allow(dead_code)]
     fn neighbor_down(&self, tab: &Tab) -> Option<Focused> {
         self.neighbor_map().get(tab).and_then(|neighbors| neighbors.down.clone())
     }

@@ -139,22 +139,27 @@ impl Neighbors {
     }
 }
 
-// TODO Select trait items shouldn't be exposed outside this module, but Nav should
-impl Select for Nav {
-    fn len(&self) -> usize {
-        self.focused_per_tab.len()
-    }
+// These shouldn't be callable outside this file
+mod private_impl {
+    use super::Nav;
+    use crate::ui::component::traits::Select;
 
-    fn select(&mut self, index: Option<usize>) {
-        if let Some(index) = index {
-            if index < self.len() {
-                self.active_tab = index;
+    impl Select for Nav {
+        fn len(&self) -> usize {
+            self.focused_per_tab.len()
+        }
+
+        fn select(&mut self, index: Option<usize>) {
+            if let Some(index) = index {
+                if index < self.len() {
+                    self.active_tab = index;
+                }
             }
         }
-    }
 
-    fn selected(&self) -> Option<usize> {
-        Some(self.active_tab)
+        fn selected(&self) -> Option<usize> {
+            Some(self.active_tab)
+        }
     }
 }
 

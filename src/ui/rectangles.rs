@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
 
-pub struct Layouts {
+struct Layouts {
     topbar: Layout,
     main_vertical: Layout,
     tables: Layout,
@@ -35,6 +35,7 @@ impl Layouts {
 }
 
 pub struct Rectangles {
+    layouts: Layouts,
     pub main_horizontal: Rc<[Rect]>,
     pub main_vertical: Rc<[Rect]>,
     pub topbar: Rc<[Rect]>,
@@ -44,10 +45,23 @@ pub struct Rectangles {
 }
 
 impl Rectangles {
-    pub fn recalculate(&mut self, layout: &Layouts, window_size: Rect) {
-        self.topbar = layout.topbar.split(window_size);
-        self.main_vertical = layout.main_vertical.split(window_size);
-        self.main_horizontal = layout.tables.split(self.main_vertical[2]);
+    pub fn new() -> Self {
+        let layouts = Layouts::new();
+        Self {
+            layouts,
+            main_vertical: [Rect { ..Default::default() }].into(),
+            topbar: [Rect { ..Default::default() }].into(),
+            main_horizontal: [Rect { ..Default::default() }].into(),
+            confirmdialog: [Rect { ..Default::default() }].into(),
+            dialogpopup: [Rect { ..Default::default() }].into(),
+            dialogpopup_inputline: [Rect { ..Default::default() }].into(),
+        }
+    }
+
+    pub fn recalculate(&mut self, window_size: Rect) {
+        self.topbar = self.layouts.topbar.split(window_size);
+        self.main_vertical = self.layouts.main_vertical.split(window_size);
+        self.main_horizontal = self.layouts.tables.split(self.main_vertical[2]);
     }
 
     pub fn recalculate_popup(&mut self, list_height: usize, window_size: Rect) {
@@ -86,18 +100,5 @@ impl Rectangles {
             .flex(Flex::Center);
 
         self.confirmdialog = dialog_vertical.split(dialog_horizontal.split(window_size)[0]);
-    }
-}
-
-impl Default for Rectangles {
-    fn default() -> Self {
-        Self {
-            main_vertical: [Rect { ..Default::default() }].into(),
-            topbar: [Rect { ..Default::default() }].into(),
-            main_horizontal: [Rect { ..Default::default() }].into(),
-            confirmdialog: [Rect { ..Default::default() }].into(),
-            dialogpopup: [Rect { ..Default::default() }].into(),
-            dialogpopup_inputline: [Rect { ..Default::default() }].into(),
-        }
     }
 }
