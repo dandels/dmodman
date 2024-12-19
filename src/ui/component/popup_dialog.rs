@@ -36,12 +36,12 @@ impl PopupDialog<'_> {
         textarea.set_cursor_style(cursor_style);
 
         let list_style = Style::default().fg(Color::Gray).bg(Color::Black);
-        let list_highlight_style = list_style.add_modifier(Modifier::REVERSED);
+        let list_row_highlight_style = list_style.add_modifier(Modifier::REVERSED);
 
         let list = List::from_iter(suggested_values.clone())
             //.style(list_style)
             .block(Block::new().title("Suggested values:"))
-            .highlight_style(list_highlight_style)
+            .highlight_style(list_row_highlight_style)
             .highlight_symbol(">> ")
             .highlight_spacing(ratatui::widgets::HighlightSpacing::Always);
         let len = list.len();

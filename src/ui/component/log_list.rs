@@ -25,7 +25,7 @@ impl<'a> LogList<'a> {
         let neighbors = NeighboringWidgets::new();
         let widget = List::default().block(block.clone());
 
-        Self {
+        let mut ret = Self {
             list_items: vec![],
             logger: logger.clone(),
             neighbors,
@@ -34,24 +34,30 @@ impl<'a> LogList<'a> {
             highlight_style: Style::default(),
             widget,
             len: 0,
+        };
+        ret.create_widget();
+        ret
+    }
+
+    fn create_widget(&mut self) {
+        let mut msgs_lock = self.logger.messages.write().unwrap();
+        self.list_items
+            .append(&mut msgs_lock.drain(..).map(|msg| ListItem::new(Line::from(msg.to_owned()))).collect());
+        let old_last_index = self.len.checked_sub(1);
+        self.len = self.list_items.len();
+
+        if self.state.selected().is_none() && self.len > 0 || self.state.selected() == old_last_index {
+            self.state.select(self.len.checked_sub(1));
         }
+
+        self.widget = self.widget.clone().items(self.list_items.clone());
     }
 
     /* TODO there is an open issue for ratatui for word wrapping list items. Until then we can't properly show
      * long error messages: https://github.com/ratatui-org/ratatui/issues/128 */
     pub async fn refresh(&mut self) -> bool {
         if self.logger.has_changed.swap(false, Ordering::Relaxed) {
-            let mut msgs_lock = self.logger.messages.write().unwrap();
-            self.list_items
-                .append(&mut msgs_lock.drain(..).map(|msg| ListItem::new(Line::from(msg.to_owned()))).collect());
-            let old_last_index = self.len.checked_sub(1);
-            self.len = self.list_items.len();
-
-            if self.state.selected().is_none() && self.len > 0 || self.state.selected() == old_last_index {
-                self.state.select(self.len.checked_sub(1));
-            }
-
-            self.widget = self.widget.clone().items(self.list_items.clone());
+            self.create_widget();
             return true;
         }
         false

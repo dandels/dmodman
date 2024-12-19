@@ -63,11 +63,11 @@ impl MainUI<'_> {
 
         let mut archives_table = ArchiveTable::new(cache.clone()).await;
         archives_table.add_highlight();
-        let bottom_bar = BottomBar::new(cache.clone(), nav.focused().clone());
+        let bottom_bar = BottomBar::new(cache.clone(), nav.focused_widget().clone());
         let confirm_dialog = ConfirmDialog::default();
         let downloads_table = DownloadsTable::new(downloads.clone());
         let files_table = InstalledModsTable::new(cache.installed.clone());
-        let hotkey_bar = HotkeyBar::new(nav.focused().clone());
+        let hotkey_bar = HotkeyBar::new(nav.focused_widget().clone());
         let log_list = LogList::new(logger.clone());
         let popup_dialog = PopupDialog::default();
         let top_bar = TopBar::new(client.request_counter).await;
@@ -124,13 +124,13 @@ impl MainUI<'_> {
                     .draw(|frame| {
                         self.redraw_terminal = false;
                         if recalculate_rects {
-                            rectangles.recalculate(frame.size());
+                            rectangles.recalculate(frame.area());
                         }
                         if let InputMode::ReadLine = self.input_mode {
-                            rectangles.recalculate_popup(self.popup_dialog.get_required_height(), frame.size());
+                            rectangles.recalculate_popup(self.popup_dialog.get_required_height(), frame.area());
                         }
                         if let InputMode::Confirm = self.input_mode {
-                            rectangles.recalculate_confirmdialog(self.confirm_dialog.len, frame.size());
+                            rectangles.recalculate_confirmdialog(self.confirm_dialog.len, frame.area());
                         }
                         match self.input_mode {
                             InputMode::Normal => {
@@ -162,10 +162,10 @@ impl MainUI<'_> {
                                         );
                                     }
                                 }
-                                frame.render_widget(&self.top_bar.tabs_widget, rectangles.topbar[0]);
-                                frame.render_widget(&self.top_bar.counter_widget, rectangles.topbar[1]);
+                                frame.render_widget(&self.top_bar.counter_widget, rectangles.top_bar[1]);
                                 frame.render_widget(&self.hotkey_bar.widget, rectangles.main_vertical[1]);
                                 frame.render_widget(&self.bottom_bar.widget, rectangles.main_vertical[3]);
+                                frame.render_widget(&self.top_bar.tabs_widget, rectangles.top_bar[0]);
                             }
                             InputMode::ReadLine => {
                                 // TODO use same rendering logic as other widgets
@@ -177,25 +177,25 @@ impl MainUI<'_> {
                                         "Extracting to {}",
                                         self.config.install_dir().to_str().unwrap()
                                     )),
-                                    rectangles.dialogpopup[0],
+                                    rectangles.dialog_popup[0],
                                 );
-                                frame.render_widget(&self.popup_dialog.text_label, rectangles.dialogpopup_inputline[0]);
                                 frame.render_widget(
-                                    self.popup_dialog.textarea.widget(),
-                                    rectangles.dialogpopup_inputline[1],
+                                    &self.popup_dialog.text_label,
+                                    rectangles.dialog_popup_input_line[0],
                                 );
+                                frame.render_widget(&self.popup_dialog.textarea, rectangles.dialog_popup_input_line[1]);
                                 frame.render_stateful_widget(
                                     &self.popup_dialog.list,
-                                    rectangles.dialogpopup[2],
+                                    rectangles.dialog_popup[2],
                                     &mut self.popup_dialog.state,
                                 );
                                 frame.render_widget(&self.hotkey_bar.widget, rectangles.main_vertical[0]);
                             }
                             InputMode::Confirm => {
-                                frame.render_widget(Clear, rectangles.confirmdialog[0]);
+                                frame.render_widget(Clear, rectangles.confirm_dialog[0]);
                                 frame.render_stateful_widget(
                                     &self.confirm_dialog.widget,
-                                    rectangles.confirmdialog[0],
+                                    rectangles.confirm_dialog[0],
                                     &mut self.confirm_dialog.state,
                                 );
                             }
@@ -212,22 +212,24 @@ impl MainUI<'_> {
 
     // Returns true if self.redraw_terminal is true or any widget has changed
     async fn refresh_widgets(&mut self) -> bool {
+        if self.nav.focused_tab() != Tab::Log && self.logger.has_changed.load(Ordering::Relaxed) {
+            self.top_bar.add_urgency(Tab::Log.index());
+        }
         self.redraw_terminal
-            | match self.nav.selected().unwrap() {
-                TAB_ARCHIVES => self.archives_table.refresh().await | self.downloads_table.refresh().await,
-                TAB_INSTALLED => self.installed_mods_table.refresh().await,
-                TAB_LOG => self.log_view.refresh().await,
-                _ => unreachable!("There are only 3 tabs"),
+            | match self.nav.selected().unwrap().into() {
+                Tab::Archives => self.archives_table.refresh().await | self.downloads_table.refresh().await,
+                Tab::Installed => self.installed_mods_table.refresh().await,
+                Tab::Log => self.log_view.refresh().await,
             }
-            | self.top_bar.refresh(&self.nav).await
-            | self.hotkey_bar.refresh(&self.input_mode, self.nav.focused()).await
+            | self.top_bar.refresh().await
+            | self.hotkey_bar.refresh(&self.input_mode, self.nav.focused_widget()).await
             | self
                 .bottom_bar
                 .refresh(
                     &self.archives_table,
                     &self.installed_mods_table,
                     &self.downloads_table,
-                    self.nav.focused(),
+                    self.nav.focused_widget(),
                     self.focused_widget().selected(),
                 )
                 .await

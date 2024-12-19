@@ -28,7 +28,7 @@ impl ArchiveTable<'_> {
         let headers = Row::new(vec![
             Cell::from(header_text("Filename")),
             Cell::from(header_text("Status")),
-            Cell::from(header_text("Flags").centered()),
+            Cell::from(header_text("Flags")),
             Cell::from(header_text("Size")),
         ]);
         let widths = [
@@ -90,7 +90,7 @@ impl ArchiveTable<'_> {
             self.widget = Table::new(rows, self.widths)
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())
-                .highlight_style(self.highlight_style.to_owned());
+                .row_highlight_style(self.highlight_style.to_owned());
             return true;
         }
         false

@@ -78,7 +78,7 @@ impl<'a> DownloadsTable<'a> {
             self.widget = Table::new(rows, self.widths)
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())
-                .highlight_style(self.highlight_style);
+                .row_highlight_style(self.highlight_style);
             return true;
         }
         false

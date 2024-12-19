@@ -18,7 +18,7 @@ impl Logger {
     pub fn new(is_interactive: bool) -> Self {
         Self {
             is_interactive,
-            has_changed: AtomicBool::new(true).into(),
+            has_changed: AtomicBool::new(false).into(),
             ..Default::default()
         }
     }

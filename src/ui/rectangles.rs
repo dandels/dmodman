@@ -3,9 +3,10 @@ use std::rc::Rc;
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
 
 struct Layouts {
-    topbar: Layout,
+    top_bar: Layout,
     main_vertical: Layout,
     tables: Layout,
+    bottom_bar: Layout,
 }
 
 impl Layouts {
@@ -21,15 +22,21 @@ impl Layouts {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)]);
 
-        let topbar = Layout::default()
+        let top_bar = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Ratio(1, 4), Constraint::Ratio(3, 4)])
             .flex(Flex::End);
 
+        let bottom_bar = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Fill(1), Constraint::Length(1)])
+            .flex(Flex::Start);
+
         Self {
-            topbar,
+            top_bar,
             main_vertical,
             tables,
+            bottom_bar,
         }
     }
 }
@@ -38,10 +45,11 @@ pub struct Rectangles {
     layouts: Layouts,
     pub main_horizontal: Rc<[Rect]>,
     pub main_vertical: Rc<[Rect]>,
-    pub topbar: Rc<[Rect]>,
-    pub confirmdialog: Rc<[Rect]>,
-    pub dialogpopup: Rc<[Rect]>,
-    pub dialogpopup_inputline: Rc<[Rect]>,
+    pub top_bar: Rc<[Rect]>,
+    pub bottom_bar: Rc<[Rect]>,
+    pub confirm_dialog: Rc<[Rect]>,
+    pub dialog_popup: Rc<[Rect]>,
+    pub dialog_popup_input_line: Rc<[Rect]>,
 }
 
 impl Rectangles {
@@ -50,18 +58,20 @@ impl Rectangles {
         Self {
             layouts,
             main_vertical: [Rect { ..Default::default() }].into(),
-            topbar: [Rect { ..Default::default() }].into(),
+            top_bar: [Rect { ..Default::default() }].into(),
+            bottom_bar: [Rect { ..Default::default() }].into(),
             main_horizontal: [Rect { ..Default::default() }].into(),
-            confirmdialog: [Rect { ..Default::default() }].into(),
-            dialogpopup: [Rect { ..Default::default() }].into(),
-            dialogpopup_inputline: [Rect { ..Default::default() }].into(),
+            confirm_dialog: [Rect { ..Default::default() }].into(),
+            dialog_popup: [Rect { ..Default::default() }].into(),
+            dialog_popup_input_line: [Rect { ..Default::default() }].into(),
         }
     }
 
     pub fn recalculate(&mut self, window_size: Rect) {
-        self.topbar = self.layouts.topbar.split(window_size);
+        self.top_bar = self.layouts.top_bar.split(window_size);
         self.main_vertical = self.layouts.main_vertical.split(window_size);
         self.main_horizontal = self.layouts.tables.split(self.main_vertical[2]);
+        self.bottom_bar = self.layouts.bottom_bar.split(self.main_vertical[2]);
     }
 
     pub fn recalculate_popup(&mut self, list_height: usize, window_size: Rect) {
@@ -84,8 +94,8 @@ impl Rectangles {
             Constraint::Fill(1),
         ]);
 
-        self.dialogpopup = dialog_vertical.split(dialog_horizontal.split(window_size)[0]);
-        self.dialogpopup_inputline = label_and_input.split(self.dialogpopup[1]);
+        self.dialog_popup = dialog_vertical.split(dialog_horizontal.split(window_size)[0]);
+        self.dialog_popup_input_line = label_and_input.split(self.dialog_popup[1]);
     }
 
     pub fn recalculate_confirmdialog(&mut self, list_height: usize, window_size: Rect) {
@@ -99,6 +109,6 @@ impl Rectangles {
             .constraints([Constraint::Max(50)])
             .flex(Flex::Center);
 
-        self.confirmdialog = dialog_vertical.split(dialog_horizontal.split(window_size)[0]);
+        self.confirm_dialog = dialog_vertical.split(dialog_horizontal.split(window_size)[0]);
     }
 }

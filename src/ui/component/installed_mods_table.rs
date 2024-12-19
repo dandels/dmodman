@@ -76,7 +76,7 @@ impl<'a> InstalledModsTable<'a> {
             self.widget = Table::new(rows, self.widths)
                 .header(self.headers.to_owned())
                 .block(self.block.to_owned())
-                .highlight_style(self.highlight_style.to_owned());
+                .row_highlight_style(self.highlight_style.to_owned());
             return true;
         }
         false

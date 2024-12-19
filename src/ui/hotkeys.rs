@@ -73,11 +73,11 @@ impl MainUI<'_> {
                 self.focused_widget_mut().previous();
             }
             Event::Key(Key::Char('H')) => {
-                self.change_focus_to(self.focused_widget().neighbor_left(&self.nav.active()));
+                self.change_focus_to(self.focused_widget().neighbor_left(&self.nav.focused_tab()));
             }
             Event::Key(Key::Char('J')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    if let Focused::InstalledMods = self.nav.focused() {
+                    if let Focused::InstalledMods = self.nav.focused_widget() {
                         self.cache.installed.move_to_index(i, i.saturating_add(1)).await;
                         self.focused_widget_mut().next();
                     }
@@ -85,7 +85,7 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Char('K')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    if let Focused::InstalledMods = self.nav.focused() {
+                    if let Focused::InstalledMods = self.nav.focused_widget() {
                         if i == 0 {
                             self.cache.installed.move_to_index(i, self.focused_widget().len().saturating_sub(1)).await;
                         } else {
@@ -96,13 +96,13 @@ impl MainUI<'_> {
                 }
             }
             Event::Key(Key::Char('L')) => {
-                self.change_focus_to(self.focused_widget().neighbor_right(&self.nav.active()));
+                self.change_focus_to(self.focused_widget().neighbor_right(&self.nav.focused_tab()));
             }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
-                self.change_focus_to(self.focused_widget().neighbor_left(&self.nav.active()));
+                self.change_focus_to(self.focused_widget().neighbor_left(&self.nav.focused_tab()));
             }
             Event::Key(Key::Right) | Event::Key(Key::Char('l')) => {
-                self.change_focus_to(self.focused_widget().neighbor_right(&self.nav.active()));
+                self.change_focus_to(self.focused_widget().neighbor_right(&self.nav.focused_tab()));
             }
             Event::Key(Key::Alt(ch)) => {
                 if let Some(nr) = ch.to_digit(10) {
@@ -120,7 +120,7 @@ impl MainUI<'_> {
             Event::Key(Key::Char('v')) => {
                 if let Some(i) = self.focused_widget().selected() {
                     let mut args: Option<(String, u32)> = None;
-                    match self.nav.focused() {
+                    match self.nav.focused_widget() {
                         Focused::ArchiveTable => {
                             if let Some(metadata) = &self.archives_table.get_by_index(i).1.metadata() {
                                 args = Some((metadata.game.clone(), metadata.mod_id));
@@ -146,7 +146,7 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Char('f')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.nav.focused() {
+                    match self.nav.focused_widget() {
                         Focused::ArchiveTable => {
                             let (archive_name, _) = self.archives_table.get_by_index(i);
                             if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(archive_name).await {
@@ -177,7 +177,7 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Delete) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.nav.focused() {
+                    match self.nav.focused_widget() {
                         Focused::ArchiveTable => {
                             self.archives_table.delete_by_index(i).await;
                         }
@@ -197,7 +197,7 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Char('i')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.nav.focused() {
+                    match self.nav.focused_widget() {
                         Focused::ArchiveTable => {
                             let (_, archive) = self.archives_table.get_by_index(i);
                             if let Some(metadata) = archive.metadata() {
@@ -216,7 +216,7 @@ impl MainUI<'_> {
             }
             Event::Key(Key::Char('U')) => {
                 if let Some(i) = self.focused_widget().selected() {
-                    match self.nav.focused() {
+                    match self.nav.focused_widget() {
                         Focused::ArchiveTable => {
                             let (_, archive) = self.archives_table.get_by_index(i);
                             if let Some(metadata) = archive.metadata() {
@@ -246,10 +246,10 @@ impl MainUI<'_> {
 
             _ => {
                 // Uncomment to log keypresses
-                //self.logger.log(format!("{:?}", key));
+                //self.logger.log(format!("{:?}", event));
             }
         }
-        match self.nav.focused() {
+        match self.nav.focused_widget() {
             Focused::InstalledMods => {
                 // no keys to handle
             }
@@ -269,7 +269,7 @@ impl MainUI<'_> {
         let key = if let Event::Key(key) = event { key } else { return };
 
         if let Key::Char('p') = key {
-            if let Focused::DownloadTable = self.nav.focused() {
+            if let Focused::DownloadTable = self.nav.focused_widget() {
                 if let Some(i) = self.focused_widget().selected() {
                     self.downloads.toggle_pause_for(i).await;
                 }
