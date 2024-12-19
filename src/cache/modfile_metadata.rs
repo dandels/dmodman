@@ -80,6 +80,7 @@ impl ModFileMetadata {
         self.file_details.read().await.as_ref().map(|fd| fd.name.clone())
     }
 
+    #[allow(dead_code)]
     pub async fn mod_info(&self) -> Option<Arc<ModInfo>> {
         self.mod_info.read().await.clone()
     }

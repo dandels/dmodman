@@ -178,21 +178,15 @@ impl Cache {
         let mut file = File::create(path).await?;
         file.write_all(format!("{}", time).as_bytes()).await
     }
-
-    // Loads timestamp from $XDG_CACHE_DIR/dmodman/$profile/last_updated
-    pub fn load_last_updated(&self, config: &Config) -> Arc<AtomicU64> {
-        let val = try_read_last_updated(config);
-        self.last_update_check.store(val, Ordering::Relaxed);
-        Arc::new(AtomicU64::new(val))
-    }
 }
 
+// Loads timestamp from $XDG_CACHE_DIR/dmodman/$profile/last_updated
 fn try_read_last_updated(config: &Config) -> u64 {
     let mut path = config.cache_for_profile();
     path.push("last_updated");
     match std::fs::read_to_string(path) {
         Ok(contents) => contents.parse::<u64>().unwrap_or_default(),
-        Err(_) => 0
+        Err(_) => 0,
     }
 }
 

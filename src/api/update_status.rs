@@ -23,16 +23,6 @@ impl Default for UpdateStatus {
     }
 }
 
-impl UpdateStatus {
-    pub fn time(&self) -> u64 {
-        match self {
-            Self::UpToDate(t) | Self::HasNewFile(t) | Self::OutOfDate(t) | Self::IgnoredUntil(t) | Self::Invalid(t) => {
-                *t
-            }
-        }
-    }
-}
-
 // Hack to retain backward compatibility with previously serialized data and provide a better API than two atomics
 #[derive(Clone, Debug)]
 pub struct UpdateStatusWrapper {
@@ -71,7 +61,7 @@ impl UpdateStatusWrapper {
     }
 
     pub fn sync_with(&self, other: &Self) {
-        if self.time.load(Ordering::Relaxed) < other.time.load(Ordering::Relaxed) {
+        if self.time() < other.time() {
             self.set(other.to_enum());
         } else {
             other.set(self.to_enum());
