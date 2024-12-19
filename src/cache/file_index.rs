@@ -57,7 +57,10 @@ impl FileIndex {
                 let json_file = f.path().with_file_name(format!("{}.json", f.file_name().to_string_lossy()));
                 if let Ok(lf) = LocalFile::load(json_file).await {
                     if let Some(file_list) = file_lists.get((&lf.game, lf.mod_id)).await {
-                        let file_details = file_list.files.iter().find(|fd| fd.file_id == lf.file_id).unwrap();
+                        let file_details = match file_list.files.iter().find(|fd| fd.file_id == lf.file_id) {
+                            Some(file_details) => file_details,
+                            None => continue, // todo: filtering out remote deleted files
+                        };
                         let file_data = Arc::new(FileData::new(lf.clone(), file_details.clone()));
                         file_index.insert(lf.file_id, file_data.clone());
                         files_sorted.push(file_data.clone());
@@ -86,8 +89,10 @@ impl FileIndex {
     }
 
     pub async fn add(&self, lf: LocalFile) {
-        // TODO handle missing FileDetails gracefully
-        let file_details = self.file_lists.filedetails_for(&lf).await.unwrap();
+        let file_details = match self.file_lists.filedetails_for(&lf).await {
+            Some(file_details) => file_details,
+            None => return, // todo: filedetails_for is filtering out remote deleted files
+        };
         let fdata: Arc<FileData> = FileData::new(lf.clone(), file_details).into();
         self.file_id_map.write().await.insert(lf.file_id, fdata.clone());
         let mut mfm_lock = self.mod_file_map.write().await;
