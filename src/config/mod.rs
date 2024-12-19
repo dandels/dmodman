@@ -27,21 +27,21 @@ use std::{fs, fs::File};
  * specify a download directory. */
 #[derive(Default, Deserialize)]
 pub struct ConfigBuilder {
-    pub apikey: Option<String>,
-    pub profile: Option<String>,
+    apikey: Option<String>,
+    profile: Option<String>,
     #[serde(alias = "global_download_dir")]
-    pub download_dir: Option<PathBuf>,
+    download_dir: Option<PathBuf>,
     #[serde(alias = "global_install_dir")]
-    pub install_dir: Option<PathBuf>,
-    pub profiles: HashMap<String, Profile>,
+    install_dir: Option<PathBuf>,
+    profiles: HashMap<String, Profile>,
     #[serde(skip)]
     logger: Logger,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct Profile {
-    pub download_dir: Option<PathBuf>,
-    pub install_dir: Option<PathBuf>,
+struct Profile {
+    download_dir: Option<PathBuf>,
+    install_dir: Option<PathBuf>,
 }
 
 const DEFAULT_PROFILE_NAME: &str = "default";
@@ -72,6 +72,7 @@ impl ConfigBuilder {
         }
     }
 
+    // These are used by tests
     #[allow(dead_code)]
     pub fn apikey<S: Into<String>>(mut self, apikey: S) -> Self {
         self.apikey = Some(apikey.into());
@@ -135,8 +136,22 @@ impl ConfigBuilder {
             }
         }
 
-        self.download_dir = Some(shellexpand::full(&self.download_dir.unwrap().to_string_lossy())?.to_string().into());
-        self.install_dir = Some(shellexpand::full(&self.install_dir.unwrap().to_string_lossy())?.to_string().into());
+        self.download_dir = match shellexpand::full(&self.download_dir.unwrap().to_string_lossy()) {
+            Ok(val) => Some(val.to_string().into()),
+            Err(e) => {
+                self.logger.log("Failed to expand environment variables for download_dir. Using default value.");
+                self.logger.log(format!("Message: \"{e}\""));
+                Some(default_download_dir())
+            }
+        };
+        self.install_dir = match shellexpand::full(&self.install_dir.unwrap().to_string_lossy()) {
+            Ok(val) => Some(val.to_string().into()),
+            Err(e) => {
+                self.logger.log("Failed to expand environment variables for install_dir. Using default value.");
+                self.logger.log(format!("Message: \"{e}\""));
+                Some(install_dir_for_profile(self.profile.as_ref().unwrap()))
+            }
+        };
 
         Config::new(self.logger.clone(), self)
     }
@@ -222,18 +237,6 @@ impl Config {
         path
     }
 
-    pub fn metadata_for_profile(&self) -> PathBuf {
-        let mut path = self.data_dir();
-        path.push("profiles");
-        path.push(&self.profile);
-        path.push("metadata");
-        path
-    }
-
-    pub fn metadata_dir(&self) -> PathBuf {
-        self.data_dir().join("metadata")
-    }
-
     pub fn data_dir(&self) -> PathBuf {
         let mut path;
         if cfg!(test) {
@@ -247,6 +250,14 @@ impl Config {
 
     pub fn download_dir(&self) -> PathBuf {
         self.download_dir.clone()
+    }
+
+    pub fn metadata_for_profile(&self) -> PathBuf {
+        self.profile_data_root().join("metadata")
+    }
+
+    pub fn metadata_dir(&self) -> PathBuf {
+        self.data_dir().join("metadata")
     }
 
     pub fn install_dir(&self) -> PathBuf {
@@ -273,10 +284,20 @@ impl Config {
         let mut f = File::create(path)?;
         f.write_all(load_order.join("\n").as_bytes())
     }
+
+    // Private helper methods
+
     fn load_order_path(&self) -> PathBuf {
         let mut path = config_dir();
         path.push(&self.profile);
         path.push("load_order.txt");
+        path
+    }
+
+    fn profile_data_root(&self) -> PathBuf {
+        let mut path = self.data_dir();
+        path.push("profiles");
+        path.push(&self.profile);
         path
     }
 }
@@ -312,12 +333,19 @@ pub fn try_read_apikey() -> Result<String, std::io::Error> {
     Ok(util::trim_newline(contents))
 }
 
+/* Setting environment variables in one test seems to affect other tests, so some of these need to be excluded from the
+ * default test configuration. Ideally the tests would be written so they match the library behavior without relying on
+ * setting environment variables.
+*/
 #[cfg(test)]
 pub mod tests {
     use crate::config::*;
     use std::env;
 
-    pub fn setup_env() {
+    /* Tests are allowed to set these, since they're shared for all tests.
+     * Tests that override these must be run separately from others.
+     * TODO rewrite tests that depend on setting $HOME */
+    pub fn setup_test_env() {
         unsafe {
             env::set_var("HOME", format!("{}/test/", env!("CARGO_MANIFEST_DIR")));
             env::set_var("XDG_DATA_DIR", "$HOME/data");
@@ -327,7 +355,7 @@ pub mod tests {
 
     #[test]
     fn read_apikey() -> Result<(), ConfigError> {
-        setup_env();
+        setup_test_env();
         let config = ConfigBuilder::load(Logger::default()).unwrap().build()?;
         assert_eq!(config.apikey, Some("1234".to_string()));
         Ok(())
@@ -335,7 +363,7 @@ pub mod tests {
 
     #[test]
     fn modfile_exists() -> Result<(), ConfigError> {
-        setup_env();
+        setup_test_env();
         let profile = "testprofile";
         let modfile = "Graphic Herbalism MWSE - OpenMW-46599-1-03-1556986083.7z";
         let config = ConfigBuilder::default().profile(profile).build()?;
@@ -348,21 +376,27 @@ pub mod tests {
 
     #[test]
     fn expand_env_variable() -> Result<(), ConfigError> {
-        unsafe { env::set_var("MY_VAR", "/opt/games/dmodman"); }
+        unsafe {
+            env::set_var("MY_VAR", "/opt/games/dmodman");
+        }
         let config = ConfigBuilder::default().download_dir("$MY_VAR").profile("skyrim").build()?;
         assert_eq!(PathBuf::from("/opt/games/dmodman/skyrim"), config.download_dir());
         Ok(())
     }
 
     #[test]
+    #[ignore]
     fn expand_tilde() -> Result<(), ConfigError> {
-        unsafe { env::set_var("HOME", "/home/dmodman_test"); }
+        unsafe {
+            env::set_var("HOME", "/home/dmodman_test");
+        }
         let config = ConfigBuilder::default().download_dir("~/downloads").profile("stardew valley").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/downloads/stardew valley"), config.download_dir());
         Ok(())
     }
 
     #[test]
+    #[ignore]
     fn expand_complex_path() -> Result<(), ConfigError> {
         unsafe {
             env::set_var("HOME", "/root/subdir");
@@ -375,6 +409,7 @@ pub mod tests {
     }
 
     #[test]
+    #[ignore]
     fn default_config() -> Result<(), ConfigError> {
         unsafe {
             env::set_var("HOME", "/home/dmodman_test");
@@ -392,8 +427,9 @@ pub mod tests {
     }
 
     #[test]
+    #[ignore]
     fn append_profile_to_dirs() -> Result<(), ConfigError> {
-        setup_env();
+        setup_test_env();
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("append").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_dls/append"), config.download_dir());
@@ -402,6 +438,7 @@ pub mod tests {
     }
 
     #[test]
+    #[ignore]
     fn relative_paths() -> Result<(), ConfigError> {
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("relative_test").build()?;
@@ -411,6 +448,7 @@ pub mod tests {
     }
 
     #[test]
+    #[ignore]
     fn absolute_paths() -> Result<(), ConfigError> {
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("absolute_test").build()?;
@@ -420,6 +458,7 @@ pub mod tests {
     }
 
     #[test]
+    #[ignore]
     fn profile_specific_install_dir() -> Result<(), ConfigError> {
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
         let config = ConfigBuilder::load(Logger::default())?.profile("insdir_only_test").build()?;

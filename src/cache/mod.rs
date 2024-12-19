@@ -206,6 +206,7 @@ mod test {
 
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
+        crate::config::tests::setup_test_env();
         let profile = "testprofile";
         let file_id = 82041;
         let config = Arc::new(ConfigBuilder::default().profile(profile).build().unwrap());
