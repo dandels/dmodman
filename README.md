@@ -2,8 +2,6 @@
 dmodman is a Linux-native TUI mod manager for [Nexus Mods](https://www.nexusmods.com/), written in Rust.
 It functions as a handler for the nxm:// protocol, removing the need for manual downloads.
 
-The readme is slightly ahead of the latest release. The brave and impatient can build from git.
-
 ![The TUI with a list of mod files, a completed download, some files that could be updated, and some
 messages. On the top is a bar with keybindings.](/screenshot.png)
 
