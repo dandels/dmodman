@@ -77,28 +77,30 @@ impl Installed {
     }
 
     pub async fn delete(&self, dir_name: &String) {
-        let mut mods_lock = self.mods.write().await;
-        let path = self.config.install_dir().join(dir_name);
-        if let Err(e) = fs::remove_dir_all(path).await {
-            self.logger.log(format!("Error {e} when removing {dir_name}"));
-            return;
-        }
-        if let Some(mod_dir) = mods_lock.shift_remove(dir_name) {
-            if let ModDirectory::Nexus(im) = mod_dir {
-                let mfd = self
-                    .metadata_index
-                    .get_by_file_id(&im.file_id)
-                    .await
-                    .unwrap_or_else(|| panic!("{} should have been present in the metadata index.", &im.file_id));
-                if mfd.remove_installed(dir_name).await {
-                    self.archives_has_changed.store(true, Ordering::Relaxed);
-                }
-                self.metadata_index.remove_if_unreferenced(&mfd.file_id).await;
+        { // scope the lock so save_load_order() can reacquire it
+            let mut mods_lock = self.mods.write().await;
+            let path = self.config.install_dir().join(dir_name);
+            if let Err(e) = fs::remove_dir_all(path).await {
+                self.logger.log(format!("Error {e} when removing {dir_name}"));
+                return;
             }
-            self.has_changed.store(true, Ordering::Relaxed);
-        } else {
-            self.logger
-                .log(format!("{dir_name} no longer exists. Please file a bug report if you did not just remove it."));
+            if let Some(mod_dir) = mods_lock.shift_remove(dir_name) {
+                if let ModDirectory::Nexus(im) = mod_dir {
+                    let mfd = self
+                        .metadata_index
+                        .get_by_file_id(&im.file_id)
+                        .await
+                        .unwrap_or_else(|| panic!("{} should have been present in the metadata index.", &im.file_id));
+                    if mfd.remove_installed(dir_name).await {
+                        self.archives_has_changed.store(true, Ordering::Relaxed);
+                    }
+                    self.metadata_index.remove_if_unreferenced(&mfd.file_id).await;
+                }
+                self.has_changed.store(true, Ordering::Relaxed);
+            } else {
+                self.logger
+                    .log(format!("{dir_name} no longer exists. Please file a bug report if you did not just remove it."));
+            }
         }
         self.save_load_order().await;
     }
