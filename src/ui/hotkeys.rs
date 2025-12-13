@@ -78,7 +78,7 @@ impl MainUI<'_> {
             Event::Key(Key::Char('J')) => {
                 if let Some(i) = self.focused_widget().selected() {
                     if let Focused::InstalledMods = self.nav.focused_widget() {
-                        self.cache.installed.move_to_index(i, i.saturating_add(1)).await;
+                        self.db.installed.move_to_index(i, i.saturating_add(1)).await;
                         self.focused_widget_mut().next();
                     }
                 }
@@ -87,9 +87,9 @@ impl MainUI<'_> {
                 if let Some(i) = self.focused_widget().selected() {
                     if let Focused::InstalledMods = self.nav.focused_widget() {
                         if i == 0 {
-                            self.cache.installed.move_to_index(i, self.focused_widget().len().saturating_sub(1)).await;
+                            self.db.installed.move_to_index(i, self.focused_widget().len().saturating_sub(1)).await;
                         } else {
-                            self.cache.installed.move_to_index(i, i.saturating_sub(1)).await;
+                            self.db.installed.move_to_index(i, i.saturating_sub(1)).await;
                         }
                         self.focused_widget_mut().previous();
                     }
@@ -149,7 +149,7 @@ impl MainUI<'_> {
                     match self.nav.focused_widget() {
                         Focused::ArchiveTable => {
                             let (archive_name, _) = self.archives_table.get_by_index(i);
-                            if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(archive_name).await {
+                            if let Some(mfd) = self.db.metadata_index.get_by_archive_name(archive_name).await {
                                 let query = self.query.clone();
                                 let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
                                 tokio::task::spawn(async move {
@@ -161,7 +161,7 @@ impl MainUI<'_> {
                         Focused::InstalledMods => {
                             let (_, mod_dir) = self.installed_mods_table.get_by_index(i);
                             if let ModDirectory::Nexus(im) = mod_dir {
-                                if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&im.file_id).await {
+                                if let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await {
                                     let query = self.query.clone();
                                     let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
                                     tokio::task::spawn(async move {
@@ -221,7 +221,7 @@ impl MainUI<'_> {
                             let (_, archive) = self.archives_table.get_by_index(i);
                             if let Some(metadata) = archive.metadata() {
                                 if let Some(files) =
-                                    self.cache.metadata_index.get_modfiles(&metadata.game, &metadata.mod_id).await
+                                    self.db.metadata_index.get_modfiles(&metadata.game, &metadata.mod_id).await
                                 {
                                     self.updater.update_mod(metadata.game.clone(), metadata.mod_id, files).await;
                                 }
@@ -230,8 +230,7 @@ impl MainUI<'_> {
                         Focused::InstalledMods => {
                             let (_, mod_dir) = self.installed_mods_table.get_by_index(i);
                             if let ModDirectory::Nexus(im) = mod_dir {
-                                if let Some(files) = self.cache.metadata_index.get_modfiles(&im.game, &im.mod_id).await
-                                {
+                                if let Some(files) = self.db.metadata_index.get_modfiles(&im.game, &im.mod_id).await {
                                     self.updater.update_mod(im.game.clone(), im.mod_id, files).await;
                                 }
                             }
@@ -283,11 +282,11 @@ impl MainUI<'_> {
         match key {
             Key::Char('\n') => {
                 if let Some(i) = self.focused_widget().selected() {
-                    //let mfi = self.cache.file_index.get_by_index(i).await;
+                    //let mfi = self.db.file_index.get_by_index(i).await;
                     let (file_name, archive) = self.archives_table.get_by_index(i);
                     let dialog_title = "Directory name".to_string();
                     let mut suggested_values = vec![];
-                    if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(file_name).await {
+                    if let Some(mfd) = self.db.metadata_index.get_by_archive_name(file_name).await {
                         if let Some(name) = mfd.name().await {
                             suggested_values.push(name);
                         }

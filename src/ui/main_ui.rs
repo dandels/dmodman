@@ -4,6 +4,8 @@ use super::navigation::*;
 use crate::api::{Client, Downloads, Query, UpdateChecker};
 use crate::config::Config;
 use crate::db::Db;
+use crate::events::EventRx;
+use crate::events::EventTx;
 use crate::extract::Installer;
 use crate::ui::rectangles::Rectangles;
 use crate::ui::*;
@@ -20,12 +22,15 @@ pub enum InputMode {
 }
 
 pub struct MainUI<'a> {
-    // Structs handling app logic
+    pub logger: Logger,
+    pub events_tx: EventTx,
+    pub events_rx: EventRx,
+
+    // Backend logic
     pub installer: Installer,
-    pub cache: Db,
+    pub db: Db,
     pub config: Arc<Config>,
     pub downloads: Downloads,
-    pub logger: Logger,
     pub query: Query,
     pub updater: UpdateChecker,
 
@@ -43,37 +48,37 @@ pub struct MainUI<'a> {
     // UI state
     pub nav: Nav,
     pub input_mode: InputMode,
-    pub should_run: bool,
-    pub redraw_terminal: bool,
 }
 
 impl MainUI<'_> {
     pub async fn new(
-        cache: Db,
+        db: Db,
         client: Client,
         config: Arc<Config>,
+        events_tx: EventTx,
+        events_rx: EventRx,
         downloads: Downloads,
         logger: Logger,
         query: Query,
     ) -> Self {
-        let installer = Installer::new(cache.clone(), config.clone(), logger.clone()).await;
-        let updater = UpdateChecker::new(cache.clone(), client.clone(), config.clone(), logger.clone(), query.clone());
+        let installer = Installer::new(db.clone(), config.clone(), logger.clone()).await;
+        let updater = UpdateChecker::new(db.clone(), client.clone(), config.clone(), logger.clone(), query.clone());
 
         let nav = Nav::new();
 
-        let mut archives_table = ArchiveTable::new(cache.clone()).await;
+        let mut archives_table = ArchiveTable::new(db.clone()).await;
         archives_table.add_highlight();
-        let bottom_bar = BottomBar::new(cache.clone(), nav.focused_widget().clone());
+        let bottom_bar = BottomBar::new(db.clone(), nav.focused_widget().clone());
         let confirm_dialog = ConfirmDialog::default();
         let downloads_table = DownloadsTable::new(downloads.clone());
-        let files_table = InstalledModsTable::new(cache.installed.clone());
+        let files_table = InstalledModsTable::new(db.installed.clone());
         let hotkey_bar = HotkeyBar::new(nav.focused_widget().clone());
         let log_list = LogList::new(logger.clone());
         let popup_dialog = PopupDialog::default();
         let top_bar = TopBar::new(client.request_counter).await;
 
         Self {
-            cache,
+            db,
             config,
             downloads,
             installer,
@@ -91,8 +96,8 @@ impl MainUI<'_> {
             updater,
             logger,
             nav,
-            should_run: true,
-            redraw_terminal: true,
+            events_tx,
+            events_rx,
         }
     }
 

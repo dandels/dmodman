@@ -13,7 +13,7 @@ const STYLE_OUTOFDATE: Style = Style::new().fg(Color::Red);
 const STYLE_HASNEWFILE: Style = Style::new().fg(Color::Yellow);
 
 pub struct BottomBar<'a> {
-    cache: Db,
+    db: Db,
     pub widget: Paragraph<'a>,
     prev_focused: Focused,
     prev_selected_index: Option<usize>,
@@ -21,9 +21,9 @@ pub struct BottomBar<'a> {
 }
 
 impl<'a> BottomBar<'a> {
-    pub fn new(cache: Db, focused: Focused) -> Self {
+    pub fn new(db: Db, focused: Focused) -> Self {
         Self {
-            cache,
+            db,
             widget: Paragraph::default(),
             prev_focused: focused,
             prev_selected_index: None,
@@ -51,7 +51,7 @@ impl<'a> BottomBar<'a> {
                         if let ModDirectory::Nexus(im) = mod_dir {
                             let mut modname = StatusField::from_mod_name(im.mod_name.clone());
                             if modname.is_none() {
-                                if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&im.file_id).await {
+                                if let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await {
                                     modname = StatusField::from_mod_name(mfd.mod_name().await);
                                 }
                             }
@@ -64,7 +64,7 @@ impl<'a> BottomBar<'a> {
                     Focused::ArchiveTable => {
                         let (_, archive) = archives.get_by_index(focused_index);
                         if let Some(metadata) = archive.metadata() {
-                            if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&metadata.file_id).await {
+                            if let Some(mfd) = self.db.metadata_index.get_by_file_id(&metadata.file_id).await {
                                 let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
                                 let flags = StatusField::from_update_status(mfd.update_status.to_enum());
                                 self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
@@ -75,7 +75,7 @@ impl<'a> BottomBar<'a> {
                     }
                     Focused::DownloadTable => {
                         let file_info = downloads.get_by_index(focused_index);
-                        if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&file_info.file_id).await {
+                        if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_info.file_id).await {
                             let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
                             let flags = StatusField::from_update_status(mfd.update_status.to_enum());
                             self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));

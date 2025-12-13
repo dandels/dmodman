@@ -11,7 +11,7 @@ use tokio::task;
 
 #[derive(Clone)]
 pub struct UpdateChecker {
-    cache: Db,
+    db: Db,
     client: Client,
     config: Arc<Config>,
     logger: Logger,
@@ -19,9 +19,9 @@ pub struct UpdateChecker {
 }
 
 impl UpdateChecker {
-    pub fn new(cache: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
+    pub fn new(db: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
         Self {
-            cache,
+            db,
             client,
             config,
             logger,
@@ -30,9 +30,9 @@ impl UpdateChecker {
     }
 
     pub async fn ignore_file(&self, file_id: u64) {
-        if let Some(mfd) = self.cache.metadata_index.get_by_file_id(&file_id).await {
+        if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_id).await {
             if let Some(latest_remote_file) =
-                self.cache.file_lists.get(mfd.game.clone(), mfd.mod_id).await.unwrap().file_updates.last()
+                self.db.file_lists.get(mfd.game.clone(), mfd.mod_id).await.unwrap().file_updates.last()
             {
                 match mfd.update_status.to_enum() {
                     UpdateStatus::OutOfDate(_) => {
@@ -53,8 +53,8 @@ impl UpdateChecker {
                     }
                     _ => {}
                 }
-                self.cache.archives.has_changed.store(true, Ordering::Relaxed);
-                self.cache.installed.has_changed.store(true, Ordering::Relaxed);
+                self.db.archives.has_changed.store(true, Ordering::Relaxed);
+                self.db.installed.has_changed.store(true, Ordering::Relaxed);
             }
         }
     }
@@ -64,13 +64,13 @@ impl UpdateChecker {
             // If less than a month has passed since previous update we can use the API endpoint for mod updates
             Ok(time) => {
                 // TODO the updated timestamp is per profile and doesn't take into account user moved files
-                let t_diff = time.as_secs() - self.cache.last_update_check.load(Ordering::Relaxed);
+                let t_diff = time.as_secs() - self.db.last_update_check.load(Ordering::Relaxed);
                 // this is how many seconds are in 28 days
                 if t_diff < 2419200 {
                     let me = self.clone();
                     task::spawn(async move {
-                        let mods_by_game = me.cache.metadata_index.by_game_and_mod_sorted.read().await;
-                        if let Err(e) = me.cache.save_last_updated(time.as_secs()).await {
+                        let mods_by_game = me.db.metadata_index.by_game_and_mod_sorted.read().await;
+                        if let Err(e) = me.db.save_last_updated(time.as_secs()).await {
                             me.logger.log(format!("Failed to save last updated status: {}", e));
                         }
 
@@ -105,16 +105,16 @@ impl UpdateChecker {
                                 }
                             }
                         }
-                        if let Err(e) = me.cache.save_last_updated(time.as_secs()).await {
+                        if let Err(e) = me.db.save_last_updated(time.as_secs()).await {
                             me.logger.log(format!("Failed to save last_updated: {e}"));
                         }
                     });
                 } else {
                     self.logger.log("Over a month since last update check, checking each mod.");
-                    if let Err(e) = self.cache.save_last_updated(time.as_secs()).await {
+                    if let Err(e) = self.db.save_last_updated(time.as_secs()).await {
                         self.logger.log(format!("Failed to save last updated status: {}", e));
                     }
-                    for (game, mods) in self.cache.metadata_index.by_game_and_mod_sorted.read().await.iter() {
+                    for (game, mods) in self.db.metadata_index.by_game_and_mod_sorted.read().await.iter() {
                         for (mod_id, files) in mods {
                             self.update_mod(game.clone(), *mod_id, files.clone()).await;
                         }
@@ -138,7 +138,7 @@ impl UpdateChecker {
              * If the UpdateStatus is already OutOfDate or HasNewFile, there's no reason to query the API.
              * Only query the API if a file is still reported as UpToDate.
              */
-            if let Some(fl) = me.cache.file_lists.get(game.clone(), mod_id).await {
+            if let Some(fl) = me.db.file_lists.get(game.clone(), mod_id).await {
                 checked = me.check_mod(&files_in_mod, &fl).await;
                 for (_fdata, status) in &checked {
                     if let UpdateStatus::UpToDate(_) = status {
@@ -166,8 +166,8 @@ impl UpdateChecker {
                     mfd.propagate_update_status(&me.config, &me.logger, &new_status).await;
                 }
             }
-            me.cache.archives.has_changed.store(true, Ordering::Relaxed);
-            me.cache.installed.has_changed.store(true, Ordering::Relaxed);
+            me.db.archives.has_changed.store(true, Ordering::Relaxed);
+            me.db.installed.has_changed.store(true, Ordering::Relaxed);
         });
     }
 
@@ -337,10 +337,10 @@ mod tests {
         let profile = "testprofile";
         let config = Arc::new(ConfigBuilder::default().profile(profile).build().unwrap());
         let logger = Logger::default();
-        let cache = Db::new(config.clone(), logger.clone()).await.unwrap();
+        let db = Db::new(config.clone(), logger.clone()).await.unwrap();
         let client = Client::new(&config).await;
-        let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
-        (cache.clone(), UpdateChecker::new(cache, client, config, logger, query))
+        let query = Query::new(db.clone(), client.clone(), config.clone(), logger.clone());
+        (db.clone(), UpdateChecker::new(db, client, config, logger, query))
     }
 
     // TODO this needs a lot more unit tests but they are rather tedious to create
@@ -353,12 +353,12 @@ mod tests {
         let mod_id = 39350;
         let _fair_magicka_regen_file_id = 82041;
 
-        let (cache, update) = init_structs().await;
+        let (db, update) = init_structs().await;
 
-        let lock = cache.metadata_index.by_game_and_mod_sorted.read().await;
+        let lock = db.metadata_index.by_game_and_mod_sorted.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
-        let file_list = cache.file_lists.get(game, mod_id).await.unwrap();
+        let file_list = db.file_lists.get(game, mod_id).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
 
         match checked.first().unwrap().1 {
@@ -385,12 +385,12 @@ mod tests {
         let latest_local_time = 1558643754;
         let latest_remote_time = 1558643755;
 
-        let (cache, update) = init_structs().await;
+        let (db, update) = init_structs().await;
 
-        let lock = cache.metadata_index.by_game_and_mod_sorted.read().await;
+        let lock = db.metadata_index.by_game_and_mod_sorted.read().await;
         let mod_map = lock.get(game).unwrap();
         let files = mod_map.get(&mod_id).unwrap();
-        let file_list = cache.file_lists.get(game, mod_id).await.unwrap();
+        let file_list = db.file_lists.get(game, mod_id).await.unwrap();
         let checked = update.check_mod(files, &file_list).await;
 
         for (mfd, status) in checked {

@@ -2,7 +2,8 @@ use super::DownloadState;
 use super::{DownloadInfo, DownloadProgress, Downloads};
 use crate::api::{Client, Query};
 use crate::config::{Config, DataPath};
-use crate::db::{Db, Cacheable};
+use crate::db::{Cacheable, Db};
+use crate::events::{EventSource, EventTx};
 use crate::util;
 use crate::Logger;
 use reqwest::header::RANGE;
@@ -23,6 +24,7 @@ pub struct DownloadTask {
     cache: Db,
     client: Client,
     config: Arc<Config>,
+    event_tx: EventTx,
     logger: Logger,
     downloads: Downloads,
     query: Query,
@@ -35,6 +37,7 @@ impl DownloadTask {
         cache: Db,
         client: Client,
         config: Arc<Config>,
+        event_tx: EventTx,
         logger: Logger,
         dl_info: DownloadInfo,
         downloads: Downloads,
@@ -44,6 +47,7 @@ impl DownloadTask {
             cache,
             client,
             config,
+            event_tx,
             logger,
             dl_info,
             downloads,
@@ -87,7 +91,7 @@ impl DownloadTask {
     async fn log_and_set_error<S: Into<String> + Debug + Display>(&self, msg: S) {
         self.logger.log(msg);
         self.dl_info.set_state(DownloadState::Error);
-        self.downloads.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::Downloads);
     }
 
     pub async fn file_exists(&self) -> bool {
@@ -154,9 +158,10 @@ impl DownloadTask {
         let logger = self.logger.clone();
         let file_name = file_name.clone();
         let query = self.query.clone();
+        let event_tx = self.event_tx.clone();
         let handle: JoinHandle<()> = task::spawn(async move {
             // The actual downloading is done here
-            if let Err(()) = transfer_data(file, resp, &logger, &downloads, &dl_info).await {
+            if let Err(()) = transfer_data(file, &event_tx, resp, &logger, &downloads, &dl_info).await {
                 return;
             }
 
@@ -171,7 +176,7 @@ impl DownloadTask {
             }
 
             dl_info.set_state(DownloadState::Done);
-            downloads.has_changed.store(true, Ordering::Relaxed);
+            event_tx.send(EventSource::Downloads);
 
             match util::md5sum(path).await {
                 Ok(md5) => {
@@ -243,7 +248,7 @@ impl DownloadTask {
             Err(e) => {
                 if resp.status() == StatusCode::GONE {
                     self.dl_info.set_state(DownloadState::Expired);
-                    self.downloads.has_changed.store(true, Ordering::Relaxed);
+                    self.event_tx.send(EventSource::Downloads);
                 } else {
                     self.log_and_set_error(format!("Download {file_name} failed with error: {}", e.status().unwrap()))
                         .await;
@@ -265,6 +270,7 @@ impl DownloadTask {
 
 async fn transfer_data(
     file: File,
+    event_tx: &EventTx,
     resp: Response,
     logger: &Logger,
     downloads: &Downloads,
@@ -281,7 +287,7 @@ async fn transfer_data(
                     return Err(());
                 }
                 dl_info.progress.bytes_read.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-                downloads.has_changed.store(true, Ordering::Relaxed);
+                event_tx.send(EventSource::Downloads);
             }
             Err(e) => {
                 logger.log(format!("Error during download: {}", e));

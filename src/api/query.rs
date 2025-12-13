@@ -3,7 +3,7 @@ use super::nexus_api::*;
 use crate::api::ApiError;
 use crate::db::ModFileMetadata;
 use crate::util;
-use crate::{Db, Client, Config, Logger};
+use crate::{Client, Config, Db, Logger};
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use url::Url;

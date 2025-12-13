@@ -6,7 +6,7 @@ pub use self::extract_error::InstallError;
 pub use self::installed_mod::*;
 
 use crate::config::{Config, DataPath};
-use crate::db::{ArchiveEntry, ArchiveFile, ArchiveStatus, Db, Cacheable};
+use crate::db::{ArchiveEntry, ArchiveFile, ArchiveStatus, Cacheable, Db};
 use crate::Logger;
 use libarchive::*;
 use std::collections::HashMap;
@@ -21,15 +21,15 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct Installer {
-    cache: Db,
+    db: Db,
     config: Arc<Config>,
     logger: Logger,
     pub extract_jobs: Arc<RwLock<HashMap<String, CancellationToken>>>, // key: archive name
 }
 impl Installer {
-    pub async fn new(cache: Db, config: Arc<Config>, logger: Logger) -> Self {
+    pub async fn new(db: Db, config: Arc<Config>, logger: Logger) -> Self {
         Self {
-            cache,
+            db,
             config,
             logger,
             extract_jobs: Default::default(),
@@ -37,7 +37,7 @@ impl Installer {
     }
 
     pub async fn list_content(&self, archive_name: &str) -> Option<Result<Vec<String>, InstallError>> {
-        if let Some(ArchiveEntry::File(archive)) = self.cache.archives.get(archive_name).await {
+        if let Some(ArchiveEntry::File(archive)) = self.db.archives.get(archive_name).await {
             let path = self.config.download_dir().join(&archive.file_name);
             return Some({
                 let task: Result<Vec<String>, InstallError> = task::spawn(async move {
@@ -77,7 +77,7 @@ impl Installer {
             return Err(InstallError::AlreadyExists);
         }
 
-        let archive_file = match self.cache.archives.get(&archive_name).await {
+        let archive_file = match self.db.archives.get(&archive_name).await {
             Some(entry) => match entry {
                 ArchiveEntry::File(archive) => archive,
                 ArchiveEntry::MetadataOnly(_) => {
@@ -157,7 +157,7 @@ impl Installer {
                         me.post_extract(archive_file, target_dir_name, mod_dir).await;
                     } else {
                         *archive_file.install_state.write().await = ArchiveStatus::Error;
-                        me.cache.archives.has_changed.store(true, Ordering::Relaxed);
+                        me.db.archives.has_changed.store(true, Ordering::Relaxed);
                         // TODO maybe clean up after a failed extraction?
                         me.logger.log(format!("Aborted extracting \"{}\". Output directory has not been removed.", archive_name));
                         me.extract_jobs.write().await.remove(&target_dir_name);
@@ -174,15 +174,15 @@ impl Installer {
     pub async fn cancel(&self, archive: &ArchiveFile) {
         if let Some(token) = self.extract_jobs.write().await.remove(&archive.file_name) {
             token.cancel();
-            if let Some(mfd) = self.cache.metadata_index.get_by_archive_name(&archive.file_name).await {
+            if let Some(mfd) = self.db.metadata_index.get_by_archive_name(&archive.file_name).await {
                 if mfd.is_installed().await {
                     *archive.install_state.write().await = ArchiveStatus::Installed;
-                    self.cache.archives.has_changed.store(true, Ordering::Relaxed);
+                    self.db.archives.has_changed.store(true, Ordering::Relaxed);
                     return;
                 }
             }
             *archive.install_state.write().await = ArchiveStatus::Downloaded;
-            self.cache.archives.has_changed.store(true, Ordering::Relaxed);
+            self.db.archives.has_changed.store(true, Ordering::Relaxed);
         }
     }
 
@@ -195,8 +195,8 @@ impl Installer {
         self.logger.log(format!("Begin extracting: {:?}", &archive.file_name));
         *archive.install_state.write().await = ArchiveStatus::Extracting;
         fs::create_dir_all(&dest_path).await.unwrap();
-        self.cache.archives.has_changed.store(true, Ordering::Relaxed);
-        let mod_dir = ModDirectory::new(self.cache.clone(), archive.clone()).await;
+        self.db.archives.has_changed.store(true, Ordering::Relaxed);
+        let mod_dir = ModDirectory::new(self.db.clone(), archive.clone()).await;
         if let Err(e) = mod_dir.save(DataPath::ModDirMetadata(&self.config, dest_dir_name)).await {
             self.logger.log(format!("Failed to save metadata for extracted directory {}, {e}", dest_dir_name));
         }
@@ -205,8 +205,8 @@ impl Installer {
 
     async fn post_extract(&self, archive: Arc<ArchiveFile>, dest_dir_name: String, mod_dir: ModDirectory) {
         *archive.install_state.write().await = ArchiveStatus::Installed;
-        self.cache.archives.has_changed.store(true, Ordering::Relaxed);
-        self.cache.installed.add(dest_dir_name.clone(), mod_dir).await;
+        self.db.archives.has_changed.store(true, Ordering::Relaxed);
+        self.db.installed.add(dest_dir_name.clone(), mod_dir).await;
         self.extract_jobs.write().await.remove(&archive.file_name);
         self.logger.log(format!("Finished extracting: {:?}", &archive.file_name));
     }
