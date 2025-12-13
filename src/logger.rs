@@ -45,7 +45,7 @@ impl Logger {
     #[allow(dead_code)]
     pub async fn remove(&self, i: usize) {
         let mut lock = self.messages.write().unwrap();
-        if lock.len() > 0 {
+        if !lock.is_empty() {
             lock.remove(i);
             self.has_changed.store(true, Ordering::Relaxed);
         }

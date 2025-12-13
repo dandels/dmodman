@@ -20,7 +20,7 @@ pub enum ApiError {
     ParseError { source: ParseError },
     ParseIntError { source: ParseIntError },
     SerializationError { source: serde_json::Error },
-    WebsocketError { source: tungstenite::Error },
+    WebsocketError { source: Box<tungstenite::Error> },
 }
 
 impl Error for ApiError {
@@ -103,6 +103,6 @@ impl From<ParseIntError> for ApiError {
 
 impl From<tungstenite::Error> for ApiError {
     fn from(error: tungstenite::Error) -> Self {
-        ApiError::WebsocketError { source: error }
+        ApiError::WebsocketError { source: error.into() }
     }
 }
