@@ -1,6 +1,6 @@
 mod api;
-mod cache;
 mod config;
+mod db;
 mod extract;
 mod logger;
 mod nxm_socket;
@@ -8,8 +8,8 @@ mod ui;
 mod util;
 
 use api::{Client, Downloads, Query};
-use cache::Cache;
 use config::{Config, ConfigBuilder, ConfigError};
+use db::Db;
 use logger::Logger;
 use std::env::args;
 use std::error::Error;
@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     let config = Arc::new(config);
 
-    let cache = Cache::new(config.clone(), logger.clone()).await?;
+    let cache = Db::new(config.clone(), logger.clone()).await?;
     let client = Client::new(&config).await;
     let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
     let downloads = Downloads::new(cache.clone(), client.clone(), config.clone(), logger.clone(), query.clone()).await;

@@ -1,5 +1,5 @@
 use crate::api::Queriable;
-use crate::cache::Cacheable;
+use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,9 +26,9 @@ impl Queriable for DownloadLink {
 mod tests {
     use super::DownloadLink;
 
-    use crate::cache::Cacheable;
     use crate::config::ConfigBuilder;
     use crate::config::DataPath;
+    use crate::db::Cacheable;
     use std::error::Error;
 
     #[tokio::test]

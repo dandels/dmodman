@@ -1,7 +1,7 @@
 use super::MetadataIndex;
 use crate::api::downloads::FileInfo;
 use crate::api::update_status::*;
-use crate::cache::{Cacheable, Installed};
+use crate::db::{Cacheable, Installed};
 use crate::config::Config;
 use crate::Logger;
 use indexmap::IndexMap;

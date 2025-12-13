@@ -5,8 +5,8 @@ mod libarchive;
 pub use self::extract_error::InstallError;
 pub use self::installed_mod::*;
 
-use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveStatus, Cache, Cacheable};
 use crate::config::{Config, DataPath};
+use crate::db::{ArchiveEntry, ArchiveFile, ArchiveStatus, Db, Cacheable};
 use crate::Logger;
 use libarchive::*;
 use std::collections::HashMap;
@@ -21,13 +21,13 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct Installer {
-    cache: Cache,
+    cache: Db,
     config: Arc<Config>,
     logger: Logger,
     pub extract_jobs: Arc<RwLock<HashMap<String, CancellationToken>>>, // key: archive name
 }
 impl Installer {
-    pub async fn new(cache: Cache, config: Arc<Config>, logger: Logger) -> Self {
+    pub async fn new(cache: Db, config: Arc<Config>, logger: Logger) -> Self {
         Self {
             cache,
             config,

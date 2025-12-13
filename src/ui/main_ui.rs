@@ -2,8 +2,8 @@ use super::component::traits::*;
 use super::component::*;
 use super::navigation::*;
 use crate::api::{Client, Downloads, Query, UpdateChecker};
-use crate::cache::Cache;
 use crate::config::Config;
+use crate::db::Db;
 use crate::extract::Installer;
 use crate::ui::rectangles::Rectangles;
 use crate::ui::*;
@@ -22,7 +22,7 @@ pub enum InputMode {
 pub struct MainUI<'a> {
     // Structs handling app logic
     pub installer: Installer,
-    pub cache: Cache,
+    pub cache: Db,
     pub config: Arc<Config>,
     pub downloads: Downloads,
     pub logger: Logger,
@@ -49,7 +49,7 @@ pub struct MainUI<'a> {
 
 impl MainUI<'_> {
     pub async fn new(
-        cache: Cache,
+        cache: Db,
         client: Client,
         config: Arc<Config>,
         downloads: Downloads,

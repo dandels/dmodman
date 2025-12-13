@@ -1,6 +1,6 @@
 use crate::api::downloads::FileInfo;
 use crate::api::{FileDetails, ModInfo, UpdateStatus, UpdateStatusWrapper};
-use crate::cache::{ArchiveFile, ArchiveStatus, Cacheable};
+use crate::db::{ArchiveFile, ArchiveStatus, Cacheable};
 use crate::config::{Config, DataPath};
 use crate::extract::{InstalledMod, ModDirectory};
 use crate::Logger;

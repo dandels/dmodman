@@ -2,7 +2,7 @@ use super::component::traits::Select;
 use super::component::{ConfirmDialog, PopupDialog};
 use super::main_ui::*;
 use super::navigation::*;
-use crate::cache::ArchiveEntry;
+use crate::db::ArchiveEntry;
 use crate::extract::{InstallError, ModDirectory};
 use std::process::Command;
 use std::sync::atomic::Ordering;

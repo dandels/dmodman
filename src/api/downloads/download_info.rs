@@ -1,6 +1,6 @@
 use super::DownloadProgress;
 use super::FileInfo;
-use crate::cache::Cacheable;
+use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::atomic::{AtomicU8, Ordering};

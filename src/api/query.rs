@@ -1,9 +1,9 @@
 pub use super::downloads::nxm_url::*;
 use super::nexus_api::*;
 use crate::api::ApiError;
-use crate::cache::ModFileMetadata;
+use crate::db::ModFileMetadata;
 use crate::util;
-use crate::{Cache, Client, Config, Logger};
+use crate::{Db, Client, Config, Logger};
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use url::Url;
@@ -12,7 +12,7 @@ const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 
 #[derive(Clone)]
 pub struct Query {
-    cache: Cache,
+    cache: Db,
     client: Client,
     #[allow(dead_code)]
     config: Arc<Config>,
@@ -20,7 +20,7 @@ pub struct Query {
 }
 
 impl Query {
-    pub fn new(cache: Cache, client: Client, config: Arc<Config>, logger: Logger) -> Self {
+    pub fn new(cache: Db, client: Client, config: Arc<Config>, logger: Logger) -> Self {
         Self {
             cache,
             client,
@@ -161,7 +161,7 @@ pub trait Queriable: DeserializeOwned {
 #[cfg(test)]
 mod tests {
     use crate::api::{ApiError, Client, Query};
-    use crate::cache::Cache;
+    use crate::db::Db;
     use crate::ConfigBuilder;
     use crate::Logger;
     use std::sync::Arc;
@@ -171,7 +171,7 @@ mod tests {
         let config = Arc::new(ConfigBuilder::default().build().unwrap());
 
         let logger = Logger::default();
-        let cache = Cache::new(config.clone(), logger.clone()).await.unwrap();
+        let cache = Db::new(config.clone(), logger.clone()).await.unwrap();
         let client = Client::new(&config).await;
         let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
 

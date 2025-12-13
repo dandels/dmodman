@@ -1,6 +1,6 @@
 use crate::api::Queriable;
+use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
-use crate::cache::Cacheable;
 
 // TODO several of these should probably be Options
 #[derive(Clone, Debug, Serialize, Deserialize)]

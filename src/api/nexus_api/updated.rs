@@ -1,5 +1,5 @@
 use crate::api::Queriable;
-use crate::cache::Cacheable;
+use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]

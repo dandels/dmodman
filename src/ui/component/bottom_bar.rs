@@ -2,7 +2,7 @@ use super::{ArchiveTable, DownloadsTable, InstalledModsTable};
 use crate::api::UpdateStatus;
 use crate::extract::ModDirectory;
 use crate::ui::navigation::Focused;
-use crate::Cache;
+use crate::Db;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -13,7 +13,7 @@ const STYLE_OUTOFDATE: Style = Style::new().fg(Color::Red);
 const STYLE_HASNEWFILE: Style = Style::new().fg(Color::Yellow);
 
 pub struct BottomBar<'a> {
-    cache: Cache,
+    cache: Db,
     pub widget: Paragraph<'a>,
     prev_focused: Focused,
     prev_selected_index: Option<usize>,
@@ -21,7 +21,7 @@ pub struct BottomBar<'a> {
 }
 
 impl<'a> BottomBar<'a> {
-    pub fn new(cache: Cache, focused: Focused) -> Self {
+    pub fn new(cache: Db, focused: Focused) -> Self {
         Self {
             cache,
             widget: Paragraph::default(),

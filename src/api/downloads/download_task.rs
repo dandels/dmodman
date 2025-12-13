@@ -1,8 +1,8 @@
 use super::DownloadState;
 use super::{DownloadInfo, DownloadProgress, Downloads};
 use crate::api::{Client, Query};
-use crate::cache::{Cache, Cacheable};
 use crate::config::{Config, DataPath};
+use crate::db::{Db, Cacheable};
 use crate::util;
 use crate::Logger;
 use reqwest::header::RANGE;
@@ -20,7 +20,7 @@ use tokio_stream::StreamExt;
 
 pub struct DownloadTask {
     #[allow(dead_code)]
-    cache: Cache,
+    cache: Db,
     client: Client,
     config: Arc<Config>,
     logger: Logger,
@@ -32,7 +32,7 @@ pub struct DownloadTask {
 
 impl DownloadTask {
     pub fn new(
-        cache: Cache,
+        cache: Db,
         client: Client,
         config: Arc<Config>,
         logger: Logger,

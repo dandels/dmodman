@@ -1,8 +1,8 @@
 use super::common::*;
-use crate::cache::ArchiveEntry;
+use crate::db::ArchiveEntry;
 use crate::ui::navigation::*;
 use crate::util;
-use crate::Cache;
+use crate::Db;
 use indexmap::IndexMap;
 use ratatui::layout::Constraint;
 use ratatui::style::Style;
@@ -12,7 +12,7 @@ use std::sync::atomic::Ordering;
 pub struct ArchiveTable<'a> {
     headers: Row<'a>,
     widths: [Constraint; 4],
-    pub cache: Cache,
+    pub cache: Db,
     pub currently_shown: IndexMap<String, ArchiveEntry>,
     pub neighbors: NeighboringWidgets,
     pub block: Block<'a>,
@@ -23,7 +23,7 @@ pub struct ArchiveTable<'a> {
 }
 
 impl ArchiveTable<'_> {
-    pub async fn new(cache: Cache) -> Self {
+    pub async fn new(cache: Db) -> Self {
         let block = DEFAULT_BLOCK.title(" Archives ");
         let headers = Row::new(vec![
             Cell::from(header_text("Filename")),

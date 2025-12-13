@@ -1,5 +1,5 @@
 use super::common::*;
-use crate::cache::Installed;
+use crate::db::Installed;
 use crate::extract::ModDirectory;
 use crate::ui::navigation::*;
 use indexmap::IndexMap;

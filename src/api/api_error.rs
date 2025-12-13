@@ -1,4 +1,4 @@
-use crate::cache::CacheError;
+use crate::db::CacheError;
 use std::error::Error;
 use std::fmt;
 use std::num::ParseIntError;

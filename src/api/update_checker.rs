@@ -1,7 +1,7 @@
 use super::UpdateStatus;
 use super::{Client, FileList, Queriable};
 use crate::api::{Query, Updated};
-use crate::cache::{Cache, ModFileMetadata};
+use crate::db::{Db, ModFileMetadata};
 use crate::Config;
 use crate::Logger;
 use std::sync::atomic::Ordering;
@@ -11,7 +11,7 @@ use tokio::task;
 
 #[derive(Clone)]
 pub struct UpdateChecker {
-    cache: Cache,
+    cache: Db,
     client: Client,
     config: Arc<Config>,
     logger: Logger,
@@ -19,7 +19,7 @@ pub struct UpdateChecker {
 }
 
 impl UpdateChecker {
-    pub fn new(cache: Cache, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
+    pub fn new(cache: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
         Self {
             cache,
             client,
@@ -327,17 +327,17 @@ impl UpdateChecker {
 mod tests {
     use super::UpdateStatus;
     use crate::api::{ApiError, Client, Query, UpdateChecker};
-    use crate::cache::Cache;
     use crate::config::tests::setup_test_env;
+    use crate::db::Db;
     use crate::ConfigBuilder;
     use crate::Logger;
     use std::sync::Arc;
 
-    async fn init_structs() -> (Cache, UpdateChecker) {
+    async fn init_structs() -> (Db, UpdateChecker) {
         let profile = "testprofile";
         let config = Arc::new(ConfigBuilder::default().profile(profile).build().unwrap());
         let logger = Logger::default();
-        let cache = Cache::new(config.clone(), logger.clone()).await.unwrap();
+        let cache = Db::new(config.clone(), logger.clone()).await.unwrap();
         let client = Client::new(&config).await;
         let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
         (cache.clone(), UpdateChecker::new(cache, client, config, logger, query))

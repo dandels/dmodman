@@ -1,6 +1,6 @@
 use crate::api::update_status::*;
-use crate::cache::{ArchiveFile, ArchiveMetadata, Cacheable};
-use crate::Cache;
+use crate::db::{ArchiveFile, ArchiveMetadata, Cacheable};
+use crate::Db;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -39,7 +39,7 @@ pub struct InstalledMod {
 }
 
 impl ModDirectory {
-    pub async fn new(cache: Cache, archive: Arc<ArchiveFile>) -> Self {
+    pub async fn new(cache: Db, archive: Arc<ArchiveFile>) -> Self {
         if archive.mod_data.is_none() {
             return ModDirectory::Foreign(archive.file_name.clone());
         }

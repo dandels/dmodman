@@ -29,7 +29,7 @@ use tokio::io;
 use tokio::io::AsyncWriteExt;
 
 #[derive(Clone)]
-pub struct Cache {
+pub struct Db {
     config: Arc<Config>,
     logger: Logger,
     pub archives: ArchiveFiles,
@@ -41,7 +41,7 @@ pub struct Cache {
     pub installed: Installed,
 }
 
-impl Cache {
+impl Db {
     pub async fn new(config: Arc<Config>, logger: Logger) -> Result<Self, CacheError> {
         let archives_has_changed = Arc::new(AtomicBool::new(true));
 
@@ -192,8 +192,8 @@ fn try_read_last_updated(config: &Config) -> u64 {
 
 #[cfg(test)]
 mod test {
-    use super::Cache;
     use super::CacheError;
+    use super::Db;
     use crate::config::ConfigBuilder;
     use crate::Logger;
     use std::sync::Arc;
@@ -204,9 +204,9 @@ mod test {
         let profile = "testprofile";
         let file_id = 82041;
         let config = Arc::new(ConfigBuilder::default().profile(profile).build().unwrap());
-        let cache = Cache::new(config.clone(), Logger::default()).await?;
+        let db = Db::new(config.clone(), Logger::default()).await?;
 
-        let fdata = cache.metadata_index.get_by_file_id(&file_id).await.unwrap();
+        let fdata = db.metadata_index.get_by_file_id(&file_id).await.unwrap();
         assert_eq!(fdata.file_id, file_id);
         Ok(())
     }

@@ -11,8 +11,8 @@ pub use self::file_info::*;
 pub use self::nxm_url::*;
 use crate::api::Query;
 use crate::api::{ApiError, Client, UpdateStatus};
-use crate::cache::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cache, Cacheable, ModFileMetadata};
 use crate::config::{Config, DataPath};
+use crate::db::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cacheable, Db, ModFileMetadata};
 use crate::{util, Logger};
 use indexmap::IndexMap;
 use std::ffi::OsStr;
@@ -30,14 +30,14 @@ pub struct Downloads {
     pub tasks: Arc<RwLock<IndexMap<u64, DownloadTask>>>,
     pub has_changed: Arc<AtomicBool>,
     logger: Logger,
-    cache: Cache,
+    cache: Db,
     client: Client,
     config: Arc<Config>,
     query: Query,
 }
 
 impl Downloads {
-    pub async fn new(cache: Cache, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
+    pub async fn new(cache: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
         Self {
             tasks: Arc::new(RwLock::new(IndexMap::new())),
             has_changed: Arc::new(AtomicBool::new(true)),
