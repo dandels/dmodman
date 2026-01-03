@@ -1,6 +1,8 @@
-use crate::ui::component::{ArchiveTable, ConfirmDialog, DownloadsTable, LogList, InstalledModsTable, PopupDialog};
+use crate::ui::component::{
+    ArchivesWidget, ConfirmDialog, DownloadsWidget, InstalledModsWidget, LogWidget, PopupDialog,
+};
 
-macro_rules! impl_stateful {
+macro_rules! impl_select {
     ($T:ty) => {
         impl Select for $T {
             fn len(&self) -> usize {
@@ -22,12 +24,12 @@ macro_rules! impl_stateful {
     };
 }
 
-impl_stateful!(ArchiveTable<'_>);
-impl_stateful!(ConfirmDialog<'_>);
-impl_stateful!(DownloadsTable<'_>);
-impl_stateful!(LogList<'_>);
-impl_stateful!(InstalledModsTable<'_>);
-impl_stateful!(PopupDialog<'_>);
+impl_select!(ArchivesWidget<'_>);
+impl_select!(ConfirmDialog<'_>);
+impl_select!(DownloadsWidget<'_>);
+impl_select!(LogWidget<'_>);
+impl_select!(InstalledModsWidget<'_>);
+impl_select!(PopupDialog<'_>);
 
 pub trait Select {
     fn len(&self) -> usize;

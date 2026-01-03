@@ -162,17 +162,13 @@ pub trait Queriable: DeserializeOwned {
 mod tests {
     use crate::api::{ApiError, Client, Query};
     use crate::db::Db;
-    use crate::ConfigBuilder;
-    use crate::Logger;
-    use std::sync::Arc;
+    use crate::util::test;
 
     #[tokio::test]
     async fn block_test_request() -> Result<(), ApiError> {
-        let config = Arc::new(ConfigBuilder::default().build().unwrap());
-
-        let logger = Logger::default();
-        let cache = Db::new(config.clone(), logger.clone()).await.unwrap();
-        let client = Client::new(&config).await;
+        let (config, logger, event_tx) = test::init_structs();
+        let cache = Db::new(config.clone(), logger.clone(), event_tx.clone()).await.unwrap();
+        let client = Client::new(&config, event_tx).await;
         let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
 
         let game = "morrowind";

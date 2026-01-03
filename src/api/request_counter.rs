@@ -1,7 +1,9 @@
 use reqwest::header::HeaderMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use crate::events::EventSource;
+use crate::events::EventTx;
 
 #[derive(Debug, Default)]
 pub struct Counter {
@@ -12,14 +14,14 @@ pub struct Counter {
 #[derive(Clone)]
 pub struct RequestCounter {
     pub counter: Arc<RwLock<Counter>>,
-    pub has_changed: Arc<AtomicBool>,
+    event_tx: EventTx,
 }
 
 impl RequestCounter {
-    pub fn new() -> Self {
+    pub fn new(event_tx: EventTx) -> Self {
         Self {
-            counter: Arc::new(RwLock::new(Counter::default())),
-            has_changed: Arc::new(AtomicBool::from(false)),
+            counter: Default::default(),
+            event_tx,
         }
     }
 
@@ -32,6 +34,6 @@ impl RequestCounter {
         if let Some(value) = headers.get("x-rl-hourly-remaining") {
             counter.hourly_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());
         }
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::RequestCounter)
     }
 }

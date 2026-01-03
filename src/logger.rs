@@ -1,25 +1,38 @@
 use crate::config;
+use crate::events::EventTx;
 use std::fmt::{Debug, Display};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use std::fs::File;
 use std::io::Write;
 use std::sync::RwLock;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Logger {
     pub messages: Arc<RwLock<Vec<String>>>,
-    pub has_changed: Arc<AtomicBool>, // used by UI to ask if error list needs to be redrawn
+    event_tx: EventTx, // used by UI to ask if error list needs to be redrawn
     is_interactive: bool,
 }
 
-impl Logger {
-    pub fn new(is_interactive: bool) -> Self {
+#[cfg(test)]
+impl Default for Logger {
+    fn default() -> Self {
+        // This is silly
+        let event_tx = crate::events::Events::new().tx;
         Self {
+            messages: Default::default(),
+            event_tx,
+            is_interactive: Default::default(),
+        }
+    }
+}
+
+impl Logger {
+    pub fn new(event_tx: EventTx, is_interactive: bool) -> Self {
+        Self {
+            messages: Default::default(),
+            event_tx,
             is_interactive,
-            has_changed: AtomicBool::new(false).into(),
-            ..Default::default()
         }
     }
 
@@ -38,7 +51,7 @@ impl Logger {
 
         // TODO timestamp messages, but might require external crate
         self.messages.write().unwrap().push(msg.to_string());
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(crate::events::EventSource::Log);
     }
 
     // No longer needed since the UI drains the log and maintains internal list
@@ -47,7 +60,7 @@ impl Logger {
         let mut lock = self.messages.write().unwrap();
         if !lock.is_empty() {
             lock.remove(i);
-            self.has_changed.store(true, Ordering::Relaxed);
+            self.event_tx.send(crate::events::EventSource::Log);
         }
     }
 }

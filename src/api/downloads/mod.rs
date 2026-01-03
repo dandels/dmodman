@@ -13,22 +13,21 @@ use crate::api::Query;
 use crate::api::{ApiError, Client, UpdateStatus};
 use crate::config::{Config, DataPath};
 use crate::db::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cacheable, Db, ModFileMetadata};
+use crate::events::EventSource;
+use crate::events::EventTx;
 use crate::{util, Logger};
 use indexmap::IndexMap;
 use std::ffi::OsStr;
 use std::io::ErrorKind;
 use std::str::FromStr;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct Downloads {
     pub tasks: Arc<RwLock<IndexMap<u64, DownloadTask>>>,
-    pub has_changed: Arc<AtomicBool>,
+    event_tx: EventTx,
     logger: Logger,
     cache: Db,
     client: Client,
@@ -37,13 +36,20 @@ pub struct Downloads {
 }
 
 impl Downloads {
-    pub async fn new(cache: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
+    pub async fn new(
+        cache: Db,
+        client: Client,
+        config: Arc<Config>,
+        event_tx: EventTx,
+        logger: Logger,
+        query: Query,
+    ) -> Self {
         Self {
             tasks: Arc::new(RwLock::new(IndexMap::new())),
-            has_changed: Arc::new(AtomicBool::new(true)),
             cache,
             client,
             config,
+            event_tx,
             logger,
             query,
         }
@@ -53,7 +59,7 @@ impl Downloads {
         let mut lock = self.tasks.write().await;
         let (_, task) = lock.get_index_mut(i).unwrap();
         task.toggle_pause().await;
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::Downloads);
     }
 
     pub async fn try_queue(&self, nxm_str: &str) {
@@ -89,7 +95,7 @@ impl Downloads {
                         file_name
                     ));
                     let _ = task.start().await;
-                    self.has_changed.store(true, Ordering::Relaxed);
+                    self.event_tx.send(EventSource::Downloads);
                     return;
                 }
                 // Restart the download using the new download link.
@@ -114,6 +120,7 @@ impl Downloads {
             self.cache.clone(),
             self.client.clone(),
             self.config.clone(),
+            self.event_tx.clone(),
             self.logger.clone(),
             dl_info.clone(),
             self.clone(),
@@ -127,7 +134,7 @@ impl Downloads {
             }
         }
         self.tasks.write().await.insert(dl_info.file_info.file_id, task);
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::Downloads);
     }
 
     async fn refresh_update_status(&self, fi: &FileInfo) -> UpdateStatus {
@@ -216,7 +223,7 @@ impl Downloads {
         let mut tasks_lock = self.tasks.write().await;
         let mut task = tasks_lock.shift_remove(&file_id).unwrap();
         if let DownloadState::Done = task.dl_info.get_state() {
-            self.has_changed.store(true, Ordering::Relaxed);
+            self.event_tx.send(EventSource::Downloads);
             return;
         }
         task.stop();
@@ -230,7 +237,7 @@ impl Downloads {
         if fs::remove_file(path.clone()).await.is_err() {
             self.logger.log(format!("Unable to delete {:?}.", &path));
         }
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::Downloads);
     }
 
     pub async fn resume_on_startup(&self) {

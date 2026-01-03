@@ -20,8 +20,9 @@ pub use modinfo_map::*;
 
 use crate::api::{DownloadLink, FileList, Md5Result, ModInfo};
 use crate::config::{Config, DataPath};
+use crate::events::EventTx;
 use crate::Logger;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::fs;
 use tokio::fs::File;
@@ -42,9 +43,7 @@ pub struct Db {
 }
 
 impl Db {
-    pub async fn new(config: Arc<Config>, logger: Logger) -> Result<Self, CacheError> {
-        let archives_has_changed = Arc::new(AtomicBool::new(true));
-
+    pub async fn new(config: Arc<Config>, logger: Logger, event_tx: EventTx) -> Result<Self, CacheError> {
         let file_lists = FileLists::new(config.clone(), logger.clone()).await?;
         let md5result = Md5ResultMap::new(config.clone(), logger.clone());
         let mod_info = ModInfoMap::new(config.clone(), logger.clone());
@@ -52,24 +51,18 @@ impl Db {
         let metadata_index =
             MetadataIndex::new(config.clone(), logger.clone(), file_lists.clone(), mod_info.clone()).await;
 
-        let installed =
-            Installed::new(config.clone(), logger.clone(), metadata_index.clone(), archives_has_changed.clone()).await;
+        let installed = Installed::new(config.clone(), event_tx.clone(), logger.clone(), metadata_index.clone()).await;
 
-        let archives = ArchiveFiles::new(
-            config.clone(),
-            logger.clone(),
-            installed.clone(),
-            metadata_index.clone(),
-            archives_has_changed,
-        )
-        .await;
+        let archives =
+            ArchiveFiles::new(config.clone(), event_tx, logger.clone(), installed.clone(), metadata_index.clone())
+                .await;
         let last_update_check = Arc::new(try_read_last_updated(&config).into());
 
         Ok(Self {
-            archives,
-            installed,
             config,
             logger,
+            archives,
+            installed,
             file_lists,
             metadata_index,
             md5result,
@@ -194,17 +187,15 @@ fn try_read_last_updated(config: &Config) -> u64 {
 mod test {
     use super::CacheError;
     use super::Db;
-    use crate::config::ConfigBuilder;
-    use crate::Logger;
-    use std::sync::Arc;
+    use crate::util::test;
 
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
         crate::config::tests::setup_test_env();
         let profile = "testprofile";
         let file_id = 82041;
-        let config = Arc::new(ConfigBuilder::default().profile(profile).build().unwrap());
-        let db = Db::new(config.clone(), Logger::default()).await?;
+        let (config, logger, event_tx) = test::init_structs_with_profile(profile);
+        let db = Db::new(config, logger, event_tx).await?;
 
         let fdata = db.metadata_index.get_by_file_id(&file_id).await.unwrap();
         assert_eq!(fdata.file_id, file_id);

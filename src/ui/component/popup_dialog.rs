@@ -1,31 +1,51 @@
 use super::common::*;
 use super::traits::Select;
+use crate::ui::rectangles::ExtractDialogRects;
 use crate::Config;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, List, ListState, Paragraph};
+use ratatui::Frame;
 use std::path::Path;
 use std::sync::Arc;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use tui_textarea::{CursorMove, TextArea};
 
-#[derive(Default)]
 pub struct PopupDialog<'a> {
     config: Arc<Config>,
-    pub textarea: TextArea<'a>,
-    pub text_label: Paragraph<'a>,
-    pub list: List<'a>,
+    pub textbox: TextArea<'a>,
+    pub description: Paragraph<'a>,
+    pub prompt: Paragraph<'a>,
+    pub suggestions: List<'a>,
     pub state: ListState,
     pub len: usize,
-    suggested_values: Vec<String>,
+    pub suggested_values: Vec<String>,
+    // layout_horizontal: Layout,
+    // layout_vertical: Layout,
+    // layout_label_and_input: Layout,
 }
 
 impl PopupDialog<'_> {
-    pub fn new(config: Arc<Config>, suggested_values: Vec<String>, label: String) -> Self {
+    pub fn init(config: Arc<Config>) -> Self {
+        Self {
+            config,
+            description: Default::default(),
+            state: ListState::default().with_selected(Some(0)),
+            textbox: Default::default(),
+            prompt: Default::default(),
+            suggestions: Default::default(),
+            len: Default::default(),
+            suggested_values: Default::default(),
+        }
+    }
+
+    pub fn create_widget(&mut self, suggested_values: Vec<String>, label: String) {
+        let description = Paragraph::new(format!("Extracting to {:?}", self.config.install_dir()));
+
         let txt_default = "".to_string();
         let txt = suggested_values.first().unwrap_or(&txt_default);
         let mut textarea = TextArea::from([txt]);
         textarea.set_placeholder_text(txt);
-        Self::set_text(&mut textarea, txt);
+        set_text(&mut textarea, txt);
         textarea.set_block(DEFAULT_BLOCK.title(" Ok "));
 
         let cursor_style = Style::default().fg(Color::Black).bg(Color::Gray);
@@ -46,24 +66,25 @@ impl PopupDialog<'_> {
             .highlight_spacing(ratatui::widgets::HighlightSpacing::Always);
         let len = list.len();
 
-        let mut ret = Self {
-            config,
-            textarea,
-            text_label,
-            list,
+        *self = Self {
+            config: self.config.clone(), // silly borrow checker
+            description,
+            textbox: textarea,
+            prompt: text_label,
+            suggestions: list,
             state: ListState::default().with_selected(Some(0)),
             len,
             suggested_values,
         };
-        ret.validate();
-        ret
+
+        self.validate();
     }
 
     fn validate(&mut self) -> bool {
         let mut content = self.get_content();
         if content.is_empty() {
             // If textarea is empty the placeholder text is used instead
-            content = self.textarea.placeholder_text();
+            content = self.textbox.placeholder_text();
         }
         // Don't consider slashes at the end of the name in validation
         while content.ends_with('/') {
@@ -78,19 +99,19 @@ impl PopupDialog<'_> {
             match self.config.install_dir().join(path).try_exists() {
                 Ok(exists) => {
                     if exists {
-                        self.textarea.set_block(DEFAULT_BLOCK.title(" Already exists ").style(textarea_warn_style));
+                        self.textbox.set_block(DEFAULT_BLOCK.title(" Already exists ").style(textarea_warn_style));
                     } else {
-                        self.textarea.set_block(DEFAULT_BLOCK.title(" Ok "));
+                        self.textbox.set_block(DEFAULT_BLOCK.title(" Ok "));
                     }
                     true
                 }
                 Err(_e) => {
-                    self.textarea.set_block(DEFAULT_BLOCK.title("  ").style(textarea_err_style));
+                    self.textbox.set_block(DEFAULT_BLOCK.title("  ").style(textarea_err_style));
                     false
                 }
             }
         } else {
-            self.textarea.set_block(DEFAULT_BLOCK.title(" Invalid directory name ").style(textarea_err_style));
+            self.textbox.set_block(DEFAULT_BLOCK.title(" Invalid directory name ").style(textarea_err_style));
             false
         }
     }
@@ -100,25 +121,25 @@ impl PopupDialog<'_> {
             Event::Key(Key::Down) | Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
                 self.next();
                 let selected = self.selected().unwrap();
-                Self::set_text(&mut self.textarea, self.suggested_values.get(selected).unwrap());
+                set_text(&mut self.textbox, self.suggested_values.get(selected).unwrap());
             }
             Event::Key(Key::Up) | Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
                 self.previous();
                 let selected = self.selected().unwrap();
-                Self::set_text(&mut self.textarea, self.suggested_values.get(selected).unwrap());
+                set_text(&mut self.textbox, self.suggested_values.get(selected).unwrap());
             }
             Event::Key(Key::Ctrl('z')) => {
-                self.textarea.undo();
+                self.textbox.undo();
             }
             Event::Key(Key::Ctrl('y')) => {
-                self.textarea.redo();
+                self.textbox.redo();
             }
             Event::Key(key) => {
                 match key {
                     // disable tab character
                     Key::Char('\t') => {}
                     _ => {
-                        self.textarea.input(key);
+                        self.textbox.input(key);
                         self.select(None);
                     }
                 }
@@ -132,13 +153,20 @@ impl PopupDialog<'_> {
         self.len + 4
     }
 
-    fn set_text(textarea: &mut TextArea, text: &String) {
-        textarea.move_cursor(CursorMove::End);
-        textarea.delete_line_by_head();
-        textarea.insert_str(text);
+    pub fn get_content(&self) -> &str {
+        &self.textbox.lines()[0]
     }
 
-    pub fn get_content(&self) -> &str {
-        &self.textarea.lines()[0]
+    pub fn render_widgets(&mut self, rects: &ExtractDialogRects, frame: &mut Frame) {
+        frame.render_widget(&self.description, rects.description);
+        frame.render_widget(&self.prompt, rects.prompt);
+        frame.render_widget(&self.textbox, rects.textbox);
+        frame.render_widget(&self.suggestions, rects.suggestions);
     }
+}
+
+fn set_text(textarea: &mut TextArea, text: &String) {
+    textarea.move_cursor(CursorMove::End);
+    textarea.delete_line_by_head();
+    textarea.insert_str(text);
 }

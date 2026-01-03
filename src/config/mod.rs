@@ -25,7 +25,7 @@ use std::{fs, fs::File};
  * The original behavior of download_dir is to append $profile to its path in case $profile is set.
  * This behavior is kept for backwards compatibility reasons in case profiles is None, or the active Profile does not
  * specify a download directory. */
-#[derive(Default, Deserialize)]
+#[derive(Deserialize)]
 pub struct ConfigBuilder {
     apikey: Option<String>,
     profile: Option<String>,
@@ -38,6 +38,21 @@ pub struct ConfigBuilder {
     logger: Logger,
 }
 
+#[cfg(test)]
+#[allow(clippy::derivable_impls)]
+impl Default for ConfigBuilder {
+    fn default() -> Self {
+        Self {
+            logger: Logger::default(),
+            apikey: None,
+            profile: None,
+            download_dir: None,
+            install_dir: None,
+            profiles: Default::default(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 struct Profile {
     download_dir: Option<PathBuf>,
@@ -47,6 +62,17 @@ struct Profile {
 const DEFAULT_PROFILE_NAME: &str = "default";
 
 impl ConfigBuilder {
+    pub fn from_defaults(logger: Logger) -> Self {
+        Self {
+            logger,
+            apikey: None,
+            profile: None,
+            download_dir: None,
+            install_dir: None,
+            profiles: Default::default(),
+        }
+    }
+
     pub fn load(logger: Logger) -> Result<Self, ConfigError> {
         let mut contents = String::new();
 
@@ -188,6 +214,7 @@ pub struct Config {
     install_dir: PathBuf,
 }
 
+#[cfg(test)]
 impl Default for Config {
     fn default() -> Self {
         ConfigBuilder::default().build().unwrap()
@@ -356,7 +383,7 @@ pub mod tests {
     #[test]
     fn read_apikey() -> Result<(), ConfigError> {
         setup_test_env();
-        let config = ConfigBuilder::load(Logger::default()).unwrap().build()?;
+        let config = ConfigBuilder::default().build()?;
         assert_eq!(config.apikey, Some("1234".to_string()));
         Ok(())
     }

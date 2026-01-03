@@ -1,9 +1,9 @@
-use crate::db::{Cacheable, MetadataIndex};
 use crate::config::DataPath;
+use crate::db::{Cacheable, MetadataIndex};
+use crate::events::{EventSource, EventTx};
 use crate::extract::installed_mod::*;
 use crate::{Config, Logger};
 use indexmap::IndexMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::RwLock;
@@ -11,20 +11,14 @@ use tokio::sync::RwLock;
 #[derive(Clone)]
 pub struct Installed {
     config: Arc<Config>,
+    event_tx: EventTx,
     logger: Logger,
     metadata_index: MetadataIndex,
     pub mods: Arc<RwLock<IndexMap<String, ModDirectory>>>, // Key = Directory name
-    pub has_changed: Arc<AtomicBool>,
-    archives_has_changed: Arc<AtomicBool>,
 }
 
 impl Installed {
-    pub async fn new(
-        config: Arc<Config>,
-        logger: Logger,
-        metadata_index: MetadataIndex,
-        archives_has_changed: Arc<AtomicBool>,
-    ) -> Self {
+    pub async fn new(config: Arc<Config>, event_tx: EventTx, logger: Logger, metadata_index: MetadataIndex) -> Self {
         let mut installed: IndexMap<String, ModDirectory> = IndexMap::new();
         let install_dir_read = fs::read_dir(config.install_dir()).await;
         if let Ok(load_order) = config.read_load_order() {
@@ -53,11 +47,10 @@ impl Installed {
         }
         Self {
             config,
+            event_tx,
             logger,
             metadata_index,
             mods: Arc::new(IndexMap::from_iter(installed).into()),
-            has_changed: Arc::new(true.into()),
-            archives_has_changed,
         }
     }
 
@@ -70,7 +63,7 @@ impl Installed {
             self.metadata_index.add_installed(dir_name.clone().clone(), im.file_id, im.clone()).await;
         }
         self.mods.write().await.insert(dir_name, md);
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::Installed);
         self.save_load_order().await;
     }
 
@@ -90,11 +83,11 @@ impl Installed {
                             panic!("{} should have been present in the metadata index.", &im.file_id)
                         });
                     if mfd.remove_installed(dir_name).await {
-                        self.archives_has_changed.store(true, Ordering::Relaxed);
+                        self.event_tx.send(EventSource::Archives);
                     }
                     self.metadata_index.remove_if_unreferenced(&mfd.file_id).await;
                 }
-                self.has_changed.store(true, Ordering::Relaxed);
+                self.event_tx.send(EventSource::Installed);
             } else {
                 self.logger.log(format!(
                     "{dir_name} no longer exists. Please file a bug report if you did not just remove it."
@@ -128,7 +121,7 @@ impl Installed {
         }
         // TODO save load order without causing too many writes
         // maybe start a task with a delay that gets restarted every time user reorders mods
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::Installed);
         self.save_load_order().await;
     }
 }

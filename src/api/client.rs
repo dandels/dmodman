@@ -1,6 +1,7 @@
 use super::request_counter::RequestCounter;
 use super::ApiError;
 use crate::config::Config;
+use crate::events::EventTx;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn new(config: &Arc<Config>) -> Self {
+    pub async fn new(config: &Arc<Config>, event_tx: EventTx) -> Self {
         let version = String::from(env!("CARGO_CRATE_NAME")) + " " + env!("CARGO_PKG_VERSION");
 
         let mut headers = HeaderMap::new();
@@ -40,7 +41,7 @@ impl Client {
             client: reqwest::Client::new(),
             headers: Arc::new(headers),
             api_headers: Arc::new(api_headers),
-            request_counter: RequestCounter::new(),
+            request_counter: RequestCounter::new(event_tx),
         }
     }
 

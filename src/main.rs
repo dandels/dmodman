@@ -1,6 +1,7 @@
 mod api;
 mod config;
 mod db;
+mod events;
 mod extract;
 mod logger;
 mod nxm_socket;
@@ -15,6 +16,8 @@ use std::env::args;
 use std::error::Error;
 use std::io::ErrorKind;
 use std::sync::Arc;
+
+use crate::events::Events;
 
 /* dmodman acts as an url handler for nxm:// links in order for the "download with mod manager" button to work on
  * NexusMods.
@@ -45,14 +48,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    let events = Events::new();
+    let event_tx = &events.tx;
+
     /* We can't println in the TUI. Instead we use Logger which can log to a file and show messages in the TUI.
      * It calls println!() instead when running as a daemon. */
-    let logger = Logger::new(is_interactive);
+    let logger = Logger::new(event_tx.clone(), is_interactive);
 
     let mut config = match ConfigBuilder::load(logger.clone()) {
         Ok(config) => config.build(),
         Err(e) => match e {
-            ConfigError::IO { source: _ } => ConfigBuilder::default().build(),
+            ConfigError::IO { source: _ } => ConfigBuilder::from_defaults(logger.clone()).build(),
             _ => Err(e),
         },
     }?;
@@ -65,11 +71,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     let config = Arc::new(config);
-
-    let cache = Db::new(config.clone(), logger.clone()).await?;
-    let client = Client::new(&config).await;
-    let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
-    let downloads = Downloads::new(cache.clone(), client.clone(), config.clone(), logger.clone(), query.clone()).await;
+    let db = Db::new(config.clone(), logger.clone(), event_tx.clone()).await?;
+    let client = Client::new(&config, event_tx.clone()).await;
+    let query = Query::new(db.clone(), client.clone(), config.clone(), logger.clone());
+    let downloads =
+        Downloads::new(db.clone(), client.clone(), config.clone(), event_tx.clone(), logger.clone(), query.clone())
+            .await;
 
     // Try bind to /run/user/$uid. If it already exists then send any nxm:// link through the socket and quit.
     let nxm_socket = match nxm_socket::try_bind().await {
@@ -105,10 +112,30 @@ async fn main() -> Result<(), Box<dyn Error>> {
             });
         }
 
-        ui::MainUI::new(cache, client, config, downloads, logger, query).await.run().await;
+        let lib = LibDmodman {
+            db,
+            client,
+            config,
+            downloads,
+            events,
+            logger,
+            query,
+        };
+
+        ui::MainUI::start(lib).await;
     } else {
         nxm_socket::listen_for_downloads(nxm_socket, downloads, logger).await;
     }
 
     Ok(())
+}
+
+pub struct LibDmodman {
+    config: Arc<Config>,
+    logger: Logger,
+    events: Events,
+    db: Db,
+    client: Client,
+    downloads: Downloads,
+    query: Query,
 }

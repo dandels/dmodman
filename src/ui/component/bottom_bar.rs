@@ -1,13 +1,12 @@
-use super::{ArchiveTable, DownloadsTable, InstalledModsTable};
+use super::{ArchivesWidget, DownloadsWidget, InstalledModsWidget};
 use crate::api::UpdateStatus;
 use crate::extract::ModDirectory;
-use crate::ui::navigation::Focused;
+use crate::ui::component::traits::Select;
+use crate::ui::tabs::{FocusedWidget, TabWidgets};
 use crate::Db;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 const STYLE_OUTOFDATE: Style = Style::new().fg(Color::Red);
 const STYLE_HASNEWFILE: Style = Style::new().fg(Color::Yellow);
@@ -15,86 +14,73 @@ const STYLE_HASNEWFILE: Style = Style::new().fg(Color::Yellow);
 pub struct BottomBar<'a> {
     db: Db,
     pub widget: Paragraph<'a>,
-    prev_focused: Focused,
-    prev_selected_index: Option<usize>,
-    pub selected_has_changed: Arc<AtomicBool>,
 }
 
 impl<'a> BottomBar<'a> {
-    pub fn new(db: Db, focused: Focused) -> Self {
+    pub fn new(db: Db) -> Self {
         Self {
             db,
             widget: Paragraph::default(),
-            prev_focused: focused,
-            prev_selected_index: None,
-            selected_has_changed: Default::default(),
         }
     }
 
-    pub async fn refresh(
-        &mut self,
-        archives: &ArchiveTable<'_>,
-        installed: &InstalledModsTable<'_>,
-        downloads: &DownloadsTable<'_>,
-        focused: &Focused,
-        focused_index: Option<usize>,
-    ) -> bool {
-        if *focused != self.prev_focused
-            || !focused_index.eq(&self.prev_selected_index)
-            || self.selected_has_changed.swap(false, Ordering::Relaxed)
-        {
-            if let Some(focused_index) = focused_index {
-                match focused {
-                    // TODO get rid of copypaste
-                    Focused::InstalledMods => {
-                        let (_, mod_dir) = installed.get_by_index(focused_index);
-                        if let ModDirectory::Nexus(im) = mod_dir {
-                            let mut modname = StatusField::from_mod_name(im.mod_name.clone());
-                            if modname.is_none() {
-                                if let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await {
-                                    modname = StatusField::from_mod_name(mfd.mod_name().await);
-                                }
-                            }
-                            let flags = StatusField::from_update_status(im.update_status.to_enum());
-                            self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
-                        } else {
-                            self.widget = Paragraph::default();
-                        }
-                    }
-                    Focused::ArchiveTable => {
-                        let (_, archive) = archives.get_by_index(focused_index);
-                        if let Some(metadata) = archive.metadata() {
-                            if let Some(mfd) = self.db.metadata_index.get_by_file_id(&metadata.file_id).await {
-                                let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
-                                let flags = StatusField::from_update_status(mfd.update_status.to_enum());
-                                self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
-                            }
-                        } else {
-                            self.widget = Paragraph::default();
-                        }
-                    }
-                    Focused::DownloadTable => {
-                        let file_info = downloads.get_by_index(focused_index);
-                        if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_info.file_id).await {
-                            let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
-                            let flags = StatusField::from_update_status(mfd.update_status.to_enum());
-                            self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
-                        } else {
-                            self.widget = Paragraph::default();
-                        }
-                    }
-                    _ => {
-                        self.widget = Paragraph::default();
+    pub async fn update_widget(&mut self, tabs: &TabWidgets<'a>) {
+        match tabs.focused_widget_type() {
+            FocusedWidget::ArchiveTable => self.refresh_for_archive_table(&tabs.archive_table).await,
+            FocusedWidget::DownloadTable => self.focus_downloads(&tabs.downloads_table).await,
+            FocusedWidget::InstalledMods => self.refresh_for_installed_mods(&tabs.installed_mods_table).await,
+            FocusedWidget::LogList => self.focus_none(),
+        }
+    }
+
+    pub async fn refresh_for_installed_mods(&mut self, installed_mods_table: &InstalledModsWidget<'a>) {
+        if let Some(focused_index) = installed_mods_table.selected() {
+            let (_, mod_dir) = installed_mods_table.get_by_index(focused_index);
+            if let ModDirectory::Nexus(im) = mod_dir {
+                let mut modname = StatusField::from_mod_name(im.mod_name.clone());
+                if modname.is_none() {
+                    if let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await {
+                        modname = StatusField::from_mod_name(mfd.mod_name().await);
                     }
                 }
+                let flags = StatusField::from_update_status(im.update_status.to_enum());
+                self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
             } else {
-                self.widget = Paragraph::default();
+                self.focus_none();
             }
-            self.prev_focused = focused.clone();
-            self.prev_selected_index = focused_index;
-            return true;
         }
-        false
+    }
+
+    pub async fn refresh_for_archive_table(&mut self, archive_table: &ArchivesWidget<'a>) {
+        if let Some(focused_index) = archive_table.selected() {
+            let (_, archive) = archive_table.get_by_index(focused_index);
+            if let Some(metadata) = archive.metadata() {
+                if let Some(mfd) = self.db.metadata_index.get_by_file_id(&metadata.file_id).await {
+                    let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
+                    let flags = StatusField::from_update_status(mfd.update_status.to_enum());
+                    self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
+                }
+            } else {
+                self.focus_none();
+            }
+        }
+    }
+
+    pub async fn focus_downloads(&mut self, downloads_table: &DownloadsWidget<'a>) {
+        if let Some(focused_index) = downloads_table.selected() {
+            let file_info = downloads_table.get_by_index(focused_index);
+            if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_info.file_id).await {
+                let modname = mfd.mod_name().await.map(|n| StatusField::new("Mod", n.clone()));
+                let flags = StatusField::from_update_status(mfd.update_status.to_enum());
+                self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));
+            } else {
+                self.focus_none();
+            }
+        }
+    }
+
+    fn focus_none(&mut self) {
+        self.widget = Paragraph::default();
     }
 }
 

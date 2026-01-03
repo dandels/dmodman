@@ -1,155 +1,169 @@
-use super::component::traits::{Focus, Select};
+use crate::ui::tabs::FocusedWidget;
+
+use super::component::traits::Select;
 use super::main_ui::MainUI;
 use std::collections::HashMap;
 
 impl MainUI<'_> {
     pub fn select_tab(&mut self, index: usize) {
-        if index < self.nav.focused_widget_per_tab.len() {
-            self.focused_widget_mut().remove_highlight();
-            self.nav.select(Some(index));
-            self.focused_widget_mut().add_highlight();
-            self.top_bar.remove_urgency(index);
-            self.top_bar.focus_tab(index);
-            self.redraw_terminal = true;
+        if index < TABS_LEN {
+            self.tabs.focused_widget_mut().remove_highlight();
+            self.tabs.select(Some(index));
+            self.tabs.focused_widget_mut().add_highlight();
+            self.tabs.tab_display.remove_urgency(index);
+            self.tabs.tab_display.focus_tab(index);
+            self.render_active_widget();
         }
     }
 
-    pub fn next_tab(&mut self) {
-        if let Some(i) = self.nav.next() {
-            self.select_tab(i);
-        }
-    }
+    // pub fn next_tab(&mut self) {
+    //     if let Some(i) = self.tabs.next() {
+    //         self.select_tab(i);
+    //     }
+    // }
 
-    pub fn previous_tab(&mut self) {
-        if let Some(i) = self.nav.previous() {
-            self.select_tab(i);
-        }
-    }
+    // pub fn previous_tab(&mut self) {
+    //     if let Some(i) = self.tabs.previous() {
+    //         self.select_tab(i);
+    //     }
+    // }
 
-    pub fn focused_widget(&self) -> &dyn Focus {
-        match self.nav.focused_widget() {
-            Focused::ArchiveTable => &self.archives_table,
-            Focused::DownloadTable => &self.downloads_table,
-            Focused::InstalledMods => &self.installed_mods_table,
-            Focused::LogList => &self.log_view,
-        }
-    }
+    // pub fn focused_widget(&self) -> &Box<dyn Focus> {
+    //     self.tabs.fo
+    //     // match self.nav.focused_widget_type() {
+    //     //     Focused::ArchiveTable => &self.archives_table,
+    //     //     Focused::DownloadTable => &self.downloads_table,
+    //     //     Focused::InstalledMods => &self.installed_mods_table,
+    //     //     Focused::LogList => &self.log_list,
+    //     // }
+    // }
 
-    pub fn focused_widget_mut(&mut self) -> &mut dyn Focus {
-        match &self.nav.focused_widget() {
-            Focused::ArchiveTable => &mut self.archives_table,
-            Focused::DownloadTable => &mut self.downloads_table,
-            Focused::InstalledMods => &mut self.installed_mods_table,
-            Focused::LogList => &mut self.log_view,
-        }
-    }
+    // pub fn focused_widget_mut(&mut self) -> &mut Box<dyn Focus> {
+    //     match &self.nav.focused_widget() {
+    //         Focused::ArchiveTable => &mut self.archives_table,
+    //         Focused::DownloadTable => &mut self.downloads_table,
+    //         Focused::InstalledMods => &mut self.installed_mods_table,
+    //         Focused::LogList => &mut self.log_list,
+    //     }
+    // }
 
-    pub fn change_focus_to(&mut self, selected: Option<Focused>) {
-        if let Some(selected) = selected {
-            self.focused_widget_mut().remove_highlight();
-            self.nav.set_focused_widget(selected);
-            self.focused_widget_mut().add_highlight();
-            self.redraw_terminal = true;
-        }
+    // pub fn focus_left(&mut self) {
+    //     self.change_focus_to(self.tabs.focused_widget().neighbor_left(self.tabs.focused_tab()));
+    // }
+
+    // pub fn change_focus_to(&mut self, selected: Option<Focused>) {
+    //     if let Some(selected) = selected {
+    //         self.focused_widget_mut().remove_highlight();
+    //         self.nav.set_focused_widget_type(selected);
+    //         self.focused_widget_mut().add_highlight();
+    //         self.render_active_widget();
+    //     }
+    // }
+}
+
+// #[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
+// pub enum Focused {
+//     #[default]
+//     ArchiveTable,
+//     DownloadTable,
+//     InstalledMods,
+//     LogList,
+// }
+
+pub const TABS_LEN: usize = 3;
+impl TabType {
+    pub fn index(self) -> usize {
+        self as usize
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum Focused {
-    ArchiveTable,
-    DownloadTable,
-    InstalledMods,
-    LogList,
-}
-
-#[derive(Eq, Hash, PartialEq)]
-pub enum Tab {
-    Archives,
-    Installed,
-    Log,
-}
-
-impl Tab {
-    // Defines the order of the tabs
-    const TAB_ARCHIVES: usize = 0;
-    const TAB_INSTALLED: usize = 1;
-    const TAB_LOG: usize = 2;
-
-    pub fn index(&self) -> usize {
-        match self {
-            Tab::Archives => Self::TAB_ARCHIVES,
-            Tab::Installed => Self::TAB_INSTALLED,
-            Tab::Log => Self::TAB_LOG,
-        }
-    }
-}
-
-#[derive(Eq, Hash, PartialEq)]
+// #[derive(Eq, Hash, PartialEq)]
 pub struct Nav {
-    focused_tab: usize,
-    focused_widget_per_tab: Vec<Focused>,
+    widget_layout: Vec<Vec<FocusedWidget>>,
+    focused_tab: TabType,
+    focused_widget_per_tab: Vec<FocusedWidget>,
 }
 
 impl Nav {
-    pub fn new() -> Self {
+    pub fn new(widget_layout: Vec<Vec<FocusedWidget>>) -> Self {
         Self {
-            focused_tab: 0,
+            widget_layout,
+            focused_tab: TabType::default(),
             // Default focused element for each tab
-            focused_widget_per_tab: vec![Focused::ArchiveTable, Focused::InstalledMods, Focused::LogList],
+            focused_widget_per_tab: vec![
+                FocusedWidget::ArchiveTable,
+                FocusedWidget::InstalledMods,
+                FocusedWidget::LogList,
+            ],
         }
     }
 
-    pub fn focused_tab(&self) -> Tab {
-        self.focused_tab.into()
+    pub fn focused_tab(&self) -> TabType {
+        self.focused_tab
     }
 
-    pub fn focused_widget(&self) -> &Focused {
-        self.focused_widget_per_tab.get(self.focused_tab).unwrap()
+    pub fn focused_tab_as_index(&self) -> usize {
+        self.focused_tab as usize
     }
 
-    pub fn set_focused_widget(&mut self, to_focus: Focused) {
-        self.focused_widget_per_tab[self.focused_tab] = to_focus;
+    //     pub fn focused_widget(&self) -> &Box<dyn Focus> {
+    //         match self.focused_widget_per_tab[self.focused_tab as usize] {
+    //             Focused::ArchiveTable => self.archive,
+    //             Focused::DownloadTable => todo!(),
+    //             Focused::InstalledMods => todo!(),
+    //             Focused::LogList => todo!(),
+    //         }
+    //     }
+
+    pub fn focused_widget_type(&self) -> FocusedWidget {
+        self.focused_widget_per_tab[self.focused_tab as usize]
     }
+
+    //     pub fn set_focused_widget_type(&mut self, to_focus: Focused) {
+    //         self.focused_widget_per_tab[self.focused_tab] = to_focus;
+    //     }
 }
 
 pub struct NeighboringWidgets {
-    pub map: HashMap<Tab, Neighbors>,
+    pub map: HashMap<TabType, Neighbors>,
 }
 
 impl NeighboringWidgets {
     pub fn new() -> Self {
         Self {
-            map: HashMap::from([Tab::Archives, Tab::Installed, Tab::Log].map(|tab| (tab, Neighbors::default()))),
+            map: HashMap::from(
+                [TabType::Archives, TabType::Installed, TabType::Log].map(|tab| (tab, Neighbors::default())),
+            ),
         }
     }
 }
 
 #[derive(Default, Eq, PartialEq)]
 pub struct Neighbors {
-    pub up: Option<Focused>,
-    pub down: Option<Focused>,
-    pub left: Option<Focused>,
-    pub right: Option<Focused>,
+    pub up: Option<FocusedWidget>,
+    pub down: Option<FocusedWidget>,
+    pub left: Option<FocusedWidget>,
+    pub right: Option<FocusedWidget>,
 }
 
 #[allow(dead_code)]
 impl Neighbors {
-    pub fn up(mut self, neighbor: Focused) -> Self {
+    pub fn up(mut self, neighbor: FocusedWidget) -> Self {
         self.up = Some(neighbor);
         self
     }
 
-    pub fn down(mut self, neighbor: Focused) -> Self {
+    pub fn down(mut self, neighbor: FocusedWidget) -> Self {
         self.down = Some(neighbor);
         self
     }
 
-    pub fn left(mut self, neighbor: Focused) -> Self {
+    pub fn left(mut self, neighbor: FocusedWidget) -> Self {
         self.left = Some(neighbor);
         self
     }
 
-    pub fn right(mut self, neighbor: Focused) -> Self {
+    pub fn right(mut self, neighbor: FocusedWidget) -> Self {
         self.right = Some(neighbor);
         self
     }
@@ -174,18 +188,18 @@ mod private_impl {
         }
 
         fn selected(&self) -> Option<usize> {
-            Some(self.focused_tab)
+            Some(self.focused_tab as usize)
         }
     }
 }
 
-impl From<usize> for Tab {
-    fn from(val: usize) -> Self {
-        match val {
-            Self::TAB_ARCHIVES => Tab::Archives,
-            Self::TAB_INSTALLED => Tab::Installed,
-            Self::TAB_LOG => Tab::Log,
-            _ => unreachable!("Undefined tab index."),
-        }
-    }
-}
+// impl From<usize> for Tab {
+//     fn from(val: usize) -> Self {
+//         match val {
+//             Self::TAB_ARCHIVES => Tab::Archives,
+//             Self::TAB_INSTALLED => Tab::Installed,
+//             Self::TAB_LOG => Tab::Log,
+//             _ => unreachable!("Undefined tab index."),
+//         }
+//     }
+// }

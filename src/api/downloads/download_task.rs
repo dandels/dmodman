@@ -161,7 +161,7 @@ impl DownloadTask {
         let event_tx = self.event_tx.clone();
         let handle: JoinHandle<()> = task::spawn(async move {
             // The actual downloading is done here
-            if let Err(()) = transfer_data(file, &event_tx, resp, &logger, &downloads, &dl_info).await {
+            if let Err(()) = transfer_data(file, &event_tx, resp, &logger, &dl_info).await {
                 return;
             }
 
@@ -273,7 +273,6 @@ async fn transfer_data(
     event_tx: &EventTx,
     resp: Response,
     logger: &Logger,
-    downloads: &Downloads,
     dl_info: &DownloadInfo,
 ) -> Result<(), ()> {
     let mut bufwriter = BufWriter::new(file);

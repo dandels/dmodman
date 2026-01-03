@@ -1,5 +1,5 @@
 use crate::ui::component::common::*;
-use crate::ui::component::{ArchiveTable, DownloadsTable, InstalledModsTable, LogList};
+use crate::ui::component::{ArchivesWidget, DownloadsWidget, InstalledModsWidget, LogWidget};
 use ratatui::style::Style;
 
 macro_rules! impl_table_highlight {
@@ -42,10 +42,10 @@ macro_rules! impl_highlight {
     };
 }
 
-impl_table_highlight!(ArchiveTable<'_>);
-impl_table_highlight!(DownloadsTable<'_>);
-impl_table_highlight!(InstalledModsTable<'_>);
-impl_highlight!(LogList<'_>);
+impl_table_highlight!(ArchivesWidget<'_>);
+impl_table_highlight!(DownloadsWidget<'_>);
+impl_table_highlight!(InstalledModsWidget<'_>);
+impl_highlight!(LogWidget<'_>);
 
 pub trait Highlight {
     fn add_highlight(&mut self);

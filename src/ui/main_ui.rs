@@ -1,32 +1,52 @@
-use super::component::traits::*;
+use std::io::Stdout;
+
 use super::component::*;
-use super::navigation::*;
-use crate::api::{Client, Downloads, Query, UpdateChecker};
+use crate::api::{Downloads, Query, UpdateChecker};
 use crate::config::Config;
 use crate::db::Db;
 use crate::events::EventRx;
-use crate::events::EventTx;
+use crate::events::EventSource;
 use crate::extract::Installer;
 use crate::ui::rectangles::Rectangles;
+use crate::ui::tabs::{FocusedWidget, TabWidgets};
 use crate::ui::*;
+use crate::LibDmodman;
 use crate::Logger;
-use ratatui::widgets::Clear;
-use ratatui::widgets::Paragraph;
-use tokio::task;
+use ratatui::layout::Rect;
+use ratatui::prelude::TermionBackend;
+use ratatui::widgets::WidgetRef;
+use termion::input::MouseTerminal;
+use termion::raw::IntoRawMode;
+use termion::raw::RawTerminal;
+use termion::screen::AlternateScreen;
+use termion::screen::IntoAlternateScreen;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 
-#[derive(Clone, Eq, PartialEq)]
-pub enum InputMode {
-    Normal,
-    Confirm,
-    ReadLine,
+pub enum NeedsRefresh {
+    BottomBar,
 }
 
-pub struct MainUI<'a> {
-    pub logger: Logger,
-    pub events_tx: EventTx,
-    pub events_rx: EventRx,
+pub enum UIEvent {
+    Backend(EventSource),
+    Terminal(TickEvent),
+    SigWinch,
+    Frontend(NeedsRefresh),
+}
 
-    // Backend logic
+#[derive(Copy, Clone, Default, Eq, PartialEq)]
+pub enum InputMode {
+    #[default]
+    Normal,
+    Confirm,
+    Extract,
+}
+
+type TermBackend = TermionBackend<AlternateScreen<MouseTerminal<RawTerminal<Stdout>>>>;
+
+pub struct MainUI<'a> {
+    // Backend structs
+    pub logger: Logger,
     pub installer: Installer,
     pub db: Db,
     pub config: Arc<Config>,
@@ -34,209 +54,243 @@ pub struct MainUI<'a> {
     pub query: Query,
     pub updater: UpdateChecker,
 
-    // UI widgets
+    // Top level UI widgets.
+    pub requests_widget: RequestCounterWidget<'a>,
     pub bottom_bar: BottomBar<'a>,
-    pub archives_table: ArchiveTable<'a>,
-    pub confirm_dialog: ConfirmDialog<'a>,
-    pub downloads_table: DownloadsTable<'a>,
-    pub installed_mods_table: InstalledModsTable<'a>,
     pub hotkey_bar: HotkeyBar<'a>,
-    pub log_view: LogList<'a>,
+
+    // Contains Tab display widget and focusable widgets
+    pub tabs: TabWidgets<'a>,
+
+    // Alternate UI states
+    pub confirm_dialog: ConfirmDialog<'a>,
     pub popup_dialog: PopupDialog<'a>,
-    pub top_bar: TopBar<'a>,
 
     // UI state
-    pub nav: Nav,
+    terminal: Terminal<TermBackend>,
+    pub rectangles: Rectangles,
+    pub ui_events_tx: mpsc::UnboundedSender<NeedsRefresh>,
     pub input_mode: InputMode,
+    pub should_run: bool,
 }
 
 impl MainUI<'_> {
-    pub async fn new(
-        db: Db,
-        client: Client,
-        config: Arc<Config>,
-        events_tx: EventTx,
-        events_rx: EventRx,
-        downloads: Downloads,
-        logger: Logger,
-        query: Query,
-    ) -> Self {
-        let installer = Installer::new(db.clone(), config.clone(), logger.clone()).await;
-        let updater = UpdateChecker::new(db.clone(), client.clone(), config.clone(), logger.clone(), query.clone());
+    pub async fn start(lib: LibDmodman) {
+        let LibDmodman {
+            db,
+            client,
+            config,
+            downloads,
+            events,
+            logger,
+            query,
+        } = lib;
+        let installer = Installer::new(config.clone(), db.clone(), events.tx.clone(), logger.clone()).await;
+        let updater = UpdateChecker::new(
+            db.clone(),
+            client.clone(),
+            config.clone(),
+            logger.clone(),
+            query.clone(),
+            events.tx.clone(),
+        );
 
-        let nav = Nav::new();
-
-        let mut archives_table = ArchiveTable::new(db.clone()).await;
-        archives_table.add_highlight();
-        let bottom_bar = BottomBar::new(db.clone(), nav.focused_widget().clone());
+        // Generic widgets
+        let bottom_bar = BottomBar::new(db.clone());
         let confirm_dialog = ConfirmDialog::default();
-        let downloads_table = DownloadsTable::new(downloads.clone());
-        let files_table = InstalledModsTable::new(db.installed.clone());
-        let hotkey_bar = HotkeyBar::new(nav.focused_widget().clone());
-        let log_list = LogList::new(logger.clone());
-        let popup_dialog = PopupDialog::default();
-        let top_bar = TopBar::new(client.request_counter).await;
+        let hotkey_bar = HotkeyBar::new();
+        let popup_dialog = PopupDialog::init(config.clone());
+        let requests_widget = RequestCounterWidget::new(client.request_counter.clone()).await;
 
-        Self {
+        // Contains tab and tab-switchable widgets
+        let tabs = TabWidgets::new(db.clone(), downloads.clone(), logger.clone()).await;
+
+        let terminal = init_term().expect("Failed to initialize terminal: {}");
+        let (ui_events_tx, ui_events_rx) = mpsc::unbounded_channel::<NeedsRefresh>();
+
+        let ui = Self {
             db,
             config,
             downloads,
             installer,
             query,
-            top_bar,
+            requests_widget,
             hotkey_bar,
-            archives_table,
-            installed_mods_table: files_table,
-            downloads_table,
-            log_view: log_list,
             bottom_bar,
             confirm_dialog,
             popup_dialog,
-            input_mode: InputMode::Normal,
+            input_mode: InputMode::default(),
             updater,
             logger,
-            nav,
-            events_tx,
-            events_rx,
-        }
+            rectangles: Rectangles::new(tabs.focused_tab().widget_types.len()),
+            tabs,
+            // nav,
+            should_run: true,
+            terminal,
+            ui_events_tx,
+        };
+        ui.run(events.rx, ui_events_rx).await
     }
 
-    /* This is the main UI loop.
-     * Redrawing the terminal is CPU intensive - locks and atomics are used to ensure it's done only when necessary. */
-    pub async fn run(mut self) {
-        let mut events = Events::new();
-        // X11 (and maybe Wayland?) sends SIGWINCH when the window is resized
-        // Set to true so rectangles are calculated on first loop
-        let got_sigwinch = Arc::new(AtomicBool::new(true));
-        let _sigwinch_task = task::spawn(handle_sigwinch(got_sigwinch.clone()));
-        let mut terminal = match term_setup() {
-            Ok(term) => term,
-            Err(e) => {
-                println!("Failed to initialize terminal: {}", e);
-                return;
-            }
-        };
+    fn recalc_rects(&mut self) {
+        let window_size = self.terminal.get_frame().area();
+        self.rectangles.normal.recalculate(window_size);
+        self.rectangles.extract_dialog.recalculate(window_size);
+        self.rectangles.confirm_dialog.recalculate(self.confirm_dialog.len, window_size);
+    }
 
-        let mut rectangles = Rectangles::new();
+    // This contains the main UI loop.
+    async fn run(mut self, backend_events_rx: EventRx, ui_events_rx: UnboundedReceiver<NeedsRefresh>) {
+        // X11/Wayland sends SIGWINCH when the window is resized
+        let signals = Signals::new([SIGWINCH]).unwrap();
+        let input = InputEvents::new();
+
+        let input_stream = UnboundedReceiverStream::new(input.rx).map(UIEvent::Terminal);
+        let backend_stream = UnboundedReceiverStream::new(backend_events_rx.inner).map(UIEvent::Backend);
+        let ui_event_stream = UnboundedReceiverStream::new(ui_events_rx).map(UIEvent::Frontend);
+        let signals_iter = signals.map(|_e| UIEvent::SigWinch);
+        let mut event_stream = input_stream.merge(signals_iter).merge(backend_stream).merge(ui_event_stream);
+
+        self.recalc_rects();
 
         while self.should_run {
             // set redraw_terminal to true if any of the widgets have changed
-            self.redraw_terminal = self.refresh_widgets().await;
-            let recalculate_rects = got_sigwinch.swap(false, Ordering::Relaxed);
-
-            if self.redraw_terminal || recalculate_rects {
-                terminal
-                    .draw(|frame| {
-                        self.redraw_terminal = false;
-                        if recalculate_rects {
-                            rectangles.recalculate(frame.area());
+            // self = self.refresh_widgets().await;
+            // Using the suggested ratatui draw method is probably redundant since the UI tracks state internally and only renders widgets when needed
+            if let Some(e) = event_stream.next().await {
+                match e {
+                    UIEvent::Backend(event_source) => self.handle_backend_event(event_source).await,
+                    UIEvent::Terminal(tick_event) => {
+                        if let TickEvent::Input(i) = tick_event {
+                            self.handle_input(i).await;
                         }
-                        if let InputMode::ReadLine = self.input_mode {
-                            rectangles.recalculate_popup(self.popup_dialog.get_required_height(), frame.area());
-                        }
-                        if let InputMode::Confirm = self.input_mode {
-                            rectangles.recalculate_confirmdialog(self.confirm_dialog.len, frame.area());
-                        }
-                        match self.input_mode {
-                            InputMode::Normal => {
-                                match self.nav.selected().unwrap().into() {
-                                    Tab::Archives => {
-                                        frame.render_stateful_widget(
-                                            &self.archives_table.widget,
-                                            rectangles.main_horizontal[0],
-                                            &mut self.archives_table.state,
-                                        );
-                                        frame.render_stateful_widget(
-                                            &self.downloads_table.widget,
-                                            rectangles.main_horizontal[1],
-                                            &mut self.downloads_table.state,
-                                        );
-                                    }
-                                    Tab::Installed => {
-                                        frame.render_stateful_widget(
-                                            &self.installed_mods_table.widget,
-                                            rectangles.main_vertical[2],
-                                            &mut self.installed_mods_table.state,
-                                        );
-                                    }
-                                    Tab::Log => {
-                                        frame.render_stateful_widget(
-                                            &self.log_view.widget,
-                                            rectangles.main_vertical[2],
-                                            &mut self.log_view.state,
-                                        );
-                                    }
-                                }
-                                frame.render_widget(&self.top_bar.counter_widget, rectangles.top_bar[1]);
-                                frame.render_widget(&self.hotkey_bar.widget, rectangles.main_vertical[1]);
-                                frame.render_widget(&self.bottom_bar.widget, rectangles.main_vertical[3]);
-                                frame.render_widget(&self.top_bar.tabs_widget, rectangles.top_bar[0]);
-                            }
-                            InputMode::ReadLine => {
-                                // TODO use same rendering logic as other widgets
-                                // Clear the area so we can render on top of it
-                                //frame.render_widget(Clear, rectangles.dialogpopup[0]);
-                                //frame.render_widget(Clear, rectangles.dialogpopup[1]);
-                                frame.render_widget(
-                                    Paragraph::new(format!(
-                                        "Extracting to {}",
-                                        self.config.install_dir().to_str().unwrap()
-                                    )),
-                                    rectangles.dialog_popup[0],
-                                );
-                                frame.render_widget(
-                                    &self.popup_dialog.text_label,
-                                    rectangles.dialog_popup_input_line[0],
-                                );
-                                frame.render_widget(&self.popup_dialog.textarea, rectangles.dialog_popup_input_line[1]);
-                                frame.render_stateful_widget(
-                                    &self.popup_dialog.list,
-                                    rectangles.dialog_popup[2],
-                                    &mut self.popup_dialog.state,
-                                );
-                                frame.render_widget(&self.hotkey_bar.widget, rectangles.main_vertical[0]);
-                            }
-                            InputMode::Confirm => {
-                                frame.render_widget(Clear, rectangles.confirm_dialog[0]);
-                                frame.render_stateful_widget(
-                                    &self.confirm_dialog.widget,
-                                    rectangles.confirm_dialog[0],
-                                    &mut self.confirm_dialog.state,
-                                );
+                    }
+                    UIEvent::Frontend(needs_refresh) => {
+                        let frame = &mut self.terminal.get_frame();
+                        match needs_refresh {
+                            NeedsRefresh::BottomBar => {
+                                self.bottom_bar.update_widget(&self.tabs).await;
+                                frame.render_widget(&self.bottom_bar.widget, self.rectangles.normal.bottom_bar)
                             }
                         }
-                    })
-                    .unwrap();
-            }
-
-            if let Some(TickEvent::Input(event)) = events.next().await {
-                self.handle_events(event).await;
+                    }
+                    UIEvent::SigWinch => {
+                        self.recalc_rects();
+                        // TODO render visible widgets
+                    }
+                }
             }
         }
+    }
+
+    async fn handle_backend_event(&mut self, event_source: EventSource) {
+        let tabs = &mut self.tabs;
+        match event_source {
+            EventSource::Archives => {
+                tabs.archive_table.refresh().await;
+                self.render_if_visible(FocusedWidget::ArchiveTable);
+            }
+            EventSource::Downloads => {
+                tabs.downloads_table.refresh().await;
+                self.render_if_visible(FocusedWidget::DownloadTable);
+            }
+            EventSource::Installed => {
+                tabs.installed_mods_table.refresh().await;
+                self.render_if_visible(FocusedWidget::InstalledMods);
+            }
+            EventSource::Log => {
+                tabs.log_list.refresh().await;
+                self.render_if_visible(FocusedWidget::LogList);
+            }
+            EventSource::RequestCounter => {
+                self.requests_widget.refresh().await;
+            }
+        }
+    }
+
+    fn render_if_visible(&mut self, focused: FocusedWidget) {
+        for (i, widget_type) in self.tabs.focused_tab().widget_types.iter().enumerate() {
+            if *widget_type == focused {
+                self.terminal
+                    .draw(|frame| {
+                        self.tabs
+                            .widget_for_type_mut(*widget_type)
+                            .draw(self.rectangles.normal.main_content_panes[i], frame);
+                    })
+                    .unwrap();
+                return;
+            }
+        }
+    }
+
+    pub fn render_active_widget(&mut self) {
+        self.terminal
+            .draw(|frame| {
+                match self.input_mode {
+                    InputMode::Normal => {
+                        let rects = &self.rectangles.normal;
+                        let widget_rect_pairs: &[(&dyn WidgetRef, Rect)] = &[
+                            (&self.tabs.tab_display.widget, rects.tabs),
+                            (&self.requests_widget.widget, rects.request_counter),
+                            (&self.hotkey_bar.widget, rects.hotkey_bar),
+                            (&self.bottom_bar.widget, rects.bottom_bar),
+                        ];
+                        for (widget, rect) in widget_rect_pairs.iter() {
+                            widget.render_ref(*rect, frame.buffer_mut());
+                        }
+
+                        let widget_types = self.tabs.focused_tab().widget_types;
+                        for (i, wt) in widget_types.iter().enumerate() {
+                            let rect = self.rectangles.normal.main_content_panes[i];
+                            self.tabs.widget_for_type_mut(*wt).draw(rect, frame);
+                        }
+                    }
+                    InputMode::Extract => {
+                        // TODO use same rendering logic as other widgets
+                        // Clear the area so we can render on top of it
+                        //frame.render_widget(Clear, rectangles.dialogpopup[0]);
+                        //frame.render_widget(Clear, rectangles.dialogpopup[1]);
+                        //
+                        self.popup_dialog.render_widgets(&self.rectangles.extract_dialog, frame);
+                        // frame.render_widget(&self.popup_dialog.text_label, self.rectangles.normal.dialog_popup_input_line[0]);
+                        // frame.render_widget(&self.popup_dialog.textarea, self.rectangles.normal.dialog_popup_input_line[1]);
+                        frame.render_widget(&self.hotkey_bar.widget, self.rectangles.normal.hotkey_bar);
+                    }
+                    InputMode::Confirm => {
+                        // TODO why use clear here?
+                        frame.render_widget(&self.confirm_dialog.widget, self.rectangles.confirm_dialog.rect);
+                    }
+                }
+            })
+            .unwrap();
     }
 
     // Returns true if self.redraw_terminal is true or any widget has changed
-    async fn refresh_widgets(&mut self) -> bool {
-        if self.nav.focused_tab() != Tab::Log && self.logger.has_changed.load(Ordering::Relaxed) {
-            self.top_bar.add_urgency(Tab::Log.index());
-        }
-        self.redraw_terminal
-            | match self.nav.selected().unwrap().into() {
-                Tab::Archives => self.archives_table.refresh().await | self.downloads_table.refresh().await,
-                Tab::Installed => self.installed_mods_table.refresh().await,
-                Tab::Log => self.log_view.refresh().await,
-            }
-            | self.top_bar.refresh().await
-            | self.hotkey_bar.refresh(&self.input_mode, self.nav.focused_widget()).await
-            | self
-                .bottom_bar
-                .refresh(
-                    &self.archives_table,
-                    &self.installed_mods_table,
-                    &self.downloads_table,
-                    self.nav.focused_widget(),
-                    self.focused_widget().selected(),
-                )
-                .await
-    }
+    // async fn refresh_widgets(mut self) -> Self {
+    //     if self.nav.focused_tab() != TabType::Log && self.logger.has_changed.load(Ordering::Relaxed) {
+    //         self.tabs.tab_display.add_urgency(TabType::Log);
+    //     }
+    //     self.redraw_terminal
+    //         | match self.nav.selected().unwrap().into() {
+    //             TabType::Archives => self.archives_table.refresh().await | self.downloads_table.update_widget().await,
+    //             TabType::Installed => self.installed_mods_table.refresh().await,
+    //             TabType::Log => self.log_list.update_widget().await,
+    //         }
+    //         | self.top_bar.refresh().await
+    //         | self.hotkey_bar.refresh(&self.input_mode, self.nav.focused_widget_type()).await
+    //         | self.bottom_bar.refresh().await;
+    //     self
+    // }
+}
+
+fn init_term() -> Result<Terminal<TermBackend>, Box<dyn Error>> {
+    let stdout = std::io::stdout().into_raw_mode()?;
+    let stdout = MouseTerminal::from(stdout);
+    /* The alternate screen restores terminal state when dropped.
+     * Disable it if you need to see rust backtraces */
+    let stdout = stdout.into_alternate_screen()?;
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.hide_cursor()?;
+    Ok(terminal)
 }

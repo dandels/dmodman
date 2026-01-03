@@ -1,8 +1,9 @@
 use super::MetadataIndex;
 use crate::api::downloads::FileInfo;
 use crate::api::update_status::*;
-use crate::db::{Cacheable, Installed};
 use crate::config::Config;
+use crate::db::{Cacheable, Installed};
+use crate::events::{EventSource, EventTx};
 use crate::Logger;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,6 @@ use std::ffi::OsStr;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use tokio::fs;
@@ -20,19 +20,19 @@ use tokio::sync::RwLock;
 #[derive(Clone)]
 pub struct ArchiveFiles {
     config: Arc<Config>,
+    event_tx: EventTx,
     logger: Logger,
     metadata_index: MetadataIndex,
     pub files: Arc<RwLock<IndexMap<String, ArchiveEntry>>>, // indexed by name
-    pub has_changed: Arc<AtomicBool>,
 }
 
 impl ArchiveFiles {
     pub async fn new(
         config: Arc<Config>,
+        event_tx: EventTx,
         logger: Logger,
         installed: Installed,
         file_index: MetadataIndex,
-        has_changed: Arc<AtomicBool>,
     ) -> Self {
         // TODO fix error handling here
         std::fs::create_dir_all(config.download_dir()).unwrap();
@@ -92,17 +92,17 @@ impl ArchiveFiles {
         }
         Self {
             config,
+            event_tx,
             logger,
             metadata_index: file_index,
             files: Arc::new(RwLock::new(files)),
-            has_changed,
         }
     }
 
     pub async fn add_archive(&self, archive: ArchiveEntry) {
         self.metadata_index.try_add_mod_archive(archive.clone()).await;
         self.files.write().await.insert(archive.file_name().clone(), archive);
-        self.has_changed.store(true, Ordering::Relaxed);
+        self.event_tx.send(EventSource::Archives);
     }
 
     pub async fn get(&self, file_name: &str) -> Option<ArchiveEntry> {
@@ -128,7 +128,7 @@ impl ArchiveFiles {
                 }
             }
             lock.shift_remove(file_name);
-            self.has_changed.store(true, Ordering::Relaxed);
+            self.event_tx.send(EventSource::Archives);
         }
     }
 }

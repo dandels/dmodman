@@ -2,6 +2,8 @@ use super::UpdateStatus;
 use super::{Client, FileList, Queriable};
 use crate::api::{Query, Updated};
 use crate::db::{Db, ModFileMetadata};
+use crate::events::EventSource;
+use crate::events::EventTx;
 use crate::Config;
 use crate::Logger;
 use std::sync::atomic::Ordering;
@@ -14,16 +16,18 @@ pub struct UpdateChecker {
     db: Db,
     client: Client,
     config: Arc<Config>,
+    event_tx: EventTx,
     logger: Logger,
     query: Query,
 }
 
 impl UpdateChecker {
-    pub fn new(db: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query) -> Self {
+    pub fn new(db: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query, event_tx: EventTx) -> Self {
         Self {
             db,
             client,
             config,
+            event_tx,
             logger,
             query,
         }
@@ -53,8 +57,8 @@ impl UpdateChecker {
                     }
                     _ => {}
                 }
-                self.db.archives.has_changed.store(true, Ordering::Relaxed);
-                self.db.installed.has_changed.store(true, Ordering::Relaxed);
+                self.event_tx.send(EventSource::Archives);
+                self.event_tx.send(EventSource::Installed);
             }
         }
     }
@@ -166,8 +170,8 @@ impl UpdateChecker {
                     mfd.propagate_update_status(&me.config, &me.logger, &new_status).await;
                 }
             }
-            me.db.archives.has_changed.store(true, Ordering::Relaxed);
-            me.db.installed.has_changed.store(true, Ordering::Relaxed);
+            me.event_tx.send(crate::events::EventSource::Archives);
+            me.event_tx.send(crate::events::EventSource::Installed);
         });
     }
 
@@ -329,18 +333,15 @@ mod tests {
     use crate::api::{ApiError, Client, Query, UpdateChecker};
     use crate::config::tests::setup_test_env;
     use crate::db::Db;
-    use crate::ConfigBuilder;
-    use crate::Logger;
-    use std::sync::Arc;
+    use crate::util::test;
 
     async fn init_structs() -> (Db, UpdateChecker) {
         let profile = "testprofile";
-        let config = Arc::new(ConfigBuilder::default().profile(profile).build().unwrap());
-        let logger = Logger::default();
-        let db = Db::new(config.clone(), logger.clone()).await.unwrap();
-        let client = Client::new(&config).await;
+        let (config, logger, event_tx) = test::init_structs_with_profile(profile);
+        let db = Db::new(config.clone(), logger.clone(), event_tx.clone()).await.unwrap();
+        let client = Client::new(&config, event_tx.clone()).await;
         let query = Query::new(db.clone(), client.clone(), config.clone(), logger.clone());
-        (db.clone(), UpdateChecker::new(db, client, config, logger, query))
+        (db.clone(), UpdateChecker::new(db, client, config, logger, query, event_tx))
     }
 
     // TODO this needs a lot more unit tests but they are rather tedious to create
