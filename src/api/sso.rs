@@ -1,16 +1,18 @@
 use super::ApiError;
-use futures_util::SinkExt;
+use std::net::TcpStream;
+// use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
-use tokio::net::TcpStream;
-use tokio_stream::StreamExt;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+// use tokio::net::TcpStream;
+// use tokio_stream::StreamExt;
+use tungstenite::{stream::MaybeTlsStream, WebSocket};
+// use tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
 /* Documentation for SSO integration:
  * https://github.com/Nexus-Mods/sso-integration-demo */
 
 pub struct SsoClient {
-    socket: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    socket: WebSocket<MaybeTlsStream<TcpStream>>,
     session_params: SsoSession,
 }
 
@@ -39,24 +41,24 @@ const SSO_ENDPOINT: &str = "wss://sso.nexusmods.com";
 const APP_SLUG: &str = "dmodman";
 
 impl SsoClient {
-    pub async fn new() -> Result<SsoClient, ApiError> {
+    pub fn new() -> Result<SsoClient, ApiError> {
         let session_params = SsoSession {
             id: Uuid::new_v4().to_string(),
             token: None,
             protocol: 2,
         };
 
-        let (socket, _response) = tokio_tungstenite::connect_async(SSO_ENDPOINT).await?;
+        let (socket, _response) = tungstenite::connect(SSO_ENDPOINT)?;
         Ok(Self { socket, session_params })
     }
 
-    pub async fn start_flow(&mut self) -> Result<(), ApiError> {
+    pub fn start_flow(&mut self) -> Result<(), ApiError> {
         let msg = serde_json::to_string(&self.session_params).unwrap();
 
-        self.socket.send(msg.into()).await?;
-        self.socket.flush().await?;
+        self.socket.send(msg.into())?;
+        self.socket.flush()?;
         // Unwrap here should be safe because the internal value shouldn't be a None
-        let resp = self.socket.try_next().await?.unwrap();
+        let resp = self.socket.read()?;
 
         // set connection_token on the first (and probably only) time we connect
         if self.session_params.token.is_none() {
@@ -70,13 +72,13 @@ impl SsoClient {
         format!("https://www.nexusmods.com/sso?id={}&application={}", self.session_params.id, APP_SLUG)
     }
 
-    pub async fn wait_apikey_response(&mut self) -> Result<SsoResponse, ApiError> {
-        let resp = self.socket.next().await.unwrap()?;
+    pub fn wait_apikey_response(&mut self) -> Result<SsoResponse, ApiError> {
+        let resp = self.socket.read()?;
         let sso_resp: SsoResponse = serde_json::from_str(&resp.into_text().unwrap())?;
         Ok(sso_resp)
     }
 
-    pub async fn close_connection(&mut self) -> Result<(), ApiError> {
-        Ok(self.socket.close(None).await?)
+    pub fn close_connection(&mut self) -> Result<(), ApiError> {
+        Ok(self.socket.close(None)?)
     }
 }

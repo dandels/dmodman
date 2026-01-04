@@ -1,8 +1,8 @@
 use crate::config::DataPath;
 use crate::db::{Cacheable, MetadataIndex};
-use crate::events::{EventSource, EventTx};
 use crate::extract::installed_mod::*;
-use crate::{Config, Logger};
+use crate::prelude::*;
+use crate::Config;
 use indexmap::IndexMap;
 use std::sync::Arc;
 use tokio::fs;
@@ -10,20 +10,18 @@ use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct Installed {
-    config: Arc<Config>,
-    event_tx: EventTx,
-    logger: Logger,
+    config: Config,
     metadata_index: MetadataIndex,
     pub mods: Arc<RwLock<IndexMap<String, ModDirectory>>>, // Key = Directory name
 }
 
 impl Installed {
-    pub async fn new(config: Arc<Config>, event_tx: EventTx, logger: Logger, metadata_index: MetadataIndex) -> Self {
+    pub async fn new(config: Config, metadata_index: MetadataIndex) -> Self {
         let mut installed: IndexMap<String, ModDirectory> = IndexMap::new();
         let install_dir_read = fs::read_dir(config.install_dir()).await;
         if let Ok(load_order) = config.read_load_order() {
             if install_dir_read.is_err() && load_order.is_empty() {
-                logger.log("Error: load order is present but installed mods dir does not exist.");
+                log("Error: load order is present but installed mods dir does not exist.");
             } else {
                 for dir in load_order {
                     match fs::read_dir(config.install_dir().join(&dir)).await {
@@ -31,7 +29,7 @@ impl Installed {
                             add_dir(&config, &metadata_index, dir, &mut installed).await;
                         }
                         Err(_) => {
-                            logger.log(format!("Warn: \"{dir}\" is missing but exists in load order."));
+                            log(format!("Warn: \"{dir}\" is missing but exists in load order."));
                         }
                     }
                 }
@@ -47,8 +45,6 @@ impl Installed {
         }
         Self {
             config,
-            event_tx,
-            logger,
             metadata_index,
             mods: Arc::new(IndexMap::from_iter(installed).into()),
         }
@@ -63,7 +59,7 @@ impl Installed {
             self.metadata_index.add_installed(dir_name.clone().clone(), im.file_id, im.clone()).await;
         }
         self.mods.write().await.insert(dir_name, md);
-        self.event_tx.send(EventSource::Installed);
+        EVENTS.send(EventSource::Installed);
         self.save_load_order().await;
     }
 
@@ -73,7 +69,7 @@ impl Installed {
             let mut mods_lock = self.mods.write().await;
             let path = self.config.install_dir().join(dir_name);
             if let Err(e) = fs::remove_dir_all(path).await {
-                self.logger.log(format!("Error {e} when removing {dir_name}"));
+                LOGGER.log(format!("Error {e} when removing {dir_name}"));
                 return;
             }
             if let Some(mod_dir) = mods_lock.shift_remove(dir_name) {
@@ -83,13 +79,13 @@ impl Installed {
                             panic!("{} should have been present in the metadata index.", &im.file_id)
                         });
                     if mfd.remove_installed(dir_name).await {
-                        self.event_tx.send(EventSource::Archives);
+                        EVENTS.send(EventSource::Archives);
                     }
                     self.metadata_index.remove_if_unreferenced(&mfd.file_id).await;
                 }
-                self.event_tx.send(EventSource::Installed);
+                EVENTS.send(EventSource::Installed);
             } else {
-                self.logger.log(format!(
+                LOGGER.log(format!(
                     "{dir_name} no longer exists. Please file a bug report if you did not just remove it."
                 ));
             }
@@ -99,7 +95,7 @@ impl Installed {
 
     async fn save_load_order(&self) {
         if let Err(e) = self.config.save_load_order(self.mods.read().await.keys().cloned().collect()) {
-            self.logger.log(format!("Error: unable to save load order: {e}"));
+            log(format!("Error: unable to save load order: {e}"));
         }
     }
 
@@ -121,13 +117,13 @@ impl Installed {
         }
         // TODO save load order without causing too many writes
         // maybe start a task with a delay that gets restarted every time user reorders mods
-        self.event_tx.send(EventSource::Installed);
+        EVENTS.send(EventSource::Installed);
         self.save_load_order().await;
     }
 }
 
 async fn add_dir(
-    config: &Arc<Config>,
+    config: &Config,
     metadata_index: &MetadataIndex,
     dir_name: String,
     installed: &mut IndexMap<String, ModDirectory>,

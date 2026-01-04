@@ -7,8 +7,7 @@ pub use self::installed_mod::*;
 
 use crate::config::{Config, DataPath};
 use crate::db::{ArchiveEntry, ArchiveFile, ArchiveStatus, Cacheable, Db};
-use crate::events::{EventSource, EventTx};
-use crate::Logger;
+use crate::prelude::*;
 use libarchive::*;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -21,19 +20,15 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct Installer {
-    config: Arc<Config>,
+    config: Config,
     db: Db,
-    event_tx: EventTx,
-    logger: Logger,
     pub extract_jobs: Arc<RwLock<HashMap<String, CancellationToken>>>, // key: archive name
 }
 impl Installer {
-    pub async fn new(config: Arc<Config>, db: Db, event_tx: EventTx, logger: Logger) -> Self {
+    pub async fn new(config: Config, db: Db) -> Self {
         Self {
             db,
             config,
-            event_tx,
-            logger,
             extract_jobs: Default::default(),
         }
     }
@@ -83,14 +78,14 @@ impl Installer {
             Some(entry) => match entry {
                 ArchiveEntry::File(archive) => archive,
                 ArchiveEntry::MetadataOnly(_) => {
-                    self.logger.log(format!("Archive {} no longer exists.", archive_name));
+                    LOGGER.log(format!("Archive {} no longer exists.", archive_name));
                     return Err(InstallError::ArchiveDeleted);
                 }
             },
             /* Race condition between UI and backend if backend starts removing entries based on inotify events.
              * unlikely to actually happen */
             None => {
-                self.logger.log(format!("{} no longer exists in the database..?", archive_name));
+                LOGGER.log(format!("{} no longer exists in the database..?", archive_name));
                 return Ok(());
             }
         };
@@ -112,7 +107,7 @@ impl Installer {
             tokio::select! {
                 _ = cloned_token.cancelled() => {
                     if let Err(e) = fs::remove_dir_all(dest_path).await {
-                        me.logger.log(format!("Unable to remove target directory: {e}"));
+                        LOGGER.log(format!("Unable to remove target directory: {e}"));
                     }
                 },
                 _ = async {
@@ -124,7 +119,7 @@ impl Installer {
                             while let Some(entry_res) = archive.next().await {
                                 let entry = {
                                     if let Err(e) = entry_res {
-                                        me.logger.log(format!("Unable to get next archive entry: {e}."));
+                                        LOGGER.log(format!("Unable to get next archive entry: {e}."));
                                         let err: InstallError = e.into();
                                         return Err(err);
                                     }
@@ -136,7 +131,7 @@ impl Installer {
                                 if entry.is_dir().await {
                                     drop(entry);
                                     if let Err(e) = fs::create_dir_all(&target_path).await {
-                                        me.logger.log(format!("Failed to extract directory {name}: {e}"));
+                                        LOGGER.log(format!("Failed to extract directory {name}: {e}"));
                                         let mut jobs = me.extract_jobs.write().await;
                                         jobs.remove(&target_dir_name);
                                         return Err(e.into());
@@ -146,7 +141,7 @@ impl Installer {
                                     if !parent.exists() {
                                         std::fs::create_dir_all(parent).unwrap();
                                     }
-                                    extract_entry(me.logger.clone(), target_path, archive.clone()).await.unwrap();
+                                    extract_entry(target_path, archive.clone()).await.unwrap();
                                     crate::logger::log_to_file("Done with first file...?");
                                 }
                             }
@@ -159,9 +154,9 @@ impl Installer {
                         me.post_extract(archive_file, target_dir_name, mod_dir).await;
                     } else {
                         *archive_file.install_state.write().await = ArchiveStatus::Error;
-                        me.event_tx.send(EventSource::Archives);
+                        EVENTS.send(EventSource::Archives);
                         // TODO maybe clean up after a failed extraction?
-                        me.logger.log(format!("Aborted extracting \"{}\". Output directory has not been removed.", archive_name));
+                        LOGGER.log(format!("Aborted extracting \"{}\". Output directory has not been removed.", archive_name));
                         me.extract_jobs.write().await.remove(&target_dir_name);
                     }
 
@@ -179,12 +174,12 @@ impl Installer {
             if let Some(mfd) = self.db.metadata_index.get_by_archive_name(&archive.file_name).await {
                 if mfd.is_installed().await {
                     *archive.install_state.write().await = ArchiveStatus::Installed;
-                    self.event_tx.send(EventSource::Archives);
+                    EVENTS.send(EventSource::Archives);
                     return;
                 }
             }
             *archive.install_state.write().await = ArchiveStatus::Downloaded;
-            self.event_tx.send(EventSource::Archives);
+            EVENTS.send(EventSource::Archives);
         }
     }
 
@@ -194,27 +189,27 @@ impl Installer {
         dest_path: &PathBuf,
         dest_dir_name: &String,
     ) -> ModDirectory {
-        self.logger.log(format!("Begin extracting: {:?}", &archive.file_name));
+        LOGGER.log(format!("Begin extracting: {:?}", &archive.file_name));
         *archive.install_state.write().await = ArchiveStatus::Extracting;
         fs::create_dir_all(&dest_path).await.unwrap();
-        self.event_tx.send(EventSource::Archives);
+        EVENTS.send(EventSource::Archives);
         let mod_dir = ModDirectory::new(self.db.clone(), archive.clone()).await;
         if let Err(e) = mod_dir.save(DataPath::ModDirMetadata(&self.config, dest_dir_name)).await {
-            self.logger.log(format!("Failed to save metadata for extracted directory {}, {e}", dest_dir_name));
+            LOGGER.log(format!("Failed to save metadata for extracted directory {}, {e}", dest_dir_name));
         }
         mod_dir
     }
 
     async fn post_extract(&self, archive: Arc<ArchiveFile>, dest_dir_name: String, mod_dir: ModDirectory) {
         *archive.install_state.write().await = ArchiveStatus::Installed;
-        self.event_tx.send(EventSource::Archives);
+        EVENTS.send(EventSource::Archives);
         self.db.installed.add(dest_dir_name.clone(), mod_dir).await;
         self.extract_jobs.write().await.remove(&archive.file_name);
-        self.logger.log(format!("Finished extracting: {:?}", &archive.file_name));
+        LOGGER.log(format!("Finished extracting: {:?}", &archive.file_name));
     }
 }
 
-async fn extract_entry(logger: Logger, target_path: PathBuf, archive: Archive) -> Result<(), InstallError> {
+async fn extract_entry(target_path: PathBuf, archive: Archive) -> Result<(), InstallError> {
     match File::create(&target_path).await {
         Ok(mut file) => {
             loop {
@@ -223,7 +218,7 @@ async fn extract_entry(logger: Logger, target_path: PathBuf, archive: Archive) -
                     bindings::ARCHIVE_OK | bindings::ARCHIVE_WARN => {
                         //crate::logger::log_to_file(format!("Got {} bytes", bytes.len()));
                         if let bindings::ARCHIVE_WARN = status {
-                            logger.log(format!(
+                            LOGGER.log(format!(
                                 "Warning when extracting \"{:?}\": {}",
                                 &target_path,
                                 archive.get_err_msg().await
@@ -231,7 +226,7 @@ async fn extract_entry(logger: Logger, target_path: PathBuf, archive: Archive) -
                         }
                         if let Some(bytes) = bytes {
                             if let Err(e) = file.write_all(&bytes).await {
-                                logger.log(format!("Writing {:?} reported error {e}", &target_path));
+                                LOGGER.log(format!("Writing {:?} reported error {e}", &target_path));
                                 return Err(e.into());
                             }
                         }
@@ -243,14 +238,14 @@ async fn extract_entry(logger: Logger, target_path: PathBuf, archive: Archive) -
                     // TODO handle ARCHIVE_RETRY
                     _ => {
                         let msg = archive.get_err_msg().await;
-                        logger.log(format!("Error when extracting \"{:?}\": {}", &target_path, &msg));
+                        LOGGER.log(format!("Error when extracting \"{:?}\": {}", &target_path, &msg));
                         return Err(ArchiveError::from_err_code(status, msg).into());
                     }
                 }
             }
         }
         Err(e) => {
-            logger.log(format!("Failed to create file {:?}", &target_path));
+            LOGGER.log(format!("Failed to create file {:?}", &target_path));
             Err(e.into())
         }
     }

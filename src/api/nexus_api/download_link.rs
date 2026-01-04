@@ -25,16 +25,15 @@ impl Queriable for DownloadLink {
 #[cfg(test)]
 mod tests {
     use super::DownloadLink;
-    use crate::config::DataPath;
+    use crate::config::{ConfigBuilder, DataPath};
     use crate::db::Cacheable;
-    use crate::util::test;
     use std::error::Error;
 
     #[tokio::test]
     async fn deserialize_link_array() -> Result<(), Box<dyn Error>> {
         let profile = "testprofile";
         let game = "skyrimspecialedition";
-        let (config, ..) = test::init_structs_with_profile(profile);
+        let config = ConfigBuilder::default().profile(profile).build()?;
         let mod_id: u32 = 74484;
         let file_id: u64 = 1662417060;
         let path = DataPath::DownloadLink(&config, game, mod_id, file_id);
@@ -48,7 +47,7 @@ mod tests {
     async fn deserialize_single_link() -> Result<(), Box<dyn Error>> {
         let profile = "testprofile";
         let game = "dragonage";
-        let (config, ..) = test::init_structs_with_profile(profile);
+        let config = ConfigBuilder::default().profile(profile).build()?;
         let mod_id: u32 = 343;
         let file_id: u64 = 5801;
         let path = DataPath::DownloadLink(&config, game, mod_id, file_id);

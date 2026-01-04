@@ -2,10 +2,8 @@ use super::UpdateStatus;
 use super::{Client, FileList, Queriable};
 use crate::api::{Query, Updated};
 use crate::db::{Db, ModFileMetadata};
-use crate::events::EventSource;
-use crate::events::EventTx;
+use crate::prelude::*;
 use crate::Config;
-use crate::Logger;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,20 +13,16 @@ use tokio::task;
 pub struct UpdateChecker {
     db: Db,
     client: Client,
-    config: Arc<Config>,
-    event_tx: EventTx,
-    logger: Logger,
+    config: Config,
     query: Query,
 }
 
 impl UpdateChecker {
-    pub fn new(db: Db, client: Client, config: Arc<Config>, logger: Logger, query: Query, event_tx: EventTx) -> Self {
+    pub fn new(db: Db, client: Client, config: Config, query: Query) -> Self {
         Self {
             db,
             client,
             config,
-            event_tx,
-            logger,
             query,
         }
     }
@@ -42,7 +36,6 @@ impl UpdateChecker {
                     UpdateStatus::OutOfDate(_) => {
                         mfd.propagate_update_status(
                             &self.config,
-                            &self.logger,
                             &UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp),
                         )
                         .await;
@@ -50,15 +43,14 @@ impl UpdateChecker {
                     UpdateStatus::HasNewFile(_) => {
                         mfd.propagate_update_status(
                             &self.config,
-                            &self.logger,
                             &UpdateStatus::UpToDate(latest_remote_file.uploaded_timestamp),
                         )
                         .await;
                     }
                     _ => {}
                 }
-                self.event_tx.send(EventSource::Archives);
-                self.event_tx.send(EventSource::Installed);
+                EVENTS.send(EventSource::Archives);
+                EVENTS.send(EventSource::Installed);
             }
         }
     }
@@ -75,7 +67,7 @@ impl UpdateChecker {
                     task::spawn(async move {
                         let mods_by_game = me.db.metadata_index.by_game_and_mod_sorted.read().await;
                         if let Err(e) = me.db.save_last_updated(time.as_secs()).await {
-                            me.logger.log(format!("Failed to save last updated status: {}", e));
+                            LOGGER.log(format!("Failed to save last updated status: {}", e));
                         }
 
                         /* The updated mod lists are provided per game and sorted by mod id
@@ -88,7 +80,7 @@ impl UpdateChecker {
                                     //if let Err(e) =
                                     //    updated_mods.save(me.config.path_for(DataType::Updated(&game))).await
                                     //{
-                                    //    me.logger.log(format!("Unable to save update list for {game}: {}", e));
+                                    //    LOGGER.log(format!("Unable to save update list for {game}: {}", e));
                                     //}
 
                                     // Local and updated mods are sorted so we can iterate in parallel
@@ -104,19 +96,19 @@ impl UpdateChecker {
                                     }
                                 }
                                 Err(e) => {
-                                    me.logger.log(format!("Unable to fetch update lists for {game}: {}", e));
+                                    LOGGER.log(format!("Unable to fetch update lists for {game}: {}", e));
                                     return;
                                 }
                             }
                         }
                         if let Err(e) = me.db.save_last_updated(time.as_secs()).await {
-                            me.logger.log(format!("Failed to save last_updated: {e}"));
+                            LOGGER.log(format!("Failed to save last_updated: {e}"));
                         }
                     });
                 } else {
-                    self.logger.log("Over a month since last update check, checking each mod.");
+                    LOGGER.log("Over a month since last update check, checking each mod.");
                     if let Err(e) = self.db.save_last_updated(time.as_secs()).await {
-                        self.logger.log(format!("Failed to save last updated status: {}", e));
+                        LOGGER.log(format!("Failed to save last updated status: {}", e));
                     }
                     for (game, mods) in self.db.metadata_index.by_game_and_mod_sorted.read().await.iter() {
                         for (mod_id, files) in mods {
@@ -127,10 +119,10 @@ impl UpdateChecker {
             }
             // This is a ridiculous error case to handle, but avoids an unwrap()
             Err(e) => {
-                self.logger.log(format!("WARNING: Refusing to update, system time is before Unix epoch: {}", e));
+                LOGGER.log(format!("WARNING: Refusing to update, system time is before Unix epoch: {}", e));
             }
         };
-        self.logger.log("Finished checking updates.");
+        LOGGER.log("Finished checking updates.");
     }
 
     pub async fn update_mod(&self, game: String, mod_id: u32, files_in_mod: Vec<Arc<ModFileMetadata>>) {
@@ -150,7 +142,7 @@ impl UpdateChecker {
                     }
                 }
             } else {
-                me.logger.log(format!("Strange, no file list in cache for {mod_id}. Fetching."));
+                LOGGER.log(format!("Strange, no file list in cache for {mod_id}. Fetching."));
                 needs_refresh = true;
             }
             if needs_refresh {
@@ -161,17 +153,17 @@ impl UpdateChecker {
                         checked = me.check_mod(&files_in_mod, &fl).await;
                     }
                     Err(e) => {
-                        me.logger.log(format!("Error when refreshing filelist for {mod_id}: {}", e));
+                        LOGGER.log(format!("Error when refreshing filelist for {mod_id}: {}", e));
                     }
                 }
             }
             for (mfd, new_status) in checked {
                 if mfd.update_status.to_enum() != new_status {
-                    mfd.propagate_update_status(&me.config, &me.logger, &new_status).await;
+                    mfd.propagate_update_status(&me.config, &new_status).await;
                 }
             }
-            me.event_tx.send(crate::events::EventSource::Archives);
-            me.event_tx.send(crate::events::EventSource::Installed);
+            EVENTS.send(crate::events::EventSource::Archives);
+            EVENTS.send(crate::events::EventSource::Installed);
         });
     }
 
@@ -206,7 +198,7 @@ impl UpdateChecker {
         file_list: &FileList,
     ) -> Vec<(Arc<ModFileMetadata>, UpdateStatus)> {
         if to_check.is_empty() {
-            self.logger.log("Tried to check updates for nonexistent files. This shouldn't happen.");
+            LOGGER.log("Tried to check updates for nonexistent files. This shouldn't happen.");
             return vec![];
         }
 
@@ -318,7 +310,7 @@ impl UpdateChecker {
                  * If it still wasn't added then the file is probably so old that the API no longer lists it.
                  */
                 if let Some(name) = mfd.name().await {
-                    self.logger.log(name);
+                    LOGGER.log(name);
                 }
                 checked.push((mfd.clone(), UpdateStatus::OutOfDate(latest_remote_time)));
             }
@@ -332,16 +324,16 @@ mod tests {
     use super::UpdateStatus;
     use crate::api::{ApiError, Client, Query, UpdateChecker};
     use crate::config::tests::setup_test_env;
+    use crate::config::ConfigBuilder;
     use crate::db::Db;
-    use crate::util::test;
 
     async fn init_structs() -> (Db, UpdateChecker) {
         let profile = "testprofile";
-        let (config, logger, event_tx) = test::init_structs_with_profile(profile);
-        let db = Db::new(config.clone(), logger.clone(), event_tx.clone()).await.unwrap();
-        let client = Client::new(&config, event_tx.clone()).await;
-        let query = Query::new(db.clone(), client.clone(), config.clone(), logger.clone());
-        (db.clone(), UpdateChecker::new(db, client, config, logger, query, event_tx))
+        let config = ConfigBuilder::default().profile(profile).build().unwrap();
+        let client = Client::new(&config);
+        let db = Db::new(config.clone()).await.unwrap();
+        let query = Query::new(db.clone(), client.clone());
+        (db.clone(), UpdateChecker::new(db, client, config, query))
     }
 
     // TODO this needs a lot more unit tests but they are rather tedious to create

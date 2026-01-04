@@ -1,5 +1,5 @@
 use crate::api::Downloads;
-use crate::Logger;
+use crate::LOGGER;
 use std::io::{Error, ErrorKind};
 use std::str;
 use tokio::io::Interest;
@@ -52,24 +52,24 @@ pub async fn try_bind() -> Result<NxmSocketListener, Error> {
     }
 }
 
-pub async fn listen_for_downloads(nxm_sock: NxmSocketListener, downloads: Downloads, logger: Logger) {
+pub async fn listen_for_downloads(nxm_sock: NxmSocketListener, downloads: Downloads) {
     loop {
         match nxm_sock.listener.accept().await {
             Ok((stream, _addr)) => {
                 if let Ok(ready) = stream.ready(Interest::READABLE).await {
                     if ready.is_readable() {
-                        handle_incoming_stream(stream, &downloads, &logger).await;
+                        handle_incoming_stream(stream, &downloads).await;
                     }
                 } // It doesn't seem like the two else {} paths here require dealing with
             }
             Err(e) => {
-                logger.log(format!("nxm socket was unable to accept connection: {}", e));
+                LOGGER.log(format!("nxm socket was unable to accept connection: {}", e));
             }
         }
     }
 }
 
-async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads, logger: &Logger) {
+async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads) {
     let mut data = vec![0; 1024];
     match stream.try_read(&mut data) {
         Ok(_bytes) => match str::from_utf8(&data) {
@@ -79,13 +79,13 @@ async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads, logge
                 }
             }
             Err(e) => {
-                logger.log(format!("nxm socket received invalid UTF-8 sequence: {}", e));
+                LOGGER.log(format!("nxm socket received invalid UTF-8 sequence: {}", e));
             }
         },
         // is_readable returned a false positive
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
         Err(e) => {
-            logger.log(format!("nxm socket encountered error: {}", e));
+            LOGGER.log(format!("nxm socket encountered error: {}", e));
         }
     }
 }

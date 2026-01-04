@@ -3,9 +3,8 @@ use super::{DownloadInfo, DownloadProgress, Downloads};
 use crate::api::{Client, Query};
 use crate::config::{Config, DataPath};
 use crate::db::{Cacheable, Db};
-use crate::events::{EventSource, EventTx};
+use crate::prelude::*;
 use crate::util;
-use crate::Logger;
 use reqwest::header::RANGE;
 use reqwest::{Response, StatusCode};
 use std::fmt::{Debug, Display};
@@ -23,9 +22,7 @@ pub struct DownloadTask {
     #[allow(dead_code)]
     cache: Db,
     client: Client,
-    config: Arc<Config>,
-    event_tx: EventTx,
-    logger: Logger,
+    config: Config,
     downloads: Downloads,
     query: Query,
     join_handle: Option<JoinHandle<()>>,
@@ -36,9 +33,7 @@ impl DownloadTask {
     pub fn new(
         cache: Db,
         client: Client,
-        config: Arc<Config>,
-        event_tx: EventTx,
-        logger: Logger,
+        config: Config,
         dl_info: DownloadInfo,
         downloads: Downloads,
         query: Query,
@@ -47,8 +42,6 @@ impl DownloadTask {
             cache,
             client,
             config,
-            event_tx,
-            logger,
             dl_info,
             downloads,
             query,
@@ -77,7 +70,7 @@ impl DownloadTask {
             // TODO premium users could get a new download link through the API, without having to visit Nexusmods
             DownloadState::Expired => {
                 self.dl_info.set_state(DownloadState::Expired);
-                self.logger.log(format!(
+                LOGGER.log(format!(
                     "Download link for {} expired, please download again.",
                     self.dl_info.file_info.file_name
                 ));
@@ -89,9 +82,9 @@ impl DownloadTask {
 
     // helper function to reduce repetition in start()
     async fn log_and_set_error<S: Into<String> + Debug + Display>(&self, msg: S) {
-        self.logger.log(msg);
+        LOGGER.log(msg);
         self.dl_info.set_state(DownloadState::Error);
-        self.event_tx.send(EventSource::Downloads);
+        EVENTS.send(EventSource::Downloads);
     }
 
     pub async fn file_exists(&self) -> bool {
@@ -102,8 +95,8 @@ impl DownloadTask {
     pub async fn start(&mut self) -> Result<(), ()> {
         let file_name = self.dl_info.file_info.file_name.clone();
         if self.file_exists().await {
-            self.logger.log(format!("{file_name} already exists and won't be downloaded."));
-            self.logger.log("Verifying mod metadata...");
+            LOGGER.log(format!("{file_name} already exists and won't be downloaded."));
+            LOGGER.log("Verifying mod metadata...");
             self.dl_info.set_state(DownloadState::Done);
             let _ = self.downloads.update_metadata(&self.dl_info.file_info).await;
             return Err(());
@@ -155,28 +148,26 @@ impl DownloadTask {
 
         let downloads = self.downloads.clone();
         let dl_info = self.dl_info.clone();
-        let logger = self.logger.clone();
         let file_name = file_name.clone();
         let query = self.query.clone();
-        let event_tx = self.event_tx.clone();
         let handle: JoinHandle<()> = task::spawn(async move {
             // The actual downloading is done here
-            if let Err(()) = transfer_data(file, &event_tx, resp, &logger, &dl_info).await {
+            if let Err(()) = transfer_data(file, resp, &dl_info).await {
                 return;
             }
 
             if fs::rename(part_path.clone(), &path).await.is_err() {
-                logger.log(format!("Download of {} complete, but unable to remove .part extension.", file_name));
+                LOGGER.log(format!("Download of {} complete, but unable to remove .part extension.", file_name));
             }
 
             part_path.pop();
             part_path.push(format!("{}.part.json", file_name));
             if fs::remove_file(&part_path).await.is_err() {
-                logger.log(format!("Unable to remove .part.json file after download is complete: {:?}", part_path));
+                LOGGER.log(format!("Unable to remove .part.json file after download is complete: {:?}", part_path));
             }
 
             dl_info.set_state(DownloadState::Done);
-            event_tx.send(EventSource::Downloads);
+            EVENTS.send(EventSource::Downloads);
 
             match util::md5sum(path).await {
                 Ok(md5) => {
@@ -195,10 +186,10 @@ impl DownloadTask {
                         let _ = query.mod_info(&dl_info.file_info.game, dl_info.file_info.mod_id).await;
                     }
                 }
-                Err(e) => logger.log(format!("Error when checking hash for {}. {e}", file_name)),
+                Err(e) => LOGGER.log(format!("Error when checking hash for {}. {e}", file_name)),
             }
             if let Err(e) = downloads.update_metadata(&dl_info.file_info).await {
-                logger.log(format!("Unable to update metadata for downloaded file {}: {}", file_name, e));
+                LOGGER.log(format!("Unable to update metadata for downloaded file {}: {}", file_name, e));
             }
         });
         self.join_handle = Some(handle);
@@ -227,7 +218,7 @@ impl DownloadTask {
                         if resuming_download {
                             self.dl_info.progress.bytes_read = bytes_read.clone();
                         } else {
-                            self.logger.log(
+                            LOGGER.log(
                                 "Server unexpectedly responded with 206 PARTIAL CONTENT \
                                            when starting download for {file_name}",
                             );
@@ -248,7 +239,7 @@ impl DownloadTask {
             Err(e) => {
                 if resp.status() == StatusCode::GONE {
                     self.dl_info.set_state(DownloadState::Expired);
-                    self.event_tx.send(EventSource::Downloads);
+                    EVENTS.send(EventSource::Downloads);
                 } else {
                     self.log_and_set_error(format!("Download {file_name} failed with error: {}", e.status().unwrap()))
                         .await;
@@ -262,19 +253,12 @@ impl DownloadTask {
 
     async fn save_dl_info(&self) {
         if let Err(e) = self.dl_info.save(DataPath::DownloadInfo(&self.config, &self.dl_info)).await {
-            self.logger
-                .log(format!("Error when saving download state for {}: {}", self.dl_info.file_info.file_name, e));
+            LOGGER.log(format!("Error when saving download state for {}: {}", self.dl_info.file_info.file_name, e));
         }
     }
 }
 
-async fn transfer_data(
-    file: File,
-    event_tx: &EventTx,
-    resp: Response,
-    logger: &Logger,
-    dl_info: &DownloadInfo,
-) -> Result<(), ()> {
+async fn transfer_data(file: File, resp: Response, dl_info: &DownloadInfo) -> Result<(), ()> {
     let mut bufwriter = BufWriter::new(file);
     let mut stream = resp.bytes_stream();
 
@@ -282,25 +266,25 @@ async fn transfer_data(
         match item {
             Ok(bytes) => {
                 if let Err(e) = bufwriter.write_all(&bytes).await {
-                    logger.log(format!("IO error when writing bytes to disk: {}", e));
+                    LOGGER.log(format!("IO error when writing bytes to disk: {}", e));
                     return Err(());
                 }
                 dl_info.progress.bytes_read.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-                event_tx.send(EventSource::Downloads);
+                EVENTS.send(EventSource::Downloads);
             }
             Err(e) => {
-                logger.log(format!("Error during download: {}", e));
+                LOGGER.log(format!("Error during download: {}", e));
                 /* The download could fail for network-related reasons. Flush the data we got so that we can
                  * continue it at some later point. */
                 if let Err(e) = bufwriter.flush().await {
-                    logger.log(format!("IO error when flushing bytes to disk: {}", e));
+                    LOGGER.log(format!("IO error when flushing bytes to disk: {}", e));
                     return Err(());
                 }
             }
         }
     }
     if let Err(e) = bufwriter.flush().await {
-        logger.log(format!("IO error when flushing bytes to disk: {}", e));
+        LOGGER.log(format!("IO error when flushing bytes to disk: {}", e));
         return Err(());
     }
     Ok(())

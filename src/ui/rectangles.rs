@@ -1,8 +1,5 @@
-use std::{array, rc::Rc};
-
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Rect};
-
-use crate::ui::tab::Tab;
+use std::rc::Rc;
 
 struct NormalLayouts {
     top_bar: Layout,
@@ -36,7 +33,7 @@ impl NormalLayouts {
             bottom_bar,
             main_content: Default::default(),
         };
-        ret.set_pane_count(tab);
+        ret.set_pane_count(main_pane_count);
         ret
     }
 

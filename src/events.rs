@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use tokio::sync::{mpsc, mpsc::UnboundedReceiver, mpsc::UnboundedSender};
+use std::sync::RwLock;
+
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 pub enum EventSource {
     Archives,
@@ -10,32 +11,24 @@ pub enum EventSource {
 }
 
 pub struct Events {
-    pub tx: EventTx,
-    pub rx: EventRx,
+    pub tx: UnboundedSender<EventSource>,
+    rx: RwLock<Option<UnboundedReceiver<EventSource>>>,
 }
 
 impl Events {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         Self {
-            tx: EventTx { inner: tx.into() },
-            rx: EventRx { inner: rx },
+            tx,
+            rx: RwLock::new(Some(rx)),
         }
     }
-}
 
-#[derive(Clone)]
-// wrap this so changing it doesn't propagate across the entire codebase
-pub struct EventTx {
-    pub inner: Arc<UnboundedSender<EventSource>>,
-}
-
-impl EventTx {
-    pub fn send(&self, msg: EventSource) {
-        self.inner.send(msg).unwrap()
+    pub fn send(&self, e: EventSource) {
+        let _ = self.tx.send(e);
     }
-}
 
-pub struct EventRx {
-    pub inner: UnboundedReceiver<EventSource>,
+    pub fn take_rx(&self) -> Option<UnboundedReceiver<EventSource>> {
+        self.rx.write().unwrap().take()
+    }
 }

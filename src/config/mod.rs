@@ -4,7 +4,7 @@ pub mod paths;
 pub use config_error::ConfigError;
 pub use paths::DataPath;
 
-use super::Logger;
+use crate::prelude::*;
 use crate::util;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -12,6 +12,7 @@ use std::env;
 use std::io::prelude::Write;
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::{fs, fs::File};
 
 /* The ConfigBuilder is loaded based on the config file, or initialized with empty values. It's used for deserializing
@@ -25,32 +26,15 @@ use std::{fs, fs::File};
  * The original behavior of download_dir is to append $profile to its path in case $profile is set.
  * This behavior is kept for backwards compatibility reasons in case profiles is None, or the active Profile does not
  * specify a download directory. */
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct ConfigBuilder {
-    apikey: Option<String>,
+    pub apikey: Option<String>,
     profile: Option<String>,
     #[serde(alias = "global_download_dir")]
     download_dir: Option<PathBuf>,
     #[serde(alias = "global_install_dir")]
     install_dir: Option<PathBuf>,
     profiles: HashMap<String, Profile>,
-    #[serde(skip)]
-    logger: Logger,
-}
-
-#[cfg(test)]
-#[allow(clippy::derivable_impls)]
-impl Default for ConfigBuilder {
-    fn default() -> Self {
-        Self {
-            logger: Logger::default(),
-            apikey: None,
-            profile: None,
-            download_dir: None,
-            install_dir: None,
-            profiles: Default::default(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -62,18 +46,7 @@ struct Profile {
 const DEFAULT_PROFILE_NAME: &str = "default";
 
 impl ConfigBuilder {
-    pub fn from_defaults(logger: Logger) -> Self {
-        Self {
-            logger,
-            apikey: None,
-            profile: None,
-            download_dir: None,
-            install_dir: None,
-            profiles: Default::default(),
-        }
-    }
-
-    pub fn load(logger: Logger) -> Result<Self, ConfigError> {
+    pub fn load() -> Result<Self, ConfigError> {
         let mut contents = String::new();
 
         let mut f = File::open(config_file())?;
@@ -82,7 +55,7 @@ impl ConfigBuilder {
         let mut loaded: ConfigBuilder = toml::from_str(&contents)?;
         loaded.apply_settings_from_profile();
 
-        Ok(Self { logger, ..loaded })
+        Ok(Self { ..loaded })
     }
 
     fn apply_settings_from_profile(&mut self) {
@@ -165,21 +138,21 @@ impl ConfigBuilder {
         self.download_dir = match shellexpand::full(&self.download_dir.unwrap().to_string_lossy()) {
             Ok(val) => Some(val.to_string().into()),
             Err(e) => {
-                self.logger.log("Failed to expand environment variables for download_dir. Using default value.");
-                self.logger.log(format!("Message: \"{e}\""));
+                log("Failed to expand environment variables for download_dir. Using default value.");
+                log(format!("Message: \"{e}\""));
                 Some(default_download_dir())
             }
         };
         self.install_dir = match shellexpand::full(&self.install_dir.unwrap().to_string_lossy()) {
             Ok(val) => Some(val.to_string().into()),
             Err(e) => {
-                self.logger.log("Failed to expand environment variables for install_dir. Using default value.");
-                self.logger.log(format!("Message: \"{e}\""));
+                log("Failed to expand environment variables for install_dir. Using default value.");
+                log(format!("Message: \"{e}\""));
                 Some(install_dir_for_profile(self.profile.as_ref().unwrap()))
             }
         };
 
-        Config::new(self.logger.clone(), self)
+        Config::new(self)
     }
 }
 
@@ -208,7 +181,11 @@ pub fn install_dir_for_profile(profile: &str) -> PathBuf {
 
 #[derive(Clone)]
 pub struct Config {
-    pub apikey: Option<String>,
+    inner: Arc<Inner>,
+}
+
+struct Inner {
+    apikey: Option<String>,
     profile: String,
     download_dir: PathBuf,
     install_dir: PathBuf,
@@ -222,13 +199,13 @@ impl Default for Config {
 }
 
 impl Config {
-    fn new(logger: Logger, config: ConfigBuilder) -> Result<Self, ConfigError> {
+    fn new(config: ConfigBuilder) -> Result<Self, ConfigError> {
         let download_dir = {
             let path = config.download_dir.expect("Config was passed Builder with missing download dir.");
             match path.is_absolute() {
                 true => path,
                 false => {
-                    logger.log("Download dir is not an absolute path. Using path relative to $HOME.");
+                    log("Download dir is not an absolute path. Using path relative to $HOME.");
                     let mut home = dirs::home_dir().unwrap();
                     home.push(path);
                     home
@@ -241,7 +218,7 @@ impl Config {
             match path.is_absolute() {
                 true => path,
                 false => {
-                    logger.log("Install dir is not an absolute path. Using path relative to $HOME.");
+                    log("Install dir is not an absolute path. Using path relative to $HOME.");
                     let mut home = dirs::home_dir().unwrap();
                     home.push(path);
                     home
@@ -250,18 +227,33 @@ impl Config {
         };
 
         Ok(Self {
-            apikey: config.apikey,
-            profile: config.profile.unwrap_or("default".to_string()),
-            download_dir,
-            install_dir,
+            inner: Arc::new(Inner {
+                apikey: config.apikey,
+                profile: config.profile.unwrap_or("default".to_string()),
+                download_dir,
+                install_dir,
+            }),
         })
     }
 
+    pub fn apikey(&self) -> &Option<String> {
+        &self.inner.apikey
+    }
+
+    fn profile(&self) -> &String {
+        &self.inner.profile
+    }
+
+    pub fn download_dir(&self) -> PathBuf {
+        self.inner.download_dir.clone()
+    }
+
+    pub fn install_dir(&self) -> PathBuf {
+        self.inner.install_dir.clone()
+    }
+
     pub fn cache_for_profile(&self) -> PathBuf {
-        let mut path = dirs::cache_dir().unwrap();
-        path.push(env!("CARGO_CRATE_NAME"));
-        path.push(&self.profile);
-        path
+        dirs::cache_dir().unwrap().join(env!("CARGO_CRATE_NAME")).join(self.profile())
     }
 
     pub fn data_dir(&self) -> PathBuf {
@@ -275,10 +267,6 @@ impl Config {
         path
     }
 
-    pub fn download_dir(&self) -> PathBuf {
-        self.download_dir.clone()
-    }
-
     pub fn metadata_for_profile(&self) -> PathBuf {
         self.profile_data_root().join("metadata")
     }
@@ -287,22 +275,11 @@ impl Config {
         self.data_dir().join("metadata")
     }
 
-    pub fn install_dir(&self) -> PathBuf {
-        self.install_dir.clone()
-    }
-
     pub fn read_load_order(&self) -> Result<Vec<String>, std::io::Error> {
         let mut f = File::open(self.load_order_path())?;
         let mut data = String::new();
         f.read_to_string(&mut data)?;
         Ok(data.split("\n").map(|s| s.to_string()).collect())
-    }
-
-    pub fn save_apikey(&self) -> Result<(), std::io::Error> {
-        fs::create_dir_all(config_dir())?;
-        let mut f = File::create(apikey_file())?;
-        f.write_all(self.apikey.as_ref().unwrap().as_bytes())?;
-        f.flush()
     }
 
     pub fn save_load_order(&self, load_order: Vec<String>) -> Result<(), std::io::Error> {
@@ -316,7 +293,7 @@ impl Config {
 
     fn load_order_path(&self) -> PathBuf {
         let mut path = config_dir();
-        path.push(&self.profile);
+        path.push(self.profile());
         path.push("load_order.txt");
         path
     }
@@ -324,7 +301,7 @@ impl Config {
     fn profile_data_root(&self) -> PathBuf {
         let mut path = self.data_dir();
         path.push("profiles");
-        path.push(&self.profile);
+        path.push(self.profile());
         path
     }
 }
@@ -345,6 +322,13 @@ pub fn config_file() -> PathBuf {
     let mut path = config_dir();
     path.push("config.toml");
     path
+}
+
+pub fn save_apikey(apikey: &String) -> Result<(), std::io::Error> {
+    fs::create_dir_all(config_dir())?;
+    let mut f = File::create(apikey_file())?;
+    f.write_all(apikey.as_bytes())?;
+    f.flush()
 }
 
 pub fn apikey_file() -> PathBuf {
@@ -384,7 +368,7 @@ pub mod tests {
     fn read_apikey() -> Result<(), ConfigError> {
         setup_test_env();
         let config = ConfigBuilder::default().build()?;
-        assert_eq!(config.apikey, Some("1234".to_string()));
+        assert_eq!(config.apikey(), &Some("1234".to_string()));
         Ok(())
     }
 
@@ -458,7 +442,7 @@ pub mod tests {
     fn append_profile_to_dirs() -> Result<(), ConfigError> {
         setup_test_env();
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
-        let config = ConfigBuilder::load(Logger::default())?.profile("append").build()?;
+        let config = ConfigBuilder::load()?.profile("append").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_dls/append"), config.download_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_ins/append"), config.install_dir());
         Ok(())
@@ -468,7 +452,7 @@ pub mod tests {
     #[ignore]
     fn relative_paths() -> Result<(), ConfigError> {
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
-        let config = ConfigBuilder::load(Logger::default())?.profile("relative_test").build()?;
+        let config = ConfigBuilder::load()?.profile("relative_test").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/relative_dls/"), config.download_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/relative_ins/"), config.install_dir());
         Ok(())
@@ -478,7 +462,7 @@ pub mod tests {
     #[ignore]
     fn absolute_paths() -> Result<(), ConfigError> {
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
-        let config = ConfigBuilder::load(Logger::default())?.profile("absolute_test").build()?;
+        let config = ConfigBuilder::load()?.profile("absolute_test").build()?;
         assert_eq!(PathBuf::from("/absolute_dls"), config.download_dir());
         assert_eq!(PathBuf::from("/absolute_ins"), config.install_dir());
         Ok(())
@@ -488,7 +472,7 @@ pub mod tests {
     #[ignore]
     fn profile_specific_install_dir() -> Result<(), ConfigError> {
         unsafe { env::set_var("HOME", "/home/dmodman_test") };
-        let config = ConfigBuilder::load(Logger::default())?.profile("insdir_only_test").build()?;
+        let config = ConfigBuilder::load()?.profile("insdir_only_test").build()?;
         assert_eq!(PathBuf::from("/home/dmodman_test/insdir_only"), config.install_dir());
         assert_eq!(PathBuf::from("/home/dmodman_test/toplevel_dls"), config.download_dir());
         Ok(())

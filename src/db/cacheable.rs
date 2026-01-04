@@ -6,8 +6,7 @@ use std::{fs, fs::File};
 
 pub trait Cacheable: Serialize + DeserializeOwned + Send
 where
-    Self: 'static,
-{
+    Self: 'static, {
     async fn save<T: Into<PathBuf>>(&self, path: T) -> Result<(), Error> {
         let path = path.into();
         let data = serde_json::to_string_pretty(&self)?;
@@ -38,17 +37,17 @@ where
 
     async fn load<T: Into<PathBuf>>(path: T) -> Result<Self, Error> {
         let path = path.into();
-        tokio::task::spawn_blocking(move || {
-            if let Ok(zst_file) = File::open(path.with_extension("json.zst")) {
-                let decoder = zstd::Decoder::new(zst_file)?;
-                let mut reader = BufReader::new(decoder);
-                Ok(serde_json::from_reader(&mut reader)?)
-            } else {
-                Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
-            }
-        })
-        .await
-        .unwrap()
+        tokio::task::spawn_blocking(move || Self::load_blocking(path)).await.unwrap()
+    }
+
+    fn load_blocking(path: PathBuf) -> Result<Self, Error> {
+        if let Ok(zst_file) = File::open(path.with_extension("json.zst")) {
+            let decoder = zstd::Decoder::new(zst_file)?;
+            let mut reader = BufReader::new(decoder);
+            Ok(serde_json::from_reader(&mut reader)?)
+        } else {
+            Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
+        }
     }
 }
 
@@ -57,7 +56,6 @@ mod tests {
     use super::Cacheable;
     use crate::api::{ApiError, FileList, ModInfo};
     use crate::config::{ConfigBuilder, DataPath};
-    use crate::Logger;
     use std::path::PathBuf;
 
     #[tokio::test]
@@ -66,7 +64,7 @@ mod tests {
         let game = "morrowind";
         let mod_id = 46599;
 
-        let config = ConfigBuilder::load(Logger::default()).unwrap().profile(profile).build().unwrap();
+        let config = ConfigBuilder::load().unwrap().profile(profile).build().unwrap();
         let path: PathBuf = DataPath::ModInfo(&config, game, mod_id).into();
         println!("{:?}", path);
 

@@ -1,7 +1,7 @@
 use super::Cacheable;
 use crate::api::ModInfo;
 use crate::config::DataPath;
-use crate::{Config, Logger};
+use crate::Config;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -11,17 +11,14 @@ type Map<K, V> = Arc<RwLock<HashMap<K, V>>>;
 
 #[derive(Clone)]
 pub struct ModInfoMap {
-    config: Arc<Config>,
-    #[allow(dead_code)]
-    logger: Logger,
+    config: Config,
     map: Map<(String, u32), Option<Arc<ModInfo>>>,
 }
 
 impl ModInfoMap {
-    pub fn new(config: Arc<Config>, logger: Logger) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             config,
-            logger,
             map: Default::default(),
         }
     }
@@ -50,5 +47,3 @@ impl ModInfoMap {
         }
     }
 }
-
-

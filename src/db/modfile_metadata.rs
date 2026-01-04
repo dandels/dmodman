@@ -1,9 +1,9 @@
 use crate::api::downloads::FileInfo;
 use crate::api::{FileDetails, ModInfo, UpdateStatus, UpdateStatusWrapper};
-use crate::db::{ArchiveFile, ArchiveStatus, Cacheable};
 use crate::config::{Config, DataPath};
+use crate::db::{ArchiveFile, ArchiveStatus, Cacheable};
 use crate::extract::{InstalledMod, ModDirectory};
-use crate::Logger;
+use crate::prelude::*;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -98,13 +98,13 @@ impl ModFileMetadata {
         None
     }
 
-    pub async fn propagate_update_status(&self, config: &Config, logger: &Logger, status: &UpdateStatus) {
+    pub async fn propagate_update_status(&self, config: &Config, status: &UpdateStatus) {
         self.update_status.set(status.clone());
         for (_, archive) in self.mod_archives.write().await.iter() {
             if let Some(metadata) = &archive.mod_data {
                 metadata.update_status.set(status.clone());
                 if let Err(e) = metadata.save(DataPath::ArchiveMetadata(config, &archive.file_name)).await {
-                    logger.log(format!("Couldn't save UpdateStatus for {}: {}", archive.file_name, e));
+                    LOGGER.log(format!("Couldn't save UpdateStatus for {}: {}", archive.file_name, e));
                 }
             }
         }
@@ -113,7 +113,7 @@ impl ModFileMetadata {
             if let Err(e) =
                 ModDirectory::Nexus(installed.clone()).save(DataPath::ModDirMetadata(config, dir_name)).await
             {
-                logger.log(format!("Couldn't save UpdateStatus for {}: {}", dir_name, e));
+                LOGGER.log(format!("Couldn't save UpdateStatus for {}: {}", dir_name, e));
             }
         }
     }

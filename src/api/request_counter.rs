@@ -1,9 +1,7 @@
+use crate::prelude::*;
 use reqwest::header::HeaderMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-use crate::events::EventSource;
-use crate::events::EventTx;
 
 #[derive(Debug, Default)]
 pub struct Counter {
@@ -14,14 +12,12 @@ pub struct Counter {
 #[derive(Clone)]
 pub struct RequestCounter {
     pub counter: Arc<RwLock<Counter>>,
-    event_tx: EventTx,
 }
 
 impl RequestCounter {
-    pub fn new(event_tx: EventTx) -> Self {
+    pub fn new() -> Self {
         Self {
             counter: Default::default(),
-            event_tx,
         }
     }
 
@@ -34,6 +30,6 @@ impl RequestCounter {
         if let Some(value) = headers.get("x-rl-hourly-remaining") {
             counter.hourly_remaining = value.to_str().map_or(None, |v| str::parse::<u16>(v).ok());
         }
-        self.event_tx.send(EventSource::RequestCounter)
+        EVENTS.send(EventSource::RequestCounter)
     }
 }

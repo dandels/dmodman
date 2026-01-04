@@ -1,10 +1,9 @@
 use super::{CacheError, Cacheable};
 use crate::api::{FileDetails, FileList};
 use crate::config::{Config, DataPath};
-use crate::Logger;
+use crate::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::fs;
 use tokio::sync::RwLock;
 
 type Map<K, V> = Arc<RwLock<HashMap<K, V>>>;
@@ -12,18 +11,16 @@ type Map<K, V> = Arc<RwLock<HashMap<K, V>>>;
 #[derive(Clone)]
 pub struct FileLists {
     map: Map<(String, u32), Option<Arc<FileList>>>,
-    config: Arc<Config>,
-    logger: Logger,
+    config: Config,
 }
 
 impl FileLists {
-    pub async fn new(config: Arc<Config>, logger: Logger) -> Result<Self, CacheError> {
-        fs::create_dir_all(config.data_dir()).await?;
+    pub fn new(config: Config) -> Result<Self, CacheError> {
+        std::fs::create_dir_all(config.data_dir())?;
 
         Ok(Self {
             map: Default::default(),
             config,
-            logger,
         })
     }
 
@@ -55,8 +52,8 @@ impl FileLists {
                                 Some(fl)
                             }
                             Err(_) => {
-                                self.logger.log(format!("Failed to read file list from {path:?}:"));
-                                self.logger.log(format!("    {e}"));
+                                log(format!("Failed to read file list from {path:?}:"));
+                                log(format!("    {e}"));
                                 // Cache negative result to reduce IO
                                 lock.insert((game, mod_id), None);
                                 None

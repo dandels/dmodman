@@ -2,8 +2,9 @@ pub use super::downloads::nxm_url::*;
 use super::nexus_api::*;
 use crate::api::ApiError;
 use crate::db::ModFileMetadata;
+use crate::prelude::*;
 use crate::util;
-use crate::{Client, Config, Db, Logger};
+use crate::{Client, Db};
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 use url::Url;
@@ -14,19 +15,11 @@ const SEARCH_URL: &str = "https://search.nexusmods.com/mods";
 pub struct Query {
     cache: Db,
     client: Client,
-    #[allow(dead_code)]
-    config: Arc<Config>,
-    logger: Logger,
 }
 
 impl Query {
-    pub fn new(cache: Db, client: Client, config: Arc<Config>, logger: Logger) -> Self {
-        Self {
-            cache,
-            client,
-            config,
-            logger,
-        }
+    pub fn new(cache: Db, client: Client) -> Self {
+        Self { cache, client }
     }
 
     pub async fn verify_metadata(&self, mfd: Arc<ModFileMetadata>) {
@@ -62,7 +55,7 @@ impl Query {
                 match Url::parse(&location.URI) {
                     Ok(url) => Ok(url),
                     Err(e) => {
-                        self.logger.log(format!(
+                        LOGGER.log(format!(
                             "Failed to parse URI in response from Nexus: {}. Please file a bug report.",
                             &location.URI
                         ));
@@ -71,7 +64,7 @@ impl Query {
                 }
             }
             Err(e) => {
-                self.logger.log(format!("Failed to query download links from Nexus: {}", e));
+                LOGGER.log(format!("Failed to query download links from Nexus: {}", e));
                 Err(e)
             }
         }
@@ -103,29 +96,29 @@ impl Query {
                         self.cache.save_modinfo(md5result.mod_info.clone()).await;
                         Ok(md5result.clone())
                     } else {
-                        self.logger.log(format!(
+                        LOGGER.log(format!(
                             "Warning: API returned unexpected response when checking hash for {}",
                             &file_name
                         ));
                         let mi = &md5result.mod_info;
                         let fd = &md5result.file_details;
-                        self.logger.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name));
+                        LOGGER.log(format!("Found {:?}: {} ({})", mi.name, fd.name, fd.file_name));
                         Err(ApiError::HashMismatch)
                     }
                 }
                 None => {
-                    self.logger.log(format!("Failed to verify hash for {}. Found this instead:", file_name));
+                    LOGGER.log(format!("Failed to verify hash for {}. Found this instead:", file_name));
                     for res in &query_res.results {
                         let mi = &res.mod_info;
                         let fd = &res.file_details;
-                        self.logger.log(format!("\t{:?}: {} ({})", mi.name, fd.name, fd.file_name));
+                        LOGGER.log(format!("\t{:?}: {} ({})", mi.name, fd.name, fd.file_name));
                     }
                     Err(ApiError::HashMismatch)
                 }
             },
             Err(e) => {
-                self.logger.log(format!("Unable to verify integrity of {}: {e}", &file_name));
-                self.logger.log("This could mean the download got corrupted.");
+                LOGGER.log(format!("Unable to verify integrity of {}: {e}", &file_name));
+                LOGGER.log("This could mean the download got corrupted.");
                 Err(e)
             }
         }
@@ -161,15 +154,15 @@ pub trait Queriable: DeserializeOwned {
 #[cfg(test)]
 mod tests {
     use crate::api::{ApiError, Client, Query};
+    use crate::config::Config;
     use crate::db::Db;
-    use crate::util::test;
 
     #[tokio::test]
     async fn block_test_request() -> Result<(), ApiError> {
-        let (config, logger, event_tx) = test::init_structs();
-        let cache = Db::new(config.clone(), logger.clone(), event_tx.clone()).await.unwrap();
-        let client = Client::new(&config, event_tx).await;
-        let query = Query::new(cache.clone(), client.clone(), config.clone(), logger.clone());
+        let config = Config::default();
+        let client = Client::new(&config);
+        let cache = Db::new(config).await.unwrap();
+        let query = Query::new(cache.clone(), client.clone());
 
         let game = "morrowind";
         let mod_id = 46599;

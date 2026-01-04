@@ -4,6 +4,7 @@ use super::main_ui::*;
 use super::tabs::FocusedWidget;
 use crate::db::ArchiveEntry;
 use crate::extract::{InstallError, ModDirectory};
+use crate::LOGGER;
 use std::process::Command;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
@@ -37,9 +38,9 @@ pub const INPUT_DIALOG_KEYS: &[(&str, &str)] = &[
 impl MainUI<'_> {
     pub async fn handle_input(&mut self, event: Event) {
         //MouseEvent::Press(mouse_event, x, y) => {
-        //self.logger.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
+        //LOGGER.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
         //Event::Unsupported(u) => {
-        //self.logger.log(format!("Unsupported: {u:?}"));
+        //LOGGER.log(format!("Unsupported: {u:?}"));
         if let InputMode::Confirm = self.input_mode {
             self.handle_confirm_dialog(event).await;
             return;
@@ -55,8 +56,8 @@ impl MainUI<'_> {
             if self.installer.extract_jobs.read().await.is_empty() {
                 self.should_run = false;
             } else {
-                self.logger.log("Refusing to quit, archive extraction is still in progress.");
-                self.logger.log("Press 'Ctrl + C' to force quit.");
+                LOGGER.log("Refusing to quit, archive extraction is still in progress.");
+                LOGGER.log("Press 'Ctrl + C' to force quit.");
             }
             return;
         }
@@ -143,7 +144,7 @@ impl MainUI<'_> {
                     if let Some((game, mod_id)) = args {
                         let url = format!("https://www.nexusmods.com/{}/mods/{}", game, mod_id);
                         if Command::new("xdg-open").arg(url).status().is_err() {
-                            self.logger.log("xdg-open is needed to open URLs in browser.".to_string());
+                            LOGGER.log("xdg-open is needed to open URLs in browser.".to_string());
                         }
                     }
                 }
@@ -254,7 +255,7 @@ impl MainUI<'_> {
 
             _ => {
                 // Uncomment to log keypresses
-                //self.logger.log(format!("{:?}", event));
+                //LOGGER.log(format!("{:?}", event));
             }
         }
         match self.tabs.focused_widget_type() {
@@ -306,7 +307,7 @@ impl MainUI<'_> {
                             }
                         }
                     } else {
-                        self.logger.log(format!("Warn: mod for {} doesn't exist in db", &file_name));
+                        LOGGER.log(format!("Warn: mod for {} doesn't exist in db", &file_name));
                     }
                     if suggested_values.is_empty() {
                         suggested_values.push(archive.file_name().clone());
@@ -324,11 +325,11 @@ impl MainUI<'_> {
                         match res {
                             Ok(content) => {
                                 for c in content {
-                                    self.logger.log(c.to_string());
+                                    LOGGER.log(c.to_string());
                                 }
                             }
                             Err(e) => {
-                                self.logger.log(format!("{:?}", e));
+                                LOGGER.log(format!("{:?}", e));
                             }
                         }
                     }
@@ -364,7 +365,7 @@ impl MainUI<'_> {
                         let (file_name, _archive) = self.tabs.archive_table.get_by_index(index);
                         if let Err(e) = self.installer.extract(file_name.to_string(), dest_dir.to_string(), true).await
                         {
-                            self.logger.log(format!("Error when extracting {file_name}: {e}"));
+                            LOGGER.log(format!("Error when extracting {file_name}: {e}"));
                         }
                         self.input_mode = InputMode::Normal;
                     } else {
@@ -400,7 +401,7 @@ impl MainUI<'_> {
                             self.input_mode = InputMode::Confirm;
                         }
                         Err(e) => {
-                            self.logger.log(format!("Failed to extract to {dest_dir}: {}", e));
+                            LOGGER.log(format!("Failed to extract to {dest_dir}: {}", e));
                             self.input_mode = InputMode::Normal;
                         }
                     }

@@ -1,7 +1,5 @@
 use super::*;
-use crate::config::Config;
 use crate::extract::*;
-use crate::Logger;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,11 +9,6 @@ type Map<K, V> = Arc<RwLock<HashMap<K, V>>>;
 
 #[derive(Clone)]
 pub struct MetadataIndex {
-    #[allow(dead_code)]
-    config: Arc<Config>,
-    #[allow(dead_code)]
-    logger: Logger,
-
     // references to other cache fields
     file_lists: FileLists,
     mod_info_map: ModInfoMap,
@@ -27,10 +20,8 @@ pub struct MetadataIndex {
 }
 
 impl MetadataIndex {
-    pub async fn new(config: Arc<Config>, logger: Logger, file_lists: FileLists, mod_info_map: ModInfoMap) -> Self {
+    pub fn new(file_lists: FileLists, mod_info_map: ModInfoMap) -> Self {
         Self {
-            config,
-            logger: logger.clone(),
             by_file_id: Default::default(),
             by_game_and_mod_sorted: Default::default(),
             by_archive_name: Default::default(),
@@ -94,16 +85,12 @@ impl MetadataIndex {
         let mfd = match self.get_by_file_id(&metadata.file_id).await {
             Some(mfd) => mfd,
             None => {
-                let mfd = Arc::new(ModFileMetadata::new(
-                    metadata.game.clone(),
-                    metadata.mod_id,
-                    metadata.file_id,
-                ));
+                let mfd = Arc::new(ModFileMetadata::new(metadata.game.clone(), metadata.mod_id, metadata.file_id));
                 if let ArchiveEntry::File(archive) = &archive_entry {
                     mfd.add_archive(archive.clone()).await;
                 }
                 mfd
-            },
+            }
         };
 
         self.fill_mod_file_data(&mfd).await;

@@ -2,16 +2,14 @@ use std::io::Stdout;
 
 use super::component::*;
 use crate::api::{Downloads, Query, UpdateChecker};
-use crate::config::Config;
 use crate::db::Db;
-use crate::events::EventRx;
 use crate::events::EventSource;
 use crate::extract::Installer;
+use crate::prelude::*;
 use crate::ui::rectangles::Rectangles;
 use crate::ui::tabs::{FocusedWidget, TabWidgets};
 use crate::ui::*;
-use crate::LibDmodman;
-use crate::Logger;
+use crate::Lib;
 use ratatui::layout::Rect;
 use ratatui::prelude::TermionBackend;
 use ratatui::widgets::WidgetRef;
@@ -46,10 +44,8 @@ type TermBackend = TermionBackend<AlternateScreen<MouseTerminal<RawTerminal<Stdo
 
 pub struct MainUI<'a> {
     // Backend structs
-    pub logger: Logger,
     pub installer: Installer,
     pub db: Db,
-    pub config: Arc<Config>,
     pub downloads: Downloads,
     pub query: Query,
     pub updater: UpdateChecker,
@@ -75,25 +71,16 @@ pub struct MainUI<'a> {
 }
 
 impl MainUI<'_> {
-    pub async fn start(lib: LibDmodman) {
-        let LibDmodman {
+    pub async fn start(lib: Lib) {
+        let Lib {
             db,
             client,
             config,
             downloads,
-            events,
-            logger,
             query,
         } = lib;
-        let installer = Installer::new(config.clone(), db.clone(), events.tx.clone(), logger.clone()).await;
-        let updater = UpdateChecker::new(
-            db.clone(),
-            client.clone(),
-            config.clone(),
-            logger.clone(),
-            query.clone(),
-            events.tx.clone(),
-        );
+        let installer = Installer::new(config.clone(), db.clone()).await;
+        let updater = UpdateChecker::new(db.clone(), client.clone(), config.clone(), query.clone());
 
         // Generic widgets
         let bottom_bar = BottomBar::new(db.clone());
@@ -103,14 +90,13 @@ impl MainUI<'_> {
         let requests_widget = RequestCounterWidget::new(client.request_counter.clone()).await;
 
         // Contains tab and tab-switchable widgets
-        let tabs = TabWidgets::new(db.clone(), downloads.clone(), logger.clone()).await;
+        let tabs = TabWidgets::new(db.clone(), downloads.clone()).await;
 
         let terminal = init_term().expect("Failed to initialize terminal: {}");
         let (ui_events_tx, ui_events_rx) = mpsc::unbounded_channel::<NeedsRefresh>();
 
         let ui = Self {
             db,
-            config,
             downloads,
             installer,
             query,
@@ -121,7 +107,6 @@ impl MainUI<'_> {
             popup_dialog,
             input_mode: InputMode::default(),
             updater,
-            logger,
             rectangles: Rectangles::new(tabs.focused_tab().widget_types.len()),
             tabs,
             // nav,
@@ -129,7 +114,7 @@ impl MainUI<'_> {
             terminal,
             ui_events_tx,
         };
-        ui.run(events.rx, ui_events_rx).await
+        ui.run(ui_events_rx).await
     }
 
     fn recalc_rects(&mut self) {
@@ -140,13 +125,13 @@ impl MainUI<'_> {
     }
 
     // This contains the main UI loop.
-    async fn run(mut self, backend_events_rx: EventRx, ui_events_rx: UnboundedReceiver<NeedsRefresh>) {
+    async fn run(mut self, ui_events_rx: UnboundedReceiver<NeedsRefresh>) {
         // X11/Wayland sends SIGWINCH when the window is resized
         let signals = Signals::new([SIGWINCH]).unwrap();
         let input = InputEvents::new();
 
         let input_stream = UnboundedReceiverStream::new(input.rx).map(UIEvent::Terminal);
-        let backend_stream = UnboundedReceiverStream::new(backend_events_rx.inner).map(UIEvent::Backend);
+        let backend_stream = UnboundedReceiverStream::new(EVENTS.take_rx().unwrap()).map(UIEvent::Backend);
         let ui_event_stream = UnboundedReceiverStream::new(ui_events_rx).map(UIEvent::Frontend);
         let signals_iter = signals.map(|_e| UIEvent::SigWinch);
         let mut event_stream = input_stream.merge(signals_iter).merge(backend_stream).merge(ui_event_stream);

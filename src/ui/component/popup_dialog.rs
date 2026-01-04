@@ -6,12 +6,11 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, List, ListState, Paragraph};
 use ratatui::Frame;
 use std::path::Path;
-use std::sync::Arc;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use tui_textarea::{CursorMove, TextArea};
 
 pub struct PopupDialog<'a> {
-    config: Arc<Config>,
+    config: Config,
     pub textbox: TextArea<'a>,
     pub description: Paragraph<'a>,
     pub prompt: Paragraph<'a>,
@@ -25,7 +24,7 @@ pub struct PopupDialog<'a> {
 }
 
 impl PopupDialog<'_> {
-    pub fn init(config: Arc<Config>) -> Self {
+    pub fn init(config: Config) -> Self {
         Self {
             config,
             description: Default::default(),

@@ -4,7 +4,6 @@ use std::fmt;
 use std::num::ParseIntError;
 use tokio::io;
 use tokio::task::JoinError;
-use tokio_tungstenite::tungstenite;
 use url::ParseError;
 
 #[derive(Debug)]

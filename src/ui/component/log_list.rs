@@ -1,13 +1,13 @@
+use crate::LOGGER;
+
 use super::common::*;
 use super::traits::Select;
-use crate::Logger;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, List, ListItem, ListState};
 
 pub struct LogWidget<'a> {
     list_items: Vec<ListItem<'a>>,
-    logger: Logger,
     pub block: Block<'a>,
     pub state: ListState,
     pub highlight_style: Style,
@@ -16,12 +16,11 @@ pub struct LogWidget<'a> {
 }
 
 impl<'a> LogWidget<'a> {
-    pub fn new(logger: Logger) -> Self {
+    pub fn new() -> Self {
         let block = DEFAULT_BLOCK.title(" Log ");
         let widget = List::default().block(block.clone());
         Self {
             list_items: vec![],
-            logger: logger.clone(),
             block,
             state: ListState::default(),
             highlight_style: Style::default(),
@@ -33,7 +32,7 @@ impl<'a> LogWidget<'a> {
     /* TODO there is an open issue for ratatui for word wrapping list items. Until then we can't properly show
      * long error messages: https://github.com/ratatui-org/ratatui/issues/128 */
     pub async fn refresh(&mut self) {
-        let mut msgs_lock = self.logger.messages.write().unwrap();
+        let mut msgs_lock = LOGGER.messages.write().unwrap();
         self.list_items
             .append(&mut msgs_lock.drain(..).map(|msg| ListItem::new(Line::from(msg.to_owned()))).collect());
         let old_last_index = self.len.checked_sub(1);

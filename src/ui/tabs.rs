@@ -1,17 +1,14 @@
 use super::component::*;
-use crate::events::EventSource;
 use crate::ui::component::traits::{FocusableComponent, Select};
 use crate::{
     api::{Client, Downloads},
     config::Config,
     db::Db,
-    logger::Logger,
     ui::{
         component::{ArchivesWidget, DownloadsWidget},
         tab::Tab,
     },
 };
-use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum FocusedWidget {
@@ -42,13 +39,7 @@ pub struct WidgetContainer<'a> {
 }
 
 impl<'a> WidgetContainer<'a> {
-    pub async fn create_tabs(
-        config: Arc<Config>,
-        client: Client,
-        db: Db,
-        downloads: Downloads,
-        logger: Logger,
-    ) -> Self {
+    pub async fn create_tabs(config: Config, client: Client, db: Db, downloads: Downloads) -> Self {
         // let tabs = Tabs::new().await;
         // let bottom_bar = BottomBar::new(db, tabs.clone());
         // let confirm_dialog = ConfirmDialog::default();
@@ -56,11 +47,11 @@ impl<'a> WidgetContainer<'a> {
         // let popup_dialog = PopupDialog::new(config.clone());
         // let top_bar = TopBar::new(client.request_counter).await;
 
-        let tabs = TabWidgets::new(db.clone(), downloads.clone(), logger.clone()).await;
+        let tabs = TabWidgets::new(db.clone(), downloads.clone()).await;
         let bottom_bar = BottomBar::new(db);
         let confirm_dialog = ConfirmDialog::default();
         let hotkey_bar = HotkeyBar::new();
-        let popup_dialog = PopupDialog::init(config.clone());
+        let popup_dialog = PopupDialog::init(config);
         let top_bar = RequestCounterWidget::new(client.request_counter).await;
 
         Self {
@@ -94,7 +85,7 @@ pub struct TabWidgets<'a> {
 }
 
 impl<'a> TabWidgets<'a> {
-    pub async fn new(db: Db, downloads: Downloads, logger: Logger) -> Self {
+    pub async fn new(db: Db, downloads: Downloads) -> Self {
         let tabs: Vec<(Tab, bool)> = [
             Tab::new(&[FocusedWidget::ArchiveTable, FocusedWidget::DownloadTable]),
             Tab::new(&[FocusedWidget::InstalledMods]),
@@ -108,7 +99,7 @@ impl<'a> TabWidgets<'a> {
         let installed_mods_table = InstalledModsWidget::new(db.installed.clone());
         let archives_table = ArchivesWidget::new(db);
         let downloads_table = DownloadsWidget::new(downloads);
-        let log_list = LogWidget::new(logger);
+        let log_list = LogWidget::new();
 
         let mut ret = Self {
             tab_display,

@@ -20,8 +20,7 @@ pub use modinfo_map::*;
 
 use crate::api::{DownloadLink, FileList, Md5Result, ModInfo};
 use crate::config::{Config, DataPath};
-use crate::events::EventTx;
-use crate::Logger;
+use crate::prelude::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::fs;
@@ -31,8 +30,7 @@ use tokio::io::AsyncWriteExt;
 
 #[derive(Clone)]
 pub struct Db {
-    config: Arc<Config>,
-    logger: Logger,
+    config: Config,
     pub archives: ArchiveFiles,
     pub file_lists: FileLists,
     pub metadata_index: MetadataIndex,
@@ -43,24 +41,17 @@ pub struct Db {
 }
 
 impl Db {
-    pub async fn new(config: Arc<Config>, logger: Logger, event_tx: EventTx) -> Result<Self, CacheError> {
-        let file_lists = FileLists::new(config.clone(), logger.clone()).await?;
-        let md5result = Md5ResultMap::new(config.clone(), logger.clone());
-        let mod_info = ModInfoMap::new(config.clone(), logger.clone());
-
-        let metadata_index =
-            MetadataIndex::new(config.clone(), logger.clone(), file_lists.clone(), mod_info.clone()).await;
-
-        let installed = Installed::new(config.clone(), event_tx.clone(), logger.clone(), metadata_index.clone()).await;
-
-        let archives =
-            ArchiveFiles::new(config.clone(), event_tx, logger.clone(), installed.clone(), metadata_index.clone())
-                .await;
+    pub async fn new(config: Config) -> Result<Self, CacheError> {
+        let file_lists = FileLists::new(config.clone())?;
+        let md5result = Md5ResultMap::new(config.clone());
+        let mod_info = ModInfoMap::new(config.clone());
+        let metadata_index = MetadataIndex::new(file_lists.clone(), mod_info.clone());
+        let installed = Installed::new(config.clone(), metadata_index.clone()).await;
+        let archives = ArchiveFiles::new(config.clone(), installed.clone(), metadata_index.clone()).await;
         let last_update_check = Arc::new(try_read_last_updated(&config).into());
 
         Ok(Self {
             config,
-            logger,
             archives,
             installed,
             file_lists,
@@ -124,13 +115,13 @@ impl Db {
             fl.file_updates.drain(..old_updates_start);
             fl.file_updates.shrink_to_fit();
         } else {
-            self.logger.log("No local file to compare with");
+            LOGGER.log("No local file to compare with");
         }
 
         let fl = Arc::new(fl);
         let path = DataPath::FileList(&self.config, game, mod_id);
         if let Err(e) = fl.save_compressed(path).await {
-            self.logger.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
+            LOGGER.log(format!("Unable to save file list for {} mod {}: {}", game, mod_id, e));
         }
         self.file_lists.insert((game, mod_id), fl.clone()).await;
         fl
@@ -139,7 +130,7 @@ impl Db {
     pub async fn save_modinfo(&self, mi: Arc<ModInfo>) {
         let path = DataPath::ModInfo(&self.config, &mi.domain_name, mi.mod_id);
         if let Err(e) = mi.save_compressed(path).await {
-            self.logger.log(format!("Failed to save ModInfo to disk: {e}"));
+            LOGGER.log(format!("Failed to save ModInfo to disk: {e}"));
         }
         if let Some(files) = self.metadata_index.get_modfiles(&mi.domain_name, &mi.mod_id).await {
             for mfd in files {
@@ -158,7 +149,7 @@ impl Db {
         let game = &res.mod_info.domain_name;
         let path = DataPath::Md5Results(&self.config, game, res.file_details.file_id);
         if let Err(e) = res.save_compressed(path).await {
-            self.logger.log(format!("Failed to save Md5Search to disk: {e}"));
+            LOGGER.log(format!("Failed to save Md5Search to disk: {e}"));
         }
         self.md5result.insert(game.clone(), res.clone()).await;
     }
@@ -187,15 +178,15 @@ fn try_read_last_updated(config: &Config) -> u64 {
 mod test {
     use super::CacheError;
     use super::Db;
-    use crate::util::test;
+    use crate::config::ConfigBuilder;
 
     #[tokio::test]
     async fn load_file_details() -> Result<(), CacheError> {
         crate::config::tests::setup_test_env();
         let profile = "testprofile";
         let file_id = 82041;
-        let (config, logger, event_tx) = test::init_structs_with_profile(profile);
-        let db = Db::new(config, logger, event_tx).await?;
+        let config = ConfigBuilder::default().profile(profile).build().unwrap();
+        let db = Db::new(config).await?;
 
         let fdata = db.metadata_index.get_by_file_id(&file_id).await.unwrap();
         assert_eq!(fdata.file_id, file_id);

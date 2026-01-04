@@ -4,7 +4,7 @@ use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
-pub async fn start_apikey_flow() -> Option<String> {
+pub fn start_apikey_flow() -> Option<String> {
     println!("dmodman requires an API key to work.");
     println!("Would you like to create one?");
     println!("[y]es, [n]o");
@@ -16,7 +16,7 @@ pub async fn start_apikey_flow() -> Option<String> {
 
     let mut sso_client;
     loop {
-        match SsoClient::new().await {
+        match SsoClient::new() {
             Ok(c) => {
                 sso_client = c;
                 break;
@@ -32,12 +32,12 @@ pub async fn start_apikey_flow() -> Option<String> {
     }
 
     while yes {
-        match sso_client.start_flow().await {
+        match sso_client.start_flow() {
             Ok(()) => {
                 println!("Succesfully connected to Nexus.");
                 println!("Open the following URL in your browser to authorise dmodman.");
                 println!("{}", sso_client.get_url());
-                match sso_client.wait_apikey_response().await {
+                match sso_client.wait_apikey_response() {
                     Ok(sso_resp) => {
                         if sso_resp.data.api_key.is_some() {
                             if !sso_resp.success {
@@ -68,7 +68,7 @@ pub async fn start_apikey_flow() -> Option<String> {
         println!("[y]es, [n]o");
         yes = read_y_n();
     }
-    let _ = sso_client.close_connection().await;
+    let _ = sso_client.close_connection();
     None
 }
 

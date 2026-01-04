@@ -1,6 +1,4 @@
 pub mod format;
-#[cfg(test)]
-pub mod test;
 
 use md5::{Digest, Md5};
 use std::path::PathBuf;

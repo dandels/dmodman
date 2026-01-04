@@ -3,8 +3,7 @@ use crate::api::downloads::FileInfo;
 use crate::api::update_status::*;
 use crate::config::Config;
 use crate::db::{Cacheable, Installed};
-use crate::events::{EventSource, EventTx};
-use crate::Logger;
+use crate::prelude::*;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
@@ -19,21 +18,13 @@ use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ArchiveFiles {
-    config: Arc<Config>,
-    event_tx: EventTx,
-    logger: Logger,
+    config: Config,
     metadata_index: MetadataIndex,
     pub files: Arc<RwLock<IndexMap<String, ArchiveEntry>>>, // indexed by name
 }
 
 impl ArchiveFiles {
-    pub async fn new(
-        config: Arc<Config>,
-        event_tx: EventTx,
-        logger: Logger,
-        installed: Installed,
-        file_index: MetadataIndex,
-    ) -> Self {
+    pub async fn new(config: Config, installed: Installed, file_index: MetadataIndex) -> Self {
         // TODO fix error handling here
         std::fs::create_dir_all(config.download_dir()).unwrap();
 
@@ -67,7 +58,7 @@ impl ArchiveFiles {
                         files.insert(entry.file_name().clone(), entry);
                     }
                     Err(e) => {
-                        logger.log(format!("Failed to deserialize {} as archive metadata: {e}", file_name));
+                        LOGGER.log(format!("Failed to deserialize {} as archive metadata: {e}", file_name));
                     }
                 };
             // Archive exists, might also have .json file
@@ -78,12 +69,12 @@ impl ArchiveFiles {
                     Err(e) => {
                         // Only log error if it's for some other reason than NotFound
                         if e.kind() != std::io::ErrorKind::NotFound {
-                            logger.log(format!("{} is missing its metadata: {e}", file_name));
+                            LOGGER.log(format!("{} is missing its metadata: {e}", file_name));
                         }
                         None
                     }
                 };
-                if let Ok(af) = ArchiveFile::new(&logger, &installed, &path, mod_data).await {
+                if let Ok(af) = ArchiveFile::new(&installed, &path, mod_data).await {
                     let entry = ArchiveEntry::File(Arc::new(af));
                     file_index.try_add_mod_archive(entry.clone()).await;
                     files.insert(entry.file_name().clone(), entry);
@@ -92,8 +83,6 @@ impl ArchiveFiles {
         }
         Self {
             config,
-            event_tx,
-            logger,
             metadata_index: file_index,
             files: Arc::new(RwLock::new(files)),
         }
@@ -102,7 +91,7 @@ impl ArchiveFiles {
     pub async fn add_archive(&self, archive: ArchiveEntry) {
         self.metadata_index.try_add_mod_archive(archive.clone()).await;
         self.files.write().await.insert(archive.file_name().clone(), archive);
-        self.event_tx.send(EventSource::Archives);
+        EVENTS.send(EventSource::Archives);
     }
 
     pub async fn get(&self, file_name: &str) -> Option<ArchiveEntry> {
@@ -115,7 +104,7 @@ impl ArchiveFiles {
             let path = self.config.download_dir().join(file_name);
             if path.exists() {
                 if let Err(e) = fs::remove_file(&path).await {
-                    self.logger.log(format!("Error when removing file: {e}"));
+                    LOGGER.log(format!("Error when removing file: {e}"));
                     return;
                 }
             }
@@ -123,12 +112,12 @@ impl ArchiveFiles {
             let json_file = path.with_file_name(format!("{}.json", json_file_name));
             if json_file.exists() {
                 if let Err(e) = fs::remove_file(&json_file).await {
-                    self.logger.log(format!("Error when removing file: {e}"));
+                    LOGGER.log(format!("Error when removing file: {e}"));
                     return;
                 }
             }
             lock.shift_remove(file_name);
-            self.event_tx.send(EventSource::Archives);
+            EVENTS.send(EventSource::Archives);
         }
     }
 }
@@ -142,7 +131,6 @@ pub struct ArchiveFile {
 
 impl ArchiveFile {
     pub async fn new(
-        logger: &Logger,
         installed: &Installed,
         path: &PathBuf,
         mod_data: Option<Arc<ArchiveMetadata>>,
@@ -152,12 +140,12 @@ impl ArchiveFile {
             Ok(file) => match file.metadata().await {
                 Ok(md) => md.len(),
                 Err(e) => {
-                    logger.log(format!("Unable to get file metadata of {}: {e}", file_name));
+                    LOGGER.log(format!("Unable to get file metadata of {}: {e}", file_name));
                     return Err(e);
                 }
             },
             Err(e) => {
-                logger.log(format!("Unable to open {} for reading its metadata: {e}", file_name));
+                LOGGER.log(format!("Unable to open {} for reading its metadata: {e}", file_name));
                 return Err(e);
             }
         };

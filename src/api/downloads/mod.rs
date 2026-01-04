@@ -13,9 +13,8 @@ use crate::api::Query;
 use crate::api::{ApiError, Client, UpdateStatus};
 use crate::config::{Config, DataPath};
 use crate::db::{ArchiveEntry, ArchiveFile, ArchiveMetadata, Cacheable, Db, ModFileMetadata};
-use crate::events::EventSource;
-use crate::events::EventTx;
-use crate::{util, Logger};
+use crate::prelude::*;
+use crate::util;
 use indexmap::IndexMap;
 use std::ffi::OsStr;
 use std::io::ErrorKind;
@@ -27,30 +26,19 @@ use tokio::sync::RwLock;
 #[derive(Clone)]
 pub struct Downloads {
     pub tasks: Arc<RwLock<IndexMap<u64, DownloadTask>>>,
-    event_tx: EventTx,
-    logger: Logger,
     cache: Db,
     client: Client,
-    config: Arc<Config>,
+    config: Config,
     query: Query,
 }
 
 impl Downloads {
-    pub async fn new(
-        cache: Db,
-        client: Client,
-        config: Arc<Config>,
-        event_tx: EventTx,
-        logger: Logger,
-        query: Query,
-    ) -> Self {
+    pub fn new(cache: Db, client: Client, config: Config, query: Query) -> Self {
         Self {
-            tasks: Arc::new(RwLock::new(IndexMap::new())),
+            tasks: Default::default(),
             cache,
             client,
             config,
-            event_tx,
-            logger,
             query,
         }
     }
@@ -59,7 +47,7 @@ impl Downloads {
         let mut lock = self.tasks.write().await;
         let (_, task) = lock.get_index_mut(i).unwrap();
         task.toggle_pause().await;
-        self.event_tx.send(EventSource::Downloads);
+        EVENTS.send(EventSource::Downloads);
     }
 
     pub async fn try_queue(&self, nxm_str: &str) {
@@ -68,10 +56,10 @@ impl Downloads {
             Ok(n) => nxm = n,
             Err(e) => {
                 if let ApiError::Expired = e {
-                    self.logger.log(format!("nxm url has expired: {nxm_str}"));
+                    LOGGER.log(format!("nxm url has expired: {nxm_str}"));
                     return;
                 } else {
-                    self.logger.log(format!("Unable to parse string \"{nxm_str}\" as nxm url: {e}"));
+                    LOGGER.log(format!("Unable to parse string \"{nxm_str}\" as nxm url: {e}"));
                     return;
                 }
             }
@@ -86,26 +74,26 @@ impl Downloads {
         if let Some(task) = self.tasks.write().await.get_mut(&nxm.file_id) {
             match task.dl_info.get_state() {
                 DownloadState::Downloading => {
-                    self.logger.log(format!("Download of {} is already in progress.", file_name));
+                    LOGGER.log(format!("Download of {} is already in progress.", file_name));
                     return;
                 }
                 DownloadState::Done => {
-                    self.logger.log(format!(
+                    LOGGER.log(format!(
                         "{} was recently downloaded but no longer exists. Downloading again...",
                         file_name
                     ));
                     let _ = task.start().await;
-                    self.event_tx.send(EventSource::Downloads);
+                    EVENTS.send(EventSource::Downloads);
                     return;
                 }
                 // Restart the download using the new download link.
                 _ => {
                     task.dl_info.url = url.clone();
                     if let Err(()) = task.start().await {
-                        self.logger.log(format!("Failed to restart download for {}", &file_name));
+                        LOGGER.log(format!("Failed to restart download for {}", &file_name));
                     }
                     if let Err(e) = task.dl_info.save(DataPath::DownloadInfo(&self.config, &task.dl_info)).await {
-                        self.logger.log(format!("Couldn't store new download url for {}: {}", &file_name, e));
+                        LOGGER.log(format!("Couldn't store new download url for {}: {}", &file_name, e));
                     }
                     return;
                 }
@@ -120,8 +108,6 @@ impl Downloads {
             self.cache.clone(),
             self.client.clone(),
             self.config.clone(),
-            self.event_tx.clone(),
-            self.logger.clone(),
             dl_info.clone(),
             self.clone(),
             self.query.clone(),
@@ -134,7 +120,7 @@ impl Downloads {
             }
         }
         self.tasks.write().await.insert(dl_info.file_info.file_id, task);
-        self.event_tx.send(EventSource::Downloads);
+        EVENTS.send(EventSource::Downloads);
     }
 
     async fn refresh_update_status(&self, fi: &FileInfo) -> UpdateStatus {
@@ -154,13 +140,7 @@ impl Downloads {
                 for fdata in filedata_heap.iter() {
                     // TODO recover from UpdateStatus::Invalid
                     if let UpdateStatus::UpToDate(_) | UpdateStatus::HasNewFile(_) = fdata.update_status.to_enum() {
-                        fdata
-                            .propagate_update_status(
-                                &self.config,
-                                &self.logger,
-                                &UpdateStatus::UpToDate(latest_timestamp),
-                            )
-                            .await;
+                        fdata.propagate_update_status(&self.config, &UpdateStatus::UpToDate(latest_timestamp)).await;
                     } else {
                         // Probably doesn't make sense to do anything in the other cases..?
                     }
@@ -168,8 +148,7 @@ impl Downloads {
             }
             UpdateStatus::UpToDate(latest_timestamp)
         } else {
-            self.logger
-                .log(format!("Couldn't check update status for {}: file list doesn't exist in db.", fi.mod_id));
+            LOGGER.log(format!("Couldn't check update status for {}: file list doesn't exist in db.", fi.mod_id));
             UpdateStatus::Invalid(0)
         }
     }
@@ -189,14 +168,14 @@ impl Downloads {
         // If the mod info for this file doesn't exist, fetch it from the API
         if mfd.mod_info.read().await.is_none() {
             if let Err(e) = self.query.mod_info(&fi.game, fi.mod_id).await {
-                self.logger.log(format!("Failed to query mod info for {}: {e}", fi.file_name));
+                LOGGER.log(format!("Failed to query mod info for {}: {e}", fi.file_name));
             }
         }
 
         // Same for file list
         if mfd.file_details().await.is_none() {
             if let Err(e) = self.query.file_list(game, mod_id).await {
-                self.logger.log(format!("Failed to query file list for {}: {e}", fi.file_name));
+                LOGGER.log(format!("Failed to query file list for {}: {e}", fi.file_name));
             }
         }
 
@@ -205,16 +184,14 @@ impl Downloads {
         // Create the archive.json metadata file in the downloads directory
         let archive_json = Arc::new(ArchiveMetadata::new(fi.clone(), update_status));
         let path = self.config.download_dir().join(&fi.file_name);
-        if let Ok(archive) =
-            ArchiveFile::new(&self.logger, &self.cache.installed, &path, Some(archive_json.clone())).await
-        {
+        if let Ok(archive) = ArchiveFile::new(&self.cache.installed, &path, Some(archive_json.clone())).await {
             if let Err(e) = archive_json.save(DataPath::ArchiveMetadata(&self.config, &archive.file_name)).await {
-                self.logger.log(format!("Unable to save metadata for {}: {e}", &fi.file_name));
+                LOGGER.log(format!("Unable to save metadata for {}: {e}", &fi.file_name));
             }
             let entry = ArchiveEntry::File(Arc::new(archive));
             self.cache.archives.add_archive(entry.clone()).await;
         } else {
-            self.logger.log(format!("Error: recently downloaded file {} is inaccessible..?", &fi.file_name));
+            LOGGER.log(format!("Error: recently downloaded file {} is inaccessible..?", &fi.file_name));
         }
         Ok(())
     }
@@ -223,21 +200,21 @@ impl Downloads {
         let mut tasks_lock = self.tasks.write().await;
         let mut task = tasks_lock.shift_remove(&file_id).unwrap();
         if let DownloadState::Done = task.dl_info.get_state() {
-            self.event_tx.send(EventSource::Downloads);
+            EVENTS.send(EventSource::Downloads);
             return;
         }
         task.stop();
         let mut path = self.config.download_dir();
         path.push(format!("{}.part", &task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            self.logger.log(format!("Unable to delete {:?}.", &path));
+            LOGGER.log(format!("Unable to delete {:?}.", &path));
         }
         path.pop();
         path.push(format!("{}.part.json", &task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            self.logger.log(format!("Unable to delete {:?}.", &path));
+            LOGGER.log(format!("Unable to delete {:?}.", &path));
         }
-        self.event_tx.send(EventSource::Downloads);
+        EVENTS.send(EventSource::Downloads);
     }
 
     pub async fn resume_on_startup(&self) {
@@ -251,13 +228,13 @@ impl Downloads {
                         }
                         Err(ref e) => {
                             if e.kind() == ErrorKind::NotFound {
-                                self.logger.log(format!(
+                                LOGGER.log(format!(
                                     "Metadata for partially downloaded file {:?} is missing.\n
                                          The download needs to be restarted through the Nexus.",
                                     f.file_name()
                                 ));
                             } else {
-                                self.logger.log(format!(
+                                LOGGER.log(format!(
                                     "Unable to deserialize metadata from {:?}:\n
                                         {}",
                                     f.file_name(),
