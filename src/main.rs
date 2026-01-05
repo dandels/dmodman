@@ -33,17 +33,17 @@ pub static LOGGER: LazyLock<Logger> = LazyLock::new(Logger::new);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let mut config_builder = ConfigBuilder::load().unwrap_or_default();
+    let mut config = ConfigBuilder::load().unwrap_or_default().build()?;
+    // let config = config_builder.build()?;
 
-    if config_builder.apikey.is_none() {
+    if config.apikey().is_none() {
         if let Some(apikey) = ui::sso::start_apikey_flow() {
             config::save_apikey(&apikey)?;
-            config_builder.apikey = Some(apikey);
+            config.set_apikey_or_crash(apikey);
         } else {
             LOGGER.log("No API key configured. API connections are disabled.");
         }
     }
-    let config = config_builder.build()?;
 
     let db = Db::new(config.clone()).await?;
     let client = Client::new(&config);

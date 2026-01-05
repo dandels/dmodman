@@ -20,7 +20,7 @@ pub struct ArchivesWidget<'a> {
 }
 
 impl ArchivesWidget<'_> {
-    pub fn new(cache: Db) -> Self {
+    pub async fn new(cache: Db) -> Self {
         let block = DEFAULT_BLOCK.title(" Archives ");
         let headers = Row::new(vec![
             Cell::from(header_text("Filename")),
@@ -35,7 +35,7 @@ impl ArchivesWidget<'_> {
             Constraint::Ratio(1, 12),
         ];
 
-        Self {
+        let mut ret = Self {
             headers,
             widths,
             currently_shown: IndexMap::new(),
@@ -45,7 +45,9 @@ impl ArchivesWidget<'_> {
             state: TableState::default(),
             widget: Table::default().widths(widths),
             len: 0,
-        }
+        };
+        ret.refresh().await;
+        ret
     }
 
     // TODO use inotify to refresh the directory state when needed

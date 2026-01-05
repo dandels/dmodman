@@ -2,6 +2,7 @@ use std::sync::RwLock;
 
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
+#[derive(Debug)]
 pub enum EventSource {
     Archives,
     Downloads,

@@ -127,7 +127,6 @@ impl Installer {
                                 };
                                 let target_path = dest_path.join(normalize_path(&entry.path().await));
                                 let name = target_path.file_name().unwrap().to_string_lossy();
-                                crate::logger::log_to_file(format!("Archive: {name}"));
                                 if entry.is_dir().await {
                                     drop(entry);
                                     if let Err(e) = fs::create_dir_all(&target_path).await {
@@ -142,7 +141,6 @@ impl Installer {
                                         std::fs::create_dir_all(parent).unwrap();
                                     }
                                     extract_entry(target_path, archive.clone()).await.unwrap();
-                                    crate::logger::log_to_file("Done with first file...?");
                                 }
                             }
                             Ok(())
@@ -216,7 +214,6 @@ async fn extract_entry(target_path: PathBuf, archive: Archive) -> Result<(), Ins
                 let (status, bytes) = archive.read_data_block().await;
                 match status {
                     bindings::ARCHIVE_OK | bindings::ARCHIVE_WARN => {
-                        //crate::logger::log_to_file(format!("Got {} bytes", bytes.len()));
                         if let bindings::ARCHIVE_WARN = status {
                             LOGGER.log(format!(
                                 "Warning when extracting \"{:?}\": {}",
@@ -232,7 +229,6 @@ async fn extract_entry(target_path: PathBuf, archive: Archive) -> Result<(), Ins
                         }
                     }
                     bindings::ARCHIVE_EOF => {
-                        crate::logger::log_to_file("EOF!".to_string());
                         return Ok(());
                     }
                     // TODO handle ARCHIVE_RETRY

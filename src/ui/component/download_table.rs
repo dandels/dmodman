@@ -17,7 +17,7 @@ pub struct DownloadsWidget<'a> {
 }
 
 impl<'a> DownloadsWidget<'a> {
-    pub fn new(downloads: Downloads) -> Self {
+    pub async fn new(downloads: Downloads) -> Self {
         let block = DEFAULT_BLOCK.title(" Downloads ").border_style(BLOCK_STYLE);
 
         let headers = Row::new(vec![
@@ -32,7 +32,7 @@ impl<'a> DownloadsWidget<'a> {
             Constraint::Percentage(15),
         ];
 
-        Self {
+        let mut ret = Self {
             headers,
             widths,
             last_known_state: Vec::new(),
@@ -42,7 +42,9 @@ impl<'a> DownloadsWidget<'a> {
             highlight_style: Style::default(),
             widget: Table::default(),
             len: 0,
-        }
+        };
+        ret.refresh().await;
+        ret
     }
 
     pub async fn refresh(&mut self) {

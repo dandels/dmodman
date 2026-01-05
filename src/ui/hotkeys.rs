@@ -36,45 +36,48 @@ pub const INPUT_DIALOG_KEYS: &[(&str, &str)] = &[
 ];
 
 impl MainUI<'_> {
+    /// Handles input. Returns whether re-rendering is needed (default yes)
     pub async fn handle_input(&mut self, event: Event) {
         //MouseEvent::Press(mouse_event, x, y) => {
         //LOGGER.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
         //Event::Unsupported(u) => {
         //LOGGER.log(format!("Unsupported: {u:?}"));
-        if let InputMode::Confirm = self.input_mode {
-            self.handle_confirm_dialog(event).await;
-            return;
+        match self.input_mode {
+            InputMode::Normal => self.handle_normal_mode_keys(event).await,
+            InputMode::Confirm => self.handle_confirm_dialog(event).await,
+            InputMode::Extract => self.handle_popup_dialog(event).await,
         }
-        if let InputMode::Extract = self.input_mode {
-            self.handle_popup_dialog(event).await;
-            return;
-        }
+    }
+
+    async fn handle_normal_mode_keys(&mut self, event: Event) {
         if let Event::Key(Key::Ctrl('c')) = event {
             self.should_run = false;
+            return;
         }
         if let Event::Key(Key::Char('q')) = event {
             if self.installer.extract_jobs.read().await.is_empty() {
                 self.should_run = false;
+                return;
             } else {
                 LOGGER.log("Refusing to quit, archive extraction is still in progress.");
                 LOGGER.log("Press 'Ctrl + C' to force quit.");
+                return;
             }
-            return;
         }
 
         match event {
             Event::Key(Key::Down)
             | Event::Key(Key::Char('j'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
-                self.tabs.focused_widget_mut().next();
+                self.select_in_widget(Direction::Next);
             }
             Event::Key(Key::Up)
             | Event::Key(Key::Char('k'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
-                self.tabs.focused_widget_mut().previous();
+                self.select_in_widget(Direction::Previous);
             }
             Event::Key(Key::Char('H')) => {
-                self.tabs.focused_tab_mut().previous();
+                self.select_widget_in_tab(Direction::Previous);
             }
             Event::Key(Key::Char('J')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
@@ -99,9 +102,10 @@ impl MainUI<'_> {
                     }
                 }
             }
-            // Event::Key(Key::Char('L')) => {
-            //     self.change_focus_to(self.tabs.focused_widget().neighbor_right(&self.tabs.focused_tab_type()));
-            // }
+            Event::Key(Key::Char('L')) => {
+                self.select_widget_in_tab(Direction::Next);
+                //     self.change_focus_to(self.tabs.focused_widget().neighbor_right(&self.tabs.focused_tab_type()));
+            }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
                 self.tabs.focused_tab_mut().previous();
                 // self.change_focus_to(self.tabs.focused_widget().neighbor_left(&self.tabs.focused_tab_type()));
@@ -352,11 +356,11 @@ impl MainUI<'_> {
             match key {
                 Key::Up | Key::Left => {
                     self.confirm_dialog.previous();
-                    self.render_active_widget();
+                    // self.render_active_widget();
                 }
                 Key::Down | Key::Right => {
                     self.confirm_dialog.next();
-                    self.render_active_widget();
+                    // self.render_active_widget();
                 }
                 Key::Char('\n') => {
                     if let 0 = self.confirm_dialog.selected().unwrap() {
@@ -371,11 +375,11 @@ impl MainUI<'_> {
                     } else {
                         self.input_mode = InputMode::Extract;
                     }
-                    self.render_active_widget();
+                    // self.render_active_widget();
                 }
                 Key::Ctrl('c') | Key::Esc => {
                     self.input_mode = InputMode::Extract;
-                    self.render_active_widget();
+                    // self.render_active_widget();
                 }
                 _ => {}
             }
@@ -413,4 +417,52 @@ impl MainUI<'_> {
             self.render_active_widget();
         }
     }
+
+    fn select_in_widget(&mut self, direction: Direction) {
+        let (widget, i) = self.tabs.focused_widget_mut_and_index();
+        match direction {
+            Direction::Next => widget.next(),
+            Direction::Previous => widget.previous(),
+        };
+        widget.draw(self.rectangles.normal.main_content_panes[i], self.terminal.current_buffer_mut());
+    }
+
+    // maybe just let the tab own the widget and implement Select and highlights there
+    fn select_widget_in_tab(&mut self, direction: Direction) {
+        let tabs = &mut self.tabs;
+        let old_widget = tabs.focused_widget_mut();
+        old_widget.remove_highlight();
+
+        let focused_tab = tabs.focused_tab_mut();
+        match direction {
+            Direction::Next => focused_tab.next(),
+            Direction::Previous => focused_tab.previous(),
+        };
+
+        let new_widget = tabs.focused_widget_mut();
+        new_widget.add_highlight();
+    }
+
+    fn select_tab(&mut self, direction: Direction) {
+        match direction {
+            Direction::Next => {
+                self.tabs.next();
+            }
+            Direction::Previous => {
+                self.tabs.previous();
+            }
+        }
+        // if index_opt.is_some() {
+        // let frame = &mut self.terminal.get_frame();
+        // frame.render_widget(&self.tabs.tab_display.widget, self.rectangles.normal.tabs);
+        // self.render_all_in_tab();
+        // let im = self.tabs.index_map_for(self.tabs.focused_widget_type());
+        // self.render_all_visible();
+        // }
+    }
+}
+
+enum Direction {
+    Next,
+    Previous,
 }

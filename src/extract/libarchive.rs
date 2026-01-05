@@ -72,7 +72,6 @@ impl ArchiveWrapper {
     pub fn next(&mut self) -> Option<Result<Entry, ArchiveError>> {
         unsafe {
             let mut entry: *mut bindings::archive_entry = ptr::null_mut();
-            crate::logger::log_to_file("Trying to get next entry...");
             match bindings::archive_read_next_header(self.archive, &mut entry) {
                 0 => Some(Ok(Entry::new(entry))),
                 bindings::ARCHIVE_EOF => None,

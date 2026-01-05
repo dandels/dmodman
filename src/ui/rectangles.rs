@@ -59,11 +59,13 @@ impl ExtractDialogLayouts {
         ])
         .flex(Flex::Center);
 
-        Self {
+        let mut ret = Self {
             horizontal,
             vertical: Default::default(),
             label_and_textbox,
-        }
+        };
+        ret.set_suggestions_len(0);
+        ret
     }
 
     pub fn set_suggestions_len(&mut self, len: usize) {

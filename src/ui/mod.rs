@@ -3,6 +3,7 @@ mod hotkeys;
 mod main_ui;
 // mod navigation;
 mod rectangles;
+// mod render;
 pub mod sso;
 mod tab;
 mod tabs;
@@ -22,6 +23,7 @@ use termion::input::TermRead;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 
+#[derive(Debug)]
 pub enum TickEvent {
     Input(Event),
     Tick,

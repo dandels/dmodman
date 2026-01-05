@@ -16,17 +16,19 @@ pub struct LogWidget<'a> {
 }
 
 impl<'a> LogWidget<'a> {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         let block = DEFAULT_BLOCK.title(" Log ");
         let widget = List::default().block(block.clone());
-        Self {
+        let mut ret = Self {
             list_items: vec![],
             block,
             state: ListState::default(),
             highlight_style: Style::default(),
             widget,
             len: 0,
-        }
+        };
+        ret.refresh().await;
+        ret
     }
 
     /* TODO there is an open issue for ratatui for word wrapping list items. Until then we can't properly show

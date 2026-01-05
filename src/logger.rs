@@ -37,6 +37,15 @@ impl Logger {
         EVENTS.send(crate::events::EventSource::Log);
     }
 
+    // Useful for testing UI code without causing re-rendering
+    #[allow(dead_code)]
+    pub fn log_to_file<S: Into<String> + Debug + Display>(&self, msg: S) {
+        let mut path = config::config_dir();
+        path.push("dmodman.log");
+        let mut logfile = File::options().create(true).append(true).open(path).unwrap();
+        logfile.write_all(format!("{}\n", msg).as_bytes()).unwrap();
+    }
+
     // No longer needed since the UI drains the log and maintains internal list
     #[allow(dead_code)]
     pub async fn remove(&self, i: usize) {
@@ -46,13 +55,4 @@ impl Logger {
             EVENTS.send(crate::events::EventSource::Log);
         }
     }
-}
-
-// Useful for testing UI code without causing re-rendering
-#[allow(dead_code)]
-pub fn log_to_file<S: Into<String> + Debug + Display>(msg: S) {
-    let mut path = config::config_dir();
-    path.push("dmodman.log");
-    let mut logfile = File::options().create(true).append(true).open(path).unwrap();
-    logfile.write_all(format!("{}\n", msg).as_bytes()).unwrap();
 }

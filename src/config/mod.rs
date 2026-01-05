@@ -138,16 +138,16 @@ impl ConfigBuilder {
         self.download_dir = match shellexpand::full(&self.download_dir.unwrap().to_string_lossy()) {
             Ok(val) => Some(val.to_string().into()),
             Err(e) => {
-                log("Failed to expand environment variables for download_dir. Using default value.");
-                log(format!("Message: \"{e}\""));
+                LOGGER.log("Failed to expand environment variables for download_dir. Using default value.");
+                LOGGER.log(format!("Message: \"{e}\""));
                 Some(default_download_dir())
             }
         };
         self.install_dir = match shellexpand::full(&self.install_dir.unwrap().to_string_lossy()) {
             Ok(val) => Some(val.to_string().into()),
             Err(e) => {
-                log("Failed to expand environment variables for install_dir. Using default value.");
-                log(format!("Message: \"{e}\""));
+                LOGGER.log("Failed to expand environment variables for install_dir. Using default value.");
+                LOGGER.log(format!("Message: \"{e}\""));
                 Some(install_dir_for_profile(self.profile.as_ref().unwrap()))
             }
         };
@@ -205,7 +205,7 @@ impl Config {
             match path.is_absolute() {
                 true => path,
                 false => {
-                    log("Download dir is not an absolute path. Using path relative to $HOME.");
+                    LOGGER.log("Download dir is not an absolute path. Using path relative to $HOME.");
                     let mut home = dirs::home_dir().unwrap();
                     home.push(path);
                     home
@@ -218,7 +218,7 @@ impl Config {
             match path.is_absolute() {
                 true => path,
                 false => {
-                    log("Install dir is not an absolute path. Using path relative to $HOME.");
+                    LOGGER.log("Install dir is not an absolute path. Using path relative to $HOME.");
                     let mut home = dirs::home_dir().unwrap();
                     home.push(path);
                     home
@@ -238,6 +238,12 @@ impl Config {
 
     pub fn apikey(&self) -> &Option<String> {
         &self.inner.apikey
+    }
+
+    /// Use this only before Config is cloned
+    pub fn set_apikey_or_crash(&mut self, apikey: String) {
+        let inner = Arc::get_mut(&mut self.inner).unwrap();
+        inner.apikey = Some(apikey);
     }
 
     fn profile(&self) -> &String {

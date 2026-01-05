@@ -21,7 +21,7 @@ impl Installed {
         let install_dir_read = fs::read_dir(config.install_dir()).await;
         if let Ok(load_order) = config.read_load_order() {
             if install_dir_read.is_err() && load_order.is_empty() {
-                log("Error: load order is present but installed mods dir does not exist.");
+                LOGGER.log("Error: load order is present but installed mods dir does not exist.");
             } else {
                 for dir in load_order {
                     match fs::read_dir(config.install_dir().join(&dir)).await {
@@ -29,7 +29,7 @@ impl Installed {
                             add_dir(&config, &metadata_index, dir, &mut installed).await;
                         }
                         Err(_) => {
-                            log(format!("Warn: \"{dir}\" is missing but exists in load order."));
+                            LOGGER.log(format!("Warn: \"{dir}\" is missing but exists in load order."));
                         }
                     }
                 }
@@ -95,7 +95,7 @@ impl Installed {
 
     async fn save_load_order(&self) {
         if let Err(e) = self.config.save_load_order(self.mods.read().await.keys().cloned().collect()) {
-            log(format!("Error: unable to save load order: {e}"));
+            LOGGER.log(format!("Error: unable to save load order: {e}"));
         }
     }
 

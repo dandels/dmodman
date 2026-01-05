@@ -2,7 +2,6 @@ use crate::ui::{component::traits::Select, tabs::FocusedWidget};
 
 pub struct Tab {
     pub widget_types: &'static [FocusedWidget],
-    pub needs_update: Vec<bool>,
     pub focused_widget_index: usize,
 }
 
@@ -10,7 +9,6 @@ impl Tab {
     pub fn new(widgets: &'static [FocusedWidget]) -> Self {
         Self {
             widget_types: widgets,
-            needs_update: widgets.iter().map(|_| false).collect(),
             focused_widget_index: 0,
         }
     }

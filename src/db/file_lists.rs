@@ -52,8 +52,8 @@ impl FileLists {
                                 Some(fl)
                             }
                             Err(_) => {
-                                log(format!("Failed to read file list from {path:?}:"));
-                                log(format!("    {e}"));
+                                LOGGER.log(format!("Failed to read file list from {path:?}:"));
+                                LOGGER.log(format!("    {e}"));
                                 // Cache negative result to reduce IO
                                 lock.insert((game, mod_id), None);
                                 None

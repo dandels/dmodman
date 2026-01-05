@@ -20,7 +20,7 @@ pub struct InstalledModsWidget<'a> {
 }
 
 impl<'a> InstalledModsWidget<'a> {
-    pub fn new(installed: Installed) -> Self {
+    pub async fn new(installed: Installed) -> Self {
         let block = DEFAULT_BLOCK.title(" Installed ").border_style(BLOCK_STYLE);
         let widths = [
             Constraint::Ratio(9, 12),
@@ -34,7 +34,7 @@ impl<'a> InstalledModsWidget<'a> {
             Cell::from(header_text("Version")),
         ]);
 
-        Self {
+        let mut ret = Self {
             headers,
             widths,
             currently_shown: IndexMap::new(),
@@ -44,7 +44,9 @@ impl<'a> InstalledModsWidget<'a> {
             state: TableState::default(),
             widget: Table::default().widths(widths),
             len: 0,
-        }
+        };
+        ret.refresh().await;
+        ret
     }
 
     pub async fn refresh(&mut self) {
