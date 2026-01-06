@@ -154,14 +154,16 @@ impl<'a> MainUI<'a> {
                     UIEvent::Frontend(needs_refresh) => match needs_refresh {
                         NeedsRefresh::BottomBar => {
                             self.bottom_bar.update_widget(&self.tabs).await;
+                            self.render_all_visible();
                         }
                     },
                     UIEvent::SigWinch => {
                         self.recalc_rects();
+                        self.render_all_visible();
                     }
                 }
                 // TODO some input events don't require re-rendering
-                self.render_all_visible();
+                // self.render_all_visible();
             }
         }
     }
@@ -203,23 +205,23 @@ impl<'a> MainUI<'a> {
         self.flush_terminal();
     }
 
-    pub fn render_active_widget(&mut self) {
-        let frame = &mut self.terminal.get_frame();
-        match self.input_mode {
-            InputMode::Normal => {
-                let i = self.tabs.focused_tab().focused_widget_index;
-                self.tabs
-                    .focused_widget_mut()
-                    .draw(self.rectangles.normal.main_content_panes[i], frame.buffer_mut());
-            }
-            InputMode::Extract => {
-                frame.render_widget(&self.popup_dialog.textbox, self.rectangles.extract_dialog.textbox);
-            }
-            InputMode::Confirm => {
-                frame.render_widget(&self.confirm_dialog.widget, self.rectangles.confirm_dialog.rect);
-            }
-        }
-    }
+    // pub fn render_active_widget(&mut self) {
+    //     let frame = &mut self.terminal.get_frame();
+    //     match self.input_mode {
+    //         InputMode::Normal => {
+    //             let i = self.tabs.focused_tab().focused_widget_index;
+    //             self.tabs
+    //                 .focused_widget_mut()
+    //                 .draw(self.rectangles.normal.main_content_panes[i], frame.buffer_mut());
+    //         }
+    //         InputMode::Extract => {
+    //             frame.render_widget(&self.popup_dialog.textbox, self.rectangles.extract_dialog.textbox);
+    //         }
+    //         InputMode::Confirm => {
+    //             frame.render_widget(&self.confirm_dialog.widget, self.rectangles.confirm_dialog.rect);
+    //         }
+    //     }
+    // }
 
     fn render_extract_dialog(&mut self) {
         let frame = &mut self.terminal.get_frame();
@@ -227,12 +229,12 @@ impl<'a> MainUI<'a> {
         frame.render_widget(&self.hotkey_bar.widget, self.rectangles.normal.hotkey_bar);
     }
 
-    async fn refresh_component(&mut self, focused: FocusedWidget) {
+    async fn refresh_component(&mut self, focused: Focused) {
         match focused {
-            FocusedWidget::ArchiveTable => self.tabs.archive_table.refresh().await,
-            FocusedWidget::DownloadTable => self.tabs.downloads_table.refresh().await,
-            FocusedWidget::InstalledMods => self.tabs.installed_mods_table.refresh().await,
-            FocusedWidget::LogList => self.tabs.log_list.refresh().await,
+            Focused::ArchiveTable => self.tabs.archive_table.refresh().await,
+            Focused::DownloadTable => self.tabs.downloads_table.refresh().await,
+            Focused::InstalledMods => self.tabs.installed_mods_table.refresh().await,
+            Focused::LogList => self.tabs.log_list.refresh().await,
         }
     }
 
@@ -244,12 +246,12 @@ impl<'a> MainUI<'a> {
     }
 }
 
-fn focusedwidget_from_event(event: EventSource) -> FocusedWidget {
+fn focusedwidget_from_event(event: EventSource) -> Focused {
     match event {
-        EventSource::Archives => FocusedWidget::ArchiveTable,
-        EventSource::Downloads => FocusedWidget::DownloadTable,
-        EventSource::Installed => FocusedWidget::InstalledMods,
-        EventSource::Log => FocusedWidget::LogList,
+        EventSource::Archives => Focused::ArchiveTable,
+        EventSource::Downloads => Focused::DownloadTable,
+        EventSource::Installed => Focused::InstalledMods,
+        EventSource::Log => Focused::LogList,
         EventSource::RequestCounter => unreachable!("Function invariant violated."),
     }
 }

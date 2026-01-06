@@ -1,7 +1,7 @@
 use super::component::traits::Select;
 use super::component::ConfirmDialog;
 use super::main_ui::*;
-use super::tabs::FocusedWidget;
+use super::tabs::Focused;
 use crate::db::ArchiveEntry;
 use crate::extract::{InstallError, ModDirectory};
 use crate::LOGGER;
@@ -35,8 +35,7 @@ pub const INPUT_DIALOG_KEYS: &[(&str, &str)] = &[
     ("<C-y>", "redo "),
 ];
 
-impl MainUI<'_> {
-    /// Handles input. Returns whether re-rendering is needed (default yes)
+impl<'a> MainUI<'a> {
     pub async fn handle_input(&mut self, event: Event) {
         //MouseEvent::Press(mouse_event, x, y) => {
         //LOGGER.log(format!("click! {mouse_event:?}, x: {x}, y: {y}"));
@@ -69,27 +68,25 @@ impl MainUI<'_> {
             Event::Key(Key::Down)
             | Event::Key(Key::Char('j'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
-                self.select_in_widget(Direction::Next);
+                self.select_normal(Selection::Widget, Action::Next);
             }
             Event::Key(Key::Up)
             | Event::Key(Key::Char('k'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
-                self.select_in_widget(Direction::Previous);
-            }
-            Event::Key(Key::Char('H')) => {
-                self.select_widget_in_tab(Direction::Previous);
+                self.select_normal(Selection::Widget, Action::Previous);
             }
             Event::Key(Key::Char('J')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
-                    if let FocusedWidget::InstalledMods = self.tabs.focused_widget_type() {
+                    if let Focused::InstalledMods = self.tabs.focused_widget_type() {
+                        // TODO wrap around?
                         self.db.installed.move_to_index(i, i.saturating_add(1)).await;
-                        self.tabs.focused_widget_mut().next();
+                        self.select_normal(Selection::Widget, Action::Next);
                     }
                 }
             }
             Event::Key(Key::Char('K')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
-                    if let FocusedWidget::InstalledMods = self.tabs.focused_widget_type() {
+                    if let Focused::InstalledMods = self.tabs.focused_widget_type() {
                         if i == 0 {
                             self.db
                                 .installed
@@ -98,44 +95,38 @@ impl MainUI<'_> {
                         } else {
                             self.db.installed.move_to_index(i, i.saturating_sub(1)).await;
                         }
-                        self.tabs.focused_widget_mut().previous();
+                        self.select_normal(Selection::Widget, Action::Previous);
                     }
                 }
             }
-            Event::Key(Key::Char('L')) => {
-                self.select_widget_in_tab(Direction::Next);
-                //     self.change_focus_to(self.tabs.focused_widget().neighbor_right(&self.tabs.focused_tab_type()));
-            }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
-                self.tabs.focused_tab_mut().previous();
-                // self.change_focus_to(self.tabs.focused_widget().neighbor_left(&self.tabs.focused_tab_type()));
+                self.select_normal(Selection::InTab, Action::Previous);
             }
-            Event::Key(Key::Right) | Event::Key(Key::Char('l')) => {
-                self.tabs.focused_tab_mut().next();
-                // self.change_focus_to(self.tabs.focused_widget().neighbor_right(&self.tabs.focused_tab_type()));
+            Event::Key(Key::Right | Key::Char('l')) => {
+                self.select_normal(Selection::InTab, Action::Next);
             }
             Event::Key(Key::Alt(ch)) => {
                 let nr = ch.to_digit(10).map(|d| d as usize);
-                if nr.is_some() {
-                    self.tabs.select(nr);
+                if let Some(i) = nr {
+                    self.select_normal(Selection::Tab, Action::SelectIndex(i));
                 }
             }
             Event::Key(Key::Char('\t')) => {
-                self.tabs.next();
+                self.select_normal(Selection::Tab, Action::Next);
             }
             Event::Key(Key::BackTab) => {
-                self.tabs.previous();
+                self.select_normal(Selection::Tab, Action::Previous);
             }
             Event::Key(Key::Char('v')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     let mut args: Option<(String, u32)> = None;
                     match self.tabs.focused_widget_type() {
-                        FocusedWidget::ArchiveTable => {
+                        Focused::ArchiveTable => {
                             if let Some(metadata) = &self.tabs.archive_table.get_by_index(i).1.metadata() {
                                 args = Some((metadata.game.clone(), metadata.mod_id));
                             }
                         }
-                        FocusedWidget::InstalledMods => {
+                        Focused::InstalledMods => {
                             let (_, md) = self.tabs.installed_mods_table.get_by_index(i);
                             if let ModDirectory::Nexus(im) = md {
                                 args = Some((im.game.clone(), im.mod_id))
@@ -156,30 +147,25 @@ impl MainUI<'_> {
             Event::Key(Key::Char('f')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     match self.tabs.focused_widget_type() {
-                        FocusedWidget::ArchiveTable => {
+                        Focused::ArchiveTable => {
                             let (archive_name, _) = self.tabs.archive_table.get_by_index(i);
                             if let Some(mfd) = self.db.metadata_index.get_by_archive_name(archive_name).await {
                                 let query = self.query.clone();
-                                // let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
                                 let events_tx = self.ui_events_tx.clone();
                                 tokio::task::spawn(async move {
                                     query.verify_metadata(mfd).await;
-                                    // refresh_bottom_bar.store(true, Ordering::Relaxed);
-                                    // self.bottom_bar.refresh_for_archive_table(&self.tabs.archives_table);
                                     events_tx.send(NeedsRefresh::BottomBar).unwrap();
                                 });
                             }
                         }
-                        FocusedWidget::InstalledMods => {
+                        Focused::InstalledMods => {
                             let (_, mod_dir) = self.tabs.installed_mods_table.get_by_index(i);
                             if let ModDirectory::Nexus(im) = mod_dir {
                                 if let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await {
                                     let query = self.query.clone();
-                                    // let refresh_bottom_bar = self.bottom_bar.selected_has_changed.clone();
                                     let events_tx = self.ui_events_tx.clone();
                                     tokio::task::spawn(async move {
                                         query.verify_metadata(mfd).await;
-                                        // refresh_bottom_bar.store(true, Ordering::Relaxed);
                                         events_tx.send(NeedsRefresh::BottomBar).unwrap();
                                     });
                                 }
@@ -192,16 +178,16 @@ impl MainUI<'_> {
             Event::Key(Key::Delete) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     match self.tabs.focused_widget_type() {
-                        FocusedWidget::ArchiveTable => {
+                        Focused::ArchiveTable => {
                             self.tabs.archive_table.delete_by_index(i).await;
                         }
-                        FocusedWidget::InstalledMods => {
+                        Focused::InstalledMods => {
                             self.tabs.installed_mods_table.delete_by_index(i).await;
                         }
-                        FocusedWidget::LogList => {
+                        Focused::LogList => {
                             self.tabs.log_list.delete_selected();
                         }
-                        FocusedWidget::DownloadTable => {
+                        Focused::DownloadTable => {
                             self.tabs.downloads_table.delete_by_index(i).await;
                         }
                     }
@@ -212,13 +198,13 @@ impl MainUI<'_> {
             Event::Key(Key::Char('i')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     match self.tabs.focused_widget_type() {
-                        FocusedWidget::ArchiveTable => {
+                        Focused::ArchiveTable => {
                             let (_, archive) = self.tabs.archive_table.get_by_index(i);
                             if let Some(metadata) = archive.metadata() {
                                 self.updater.ignore_file(metadata.file_id).await;
                             }
                         }
-                        FocusedWidget::InstalledMods => {
+                        Focused::InstalledMods => {
                             let (_, mod_dir) = self.tabs.installed_mods_table.get_by_index(i);
                             if let ModDirectory::Nexus(im) = mod_dir {
                                 self.updater.ignore_file(im.file_id).await;
@@ -231,7 +217,7 @@ impl MainUI<'_> {
             Event::Key(Key::Char('U')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     match self.tabs.focused_widget_type() {
-                        FocusedWidget::ArchiveTable => {
+                        Focused::ArchiveTable => {
                             let (_, archive) = self.tabs.archive_table.get_by_index(i);
                             if let Some(metadata) = archive.metadata() {
                                 if let Some(files) =
@@ -241,7 +227,7 @@ impl MainUI<'_> {
                                 }
                             }
                         }
-                        FocusedWidget::InstalledMods => {
+                        Focused::InstalledMods => {
                             let (_, mod_dir) = self.tabs.installed_mods_table.get_by_index(i);
                             if let ModDirectory::Nexus(im) = mod_dir {
                                 if let Some(files) = self.db.metadata_index.get_modfiles(&im.game, &im.mod_id).await {
@@ -263,16 +249,16 @@ impl MainUI<'_> {
             }
         }
         match self.tabs.focused_widget_type() {
-            FocusedWidget::InstalledMods => {
+            Focused::InstalledMods => {
                 // no keys to handle
             }
-            FocusedWidget::DownloadTable => {
+            Focused::DownloadTable => {
                 self.handle_downloads_keys(event).await;
             }
-            FocusedWidget::ArchiveTable => {
+            Focused::ArchiveTable => {
                 self.handle_archives_keys(event).await;
             }
-            FocusedWidget::LogList => {
+            Focused::LogList => {
                 // no keys to handle
             }
         }
@@ -282,7 +268,7 @@ impl MainUI<'_> {
         let key = if let Event::Key(key) = event { key } else { return };
 
         if let Key::Char('p') = key {
-            if let FocusedWidget::DownloadTable = self.tabs.focused_widget_type() {
+            if let Focused::DownloadTable = self.tabs.focused_widget_type() {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     self.downloads.toggle_pause_for(i).await;
                 }
@@ -319,7 +305,7 @@ impl MainUI<'_> {
                     self.rectangles.extract_dialog.layouts.set_suggestions_len(suggested_values.len());
                     self.popup_dialog.create_widget(suggested_values, dialog_title);
                     self.input_mode = InputMode::Extract;
-                    self.render_active_widget();
+                    self.render_all_visible();
                 }
             }
             Key::Char('L') => {
@@ -343,7 +329,7 @@ impl MainUI<'_> {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     let (_, archive) = self.tabs.archive_table.get_by_index(i);
                     if let ArchiveEntry::File(archive) = archive {
-                        self.installer.cancel(&archive).await;
+                        self.installer.cancel(archive).await;
                     }
                 }
             }
@@ -356,11 +342,9 @@ impl MainUI<'_> {
             match key {
                 Key::Up | Key::Left => {
                     self.confirm_dialog.previous();
-                    // self.render_active_widget();
                 }
                 Key::Down | Key::Right => {
                     self.confirm_dialog.next();
-                    // self.render_active_widget();
                 }
                 Key::Char('\n') => {
                     if let 0 = self.confirm_dialog.selected().unwrap() {
@@ -375,14 +359,15 @@ impl MainUI<'_> {
                     } else {
                         self.input_mode = InputMode::Extract;
                     }
-                    // self.render_active_widget();
                 }
                 Key::Ctrl('c') | Key::Esc => {
                     self.input_mode = InputMode::Extract;
-                    // self.render_active_widget();
                 }
-                _ => {}
+                _ => {
+                    return;
+                }
             }
+            self.render_all_visible();
         }
     }
 
@@ -414,55 +399,33 @@ impl MainUI<'_> {
                     self.popup_dialog.input(Event::Key(key));
                 }
             }
-            self.render_active_widget();
+            self.render_all_visible();
         }
     }
 
-    fn select_in_widget(&mut self, direction: Direction) {
-        let (widget, i) = self.tabs.focused_widget_mut_and_index();
-        match direction {
-            Direction::Next => widget.next(),
-            Direction::Previous => widget.previous(),
+    fn select_normal(&mut self, selection: Selection, direction: Action) {
+        let t: &mut dyn Select = match selection {
+            Selection::Tab => &mut self.tabs,
+            Selection::Widget => self.tabs.focused_widget_mut(),
+            Selection::InTab => self.tabs.focused_tab_mut(),
         };
-        widget.draw(self.rectangles.normal.main_content_panes[i], self.terminal.current_buffer_mut());
-    }
-
-    // maybe just let the tab own the widget and implement Select and highlights there
-    fn select_widget_in_tab(&mut self, direction: Direction) {
-        let tabs = &mut self.tabs;
-        let old_widget = tabs.focused_widget_mut();
-        old_widget.remove_highlight();
-
-        let focused_tab = tabs.focused_tab_mut();
         match direction {
-            Direction::Next => focused_tab.next(),
-            Direction::Previous => focused_tab.previous(),
+            Action::Next => t.next(),
+            Action::Previous => t.previous(),
+            Action::SelectIndex(i) => t.select(Some(i)),
         };
-
-        let new_widget = tabs.focused_widget_mut();
-        new_widget.add_highlight();
-    }
-
-    fn select_tab(&mut self, direction: Direction) {
-        match direction {
-            Direction::Next => {
-                self.tabs.next();
-            }
-            Direction::Previous => {
-                self.tabs.previous();
-            }
-        }
-        // if index_opt.is_some() {
-        // let frame = &mut self.terminal.get_frame();
-        // frame.render_widget(&self.tabs.tab_display.widget, self.rectangles.normal.tabs);
-        // self.render_all_in_tab();
-        // let im = self.tabs.index_map_for(self.tabs.focused_widget_type());
-        // self.render_all_visible();
-        // }
+        self.render_all_visible();
     }
 }
 
-enum Direction {
+enum Selection {
+    Tab,
+    Widget,
+    InTab,
+}
+
+enum Action {
     Next,
     Previous,
+    SelectIndex(usize),
 }

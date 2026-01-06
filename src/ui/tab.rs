@@ -1,19 +1,19 @@
-use crate::ui::{component::traits::Select, tabs::FocusedWidget};
+use crate::ui::{component::traits::Select, tabs::Focused};
 
 pub struct Tab {
-    pub widget_types: &'static [FocusedWidget],
+    pub widget_types: &'static [Focused],
     pub focused_widget_index: usize,
 }
 
 impl Tab {
-    pub fn new(widgets: &'static [FocusedWidget]) -> Self {
+    pub fn new(widgets: &'static [Focused]) -> Self {
         Self {
             widget_types: widgets,
             focused_widget_index: 0,
         }
     }
 
-    pub fn focused_widget_type(&self) -> FocusedWidget {
+    pub fn focused_widget_type(&self) -> Focused {
         self.widget_types[self.focused_widget_index]
     }
 }

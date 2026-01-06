@@ -1,5 +1,5 @@
 use super::component::*;
-use crate::ui::component::traits::{FocusableComponent, Select};
+use crate::ui::component::traits::{HighlightSelect, Select};
 use crate::{
     api::Downloads,
     db::Db,
@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(usize)]
-pub enum FocusedWidget {
+pub enum Focused {
     #[default]
     ArchiveTable,
     DownloadTable,
@@ -52,10 +52,10 @@ pub struct TabWidgets<'a> {
 
 impl<'a> TabWidgets<'a> {
     pub async fn new(db: Db, downloads: Downloads) -> Self {
-        const WIDGET_TYPES: [&[FocusedWidget]; 3] = [
-            (&[FocusedWidget::ArchiveTable, FocusedWidget::DownloadTable]),
-            (&[FocusedWidget::InstalledMods]),
-            (&[FocusedWidget::LogList]),
+        const WIDGET_TYPES: [&[Focused]; 3] = [
+            (&[Focused::ArchiveTable, Focused::DownloadTable]),
+            (&[Focused::InstalledMods]),
+            (&[Focused::LogList]),
         ];
 
         let tabs: Vec<Tab> = WIDGET_TYPES.into_iter().map(Tab::new).collect();
@@ -90,39 +90,33 @@ impl<'a> TabWidgets<'a> {
         &mut self.tabs[self.focused_index]
     }
 
-    pub fn focused_widget(&self) -> &dyn FocusableComponent {
+    pub fn focused_widget(&self) -> &dyn HighlightSelect {
         self.widget_for_type(self.focused_tab().focused_widget_type())
     }
 
-    pub fn focused_widget_mut(&mut self) -> &mut dyn FocusableComponent {
+    pub fn focused_widget_mut(&mut self) -> &mut dyn HighlightSelect {
         self.widget_for_type_mut(self.focused_tab().focused_widget_type())
     }
 
-    pub fn focused_widget_mut_and_index(&mut self) -> (&mut dyn FocusableComponent, usize) {
-        let tab = self.focused_tab();
-        let i = tab.focused_widget_index;
-        (self.widget_for_type_mut(tab.widget_types[i]), i)
-    }
-
-    pub fn focused_widget_type(&self) -> FocusedWidget {
+    pub fn focused_widget_type(&self) -> Focused {
         self.focused_tab().focused_widget_type()
     }
 
-    pub fn widget_for_type(&self, t: FocusedWidget) -> &dyn FocusableComponent {
+    pub fn widget_for_type(&self, t: Focused) -> &dyn HighlightSelect {
         match t {
-            FocusedWidget::ArchiveTable => &self.archive_table as &dyn FocusableComponent,
-            FocusedWidget::DownloadTable => &self.downloads_table as &dyn FocusableComponent,
-            FocusedWidget::InstalledMods => &self.installed_mods_table as &dyn FocusableComponent,
-            FocusedWidget::LogList => &self.log_list as &dyn FocusableComponent,
+            Focused::ArchiveTable => &self.archive_table as &dyn HighlightSelect,
+            Focused::DownloadTable => &self.downloads_table as &dyn HighlightSelect,
+            Focused::InstalledMods => &self.installed_mods_table as &dyn HighlightSelect,
+            Focused::LogList => &self.log_list as &dyn HighlightSelect,
         }
     }
 
-    pub fn widget_for_type_mut(&mut self, t: FocusedWidget) -> &mut dyn FocusableComponent {
+    pub fn widget_for_type_mut(&mut self, t: Focused) -> &mut dyn HighlightSelect {
         match t {
-            FocusedWidget::ArchiveTable => &mut self.archive_table,
-            FocusedWidget::DownloadTable => &mut self.downloads_table,
-            FocusedWidget::InstalledMods => &mut self.installed_mods_table,
-            FocusedWidget::LogList => &mut self.log_list,
+            Focused::ArchiveTable => &mut self.archive_table,
+            Focused::DownloadTable => &mut self.downloads_table,
+            Focused::InstalledMods => &mut self.installed_mods_table,
+            Focused::LogList => &mut self.log_list,
         }
     }
 }
@@ -149,10 +143,10 @@ impl<'a> Select for TabWidgets<'a> {
     }
 }
 
-impl std::ops::Index<FocusedWidget> for [IndexMapping; WIDGET_COUNT] {
+impl std::ops::Index<Focused> for [IndexMapping; WIDGET_COUNT] {
     type Output = IndexMapping;
 
-    fn index(&self, index: FocusedWidget) -> &Self::Output {
+    fn index(&self, index: Focused) -> &Self::Output {
         &self[index as usize]
     }
 }

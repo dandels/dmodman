@@ -2,7 +2,7 @@ use super::{ArchivesWidget, DownloadsWidget, InstalledModsWidget};
 use crate::api::UpdateStatus;
 use crate::extract::ModDirectory;
 use crate::ui::component::traits::Select;
-use crate::ui::tabs::{FocusedWidget, TabWidgets};
+use crate::ui::tabs::{Focused, TabWidgets};
 use crate::Db;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -26,10 +26,10 @@ impl<'a> BottomBar<'a> {
 
     pub async fn update_widget(&mut self, tabs: &TabWidgets<'a>) {
         match tabs.focused_widget_type() {
-            FocusedWidget::ArchiveTable => self.refresh_for_archive_table(&tabs.archive_table).await,
-            FocusedWidget::DownloadTable => self.focus_downloads(&tabs.downloads_table).await,
-            FocusedWidget::InstalledMods => self.refresh_for_installed_mods(&tabs.installed_mods_table).await,
-            FocusedWidget::LogList => self.focus_none(),
+            Focused::ArchiveTable => self.refresh_for_archive_table(&tabs.archive_table).await,
+            Focused::DownloadTable => self.focus_downloads(&tabs.downloads_table).await,
+            Focused::InstalledMods => self.refresh_for_installed_mods(&tabs.installed_mods_table).await,
+            Focused::LogList => self.focus_none(),
         }
     }
 

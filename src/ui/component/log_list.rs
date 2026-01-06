@@ -1,7 +1,6 @@
 use crate::LOGGER;
 
 use super::common::*;
-use super::traits::Select;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, List, ListItem, ListState};
@@ -48,7 +47,7 @@ impl<'a> LogWidget<'a> {
     }
 
     pub fn delete_selected(&mut self) {
-        if let Some(index) = self.selected() {
+        if let Some(index) = self.state.selected() {
             self.list_items.remove(index);
             self.len = self.len.saturating_sub(1);
             self.widget = self.widget.clone().items(self.list_items.clone());

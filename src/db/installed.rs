@@ -115,9 +115,9 @@ impl Installed {
                 lock.move_index(src_index, dest_index);
             }
         }
+        EVENTS.send(EventSource::Installed);
         // TODO save load order without causing too many writes
         // maybe start a task with a delay that gets restarted every time user reorders mods
-        EVENTS.send(EventSource::Installed);
         self.save_load_order().await;
     }
 }

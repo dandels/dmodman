@@ -15,7 +15,6 @@ use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use std::error::Error;
 use std::io;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use termion::event::Event;
@@ -40,6 +39,7 @@ impl InputEvents {
         let (tx, rx) = mpsc::unbounded_channel();
         let _input_handle = {
             let tx = tx.clone();
+            // TODO what are the tradeoffs between tokio/std threads here?
             thread::spawn(move || {
                 let stdin = io::stdin();
                 for event in stdin.events().flatten() {

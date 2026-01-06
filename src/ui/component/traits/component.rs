@@ -7,7 +7,7 @@ use crate::ui::component::*;
 
 macro_rules! impl_focusable_component {
     ($T:ty) => {
-        impl FocusableComponent for $T {
+        impl HighlightSelect for $T {
             fn draw(&mut self, rect: Rect, buf: &mut Buffer) {
                 // TODO it's unclear whether implementing Widget for a StatefulWidget would suffice
                 StatefulWidgetRef::render_ref(&self.widget, rect, buf, &mut self.state)
@@ -37,6 +37,6 @@ impl_focusable_component!(LogWidget<'_>);
 // impl_component!(RequestCounterWidget<'_>);
 
 /// Helper trait for rendering a list of StatefulWidgets (to avoid passing state around)
-pub trait FocusableComponent: Highlight + Select {
+pub trait HighlightSelect: Highlight + Select {
     fn draw(&mut self, rect: Rect, buf: &mut Buffer);
 }

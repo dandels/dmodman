@@ -43,10 +43,10 @@ pub trait Select {
         self.select(None);
     }
 
-    fn next(&mut self) -> Option<usize> {
+    fn next(&mut self) {
         if self.len() == 0 {
             self.select(None);
-            return None;
+            return;
         }
         let i = match self.selected() {
             Some(i) => {
@@ -59,10 +59,9 @@ pub trait Select {
             None => 0,
         };
         self.select(Some(i));
-        Some(i)
     }
 
-    fn previous(&mut self) -> Option<usize> {
+    fn previous(&mut self) {
         let i = match self.selected() {
             Some(i) => {
                 if i == 0 {
@@ -74,6 +73,5 @@ pub trait Select {
             None => Some(0),
         };
         self.select(i);
-        i
     }
 }
