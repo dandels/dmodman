@@ -2,7 +2,7 @@
 Type=Application
 Categories=GameTool;Game
 Name=dmodman nxm handler
-Exec=alacritty -e dmodman %u
+Exec=dmodman %u
 Icon=utilities-terminal
-Terminal=false
-MimeType=x-scheme-handler/nxm;x-scheme-handler/nxm-protocol
+Terminal=true
+MimeType=x-scheme-handler/nxm

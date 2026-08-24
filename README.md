@@ -44,7 +44,10 @@ messages. On the top is a bar with keybindings.](/screenshot.png)
 ## Installation
 The following steps are required for nxm scheme handling to work.
 1. Add dmodman to your PATH. If developing, you can symlink to the build directory.
-2. Copy the included dmodman.desktop file to `~/.local/share/applications/` (or /usr/share/applications/).
+2. There is not yet a standard way to launch terminal apps from desktop files. You need to either:
+    * Copy the included dmodman.desktop file to `~/.local/share/applications/dmodman.desktop` (or /usr/share/applications/). This file defaults to alacritty, and you need to configure it for your own terminal.
+    * Alternatively use dmodman-terminal.desktop, which does not assume a specific terminal emulator. This is able to send downloads to an already running instance, but might fail at opening a terminal.
+3. Run `update-desktop-database ~/.local/share/applications/` so that your browser is aware of the new protocol. This depends on `desktop-file-utils`, which presumably everyone has installed regardless of distribution.
 
 ## TODO & Contributing
 There is an incomplete and somewhat up to date list of things that need doing in [CONTRIBUTING.md](/CONTRIBUTING.md)
