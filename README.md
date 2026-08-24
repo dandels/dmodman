@@ -50,7 +50,10 @@ The following steps are required for nxm scheme handling to work.
 3. Run `update-desktop-database ~/.local/share/applications/` so that your browser is aware of the new protocol. This depends on `desktop-file-utils`, which presumably everyone has installed regardless of distribution.
 
 ## TODO & Contributing
-There is an incomplete and somewhat up to date list of things that need doing in [CONTRIBUTING.md](/CONTRIBUTING.md)
+There is an incomplete and somewhat up to date list of things that need doing in [CONTRIBUTING.md](/CONTRIBUTING.md).
+
+## AI usage & policy
+All code is written by humans (a single person as of writing, which would be fun to change). I do not accept contributions authored by LLMs.
 
 ## Logo
 NexusMods requires users to have application-specific API keys. Having a logo was a prerequisite for being featured on
