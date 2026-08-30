@@ -2,6 +2,9 @@ use ratatui::style::{Color, Style, Styled};
 use ratatui::text::Line;
 use ratatui::widgets::Tabs;
 
+pub const TAB_COUNT: usize = 3;
+pub const TAB_TITLES: [&str; TAB_COUNT] = ["Archives", "Installed", "Log"];
+
 pub struct TabDisplay<'a> {
     title_lines: Vec<Line<'a>>,
     pub widget: Tabs<'a>,
@@ -10,8 +13,7 @@ pub struct TabDisplay<'a> {
 impl<'a> TabDisplay<'a> {
     pub fn new() -> Self {
         let highlight_style = Style::new().bg(Color::White).fg(Color::Black);
-        let tab_titles = ["Archives", "Installed", "Log"];
-        let title_lines: Vec<Line<'a>> = tab_titles.into_iter().map(Line::from).collect();
+        let title_lines: Vec<Line<'a>> = TAB_TITLES.iter().map(|f| Line::from(*f)).collect();
         let widget = Tabs::new(title_lines.clone()).highlight_style(highlight_style);
 
         Self { title_lines, widget }

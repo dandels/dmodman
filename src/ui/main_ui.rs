@@ -60,7 +60,7 @@ pub struct MainUI<'a> {
 
     // Alternate UI states
     pub confirm_dialog: ConfirmDialog<'a>,
-    pub popup_dialog: PopupDialog<'a>,
+    pub extract_dialog: ExtractDialog<'a>,
 
     // UI state
     pub terminal: Terminal<TermBackend>,
@@ -86,7 +86,7 @@ impl<'a> MainUI<'a> {
         let bottom_bar = BottomBar::new(db.clone());
         let confirm_dialog = ConfirmDialog::default();
         let hotkey_bar = HotkeyBar::new();
-        let popup_dialog = PopupDialog::init(config.clone());
+        let extract_dialog = ExtractDialog::init(config.clone());
         let requests_widget = RequestCounterWidget::new(client.request_counter.clone()).await;
 
         // Contains tab and tab-switchable widgets
@@ -103,11 +103,11 @@ impl<'a> MainUI<'a> {
             requests_widget,
             hotkey_bar,
             bottom_bar,
+            rectangles: Rectangles::new(tabs.focused_tab().widget_types.len()),
             confirm_dialog,
-            popup_dialog,
+            extract_dialog,
             input_mode: InputMode::default(),
             updater,
-            rectangles: Rectangles::new(tabs.focused_tab().widget_types.len()),
             tabs,
             // nav,
             should_run: true,
@@ -118,10 +118,11 @@ impl<'a> MainUI<'a> {
     }
 
     fn recalc_rects(&mut self) {
+        self.terminal.autoresize().unwrap();
         let window_size = self.terminal.get_frame().area();
         self.rectangles.normal.recalculate(window_size);
+        self.rectangles.confirm_dialog.recalculate(self.extract_dialog.get_required_height(), window_size);
         self.rectangles.extract_dialog.recalculate(window_size);
-        self.rectangles.confirm_dialog.recalculate(self.confirm_dialog.len, window_size);
     }
 
     // This contains the main UI loop.
@@ -153,8 +154,7 @@ impl<'a> MainUI<'a> {
                     UIEvent::Backend(event_source) => self.handle_backend_event(event_source).await,
                     UIEvent::Frontend(needs_refresh) => match needs_refresh {
                         NeedsRefresh::BottomBar => {
-                            self.bottom_bar.update_widget(&self.tabs).await;
-                            self.render_all_visible();
+                            self.selected_has_changed().await;
                         }
                     },
                     UIEvent::SigWinch => {
@@ -174,10 +174,7 @@ impl<'a> MainUI<'a> {
         } else {
             let focused = focusedwidget_from_event(event_source);
             self.refresh_component(focused).await;
-            let i = tabs::INDEX_MAPPING[focused].tab;
-            if self.tabs.focused_index != i {
-                self.tabs.tab_display.add_urgency(i);
-            }
+            self.tabs.add_urgency_for_widget(focused);
         }
         self.render_all_visible();
     }
@@ -197,7 +194,9 @@ impl<'a> MainUI<'a> {
                     self.tabs.widget_for_type_mut(*wt).draw(rect, frame.buffer_mut());
                 }
             }
-            InputMode::Confirm => todo!(),
+            InputMode::Confirm => {
+                frame.render_widget(&self.confirm_dialog.widget, self.rectangles.confirm_dialog.rect);
+            }
             InputMode::Extract => {
                 self.render_extract_dialog();
             }
@@ -225,7 +224,7 @@ impl<'a> MainUI<'a> {
 
     fn render_extract_dialog(&mut self) {
         let frame = &mut self.terminal.get_frame();
-        self.popup_dialog.render_widgets(&self.rectangles.extract_dialog, frame);
+        self.extract_dialog.render_widgets(&self.rectangles.extract_dialog, frame);
         frame.render_widget(&self.hotkey_bar.widget, self.rectangles.normal.hotkey_bar);
     }
 
@@ -236,6 +235,11 @@ impl<'a> MainUI<'a> {
             Focused::InstalledMods => self.tabs.installed_mods_table.refresh().await,
             Focused::LogList => self.tabs.log_list.refresh().await,
         }
+    }
+
+    pub async fn selected_has_changed(&mut self) {
+        self.bottom_bar.update_widget(&self.tabs).await;
+        self.render_all_visible();
     }
 
     pub fn flush_terminal(&mut self) {

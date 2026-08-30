@@ -68,19 +68,19 @@ impl<'a> MainUI<'a> {
             Event::Key(Key::Down)
             | Event::Key(Key::Char('j'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
-                self.select_normal(Selection::Widget, Action::Next);
+                self.select_in_widget(Selection::Next).await;
             }
             Event::Key(Key::Up)
             | Event::Key(Key::Char('k'))
             | Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
-                self.select_normal(Selection::Widget, Action::Previous);
+                self.select_in_widget(Selection::Previous).await;
             }
             Event::Key(Key::Char('J')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     if let Focused::InstalledMods = self.tabs.focused_widget_type() {
                         // TODO wrap around?
                         self.db.installed.move_to_index(i, i.saturating_add(1)).await;
-                        self.select_normal(Selection::Widget, Action::Next);
+                        self.select_in_widget(Selection::Next).await;
                     }
                 }
             }
@@ -95,27 +95,27 @@ impl<'a> MainUI<'a> {
                         } else {
                             self.db.installed.move_to_index(i, i.saturating_sub(1)).await;
                         }
-                        self.select_normal(Selection::Widget, Action::Previous);
+                        self.select_in_widget(Selection::Previous).await;
                     }
                 }
             }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
-                self.select_normal(Selection::InTab, Action::Previous);
+                self.select_widget(Selection::Previous).await;
             }
             Event::Key(Key::Right | Key::Char('l')) => {
-                self.select_normal(Selection::InTab, Action::Next);
+                self.select_widget(Selection::Next).await;
             }
             Event::Key(Key::Alt(ch)) => {
                 let nr = ch.to_digit(10).map(|d| d as usize);
                 if let Some(i) = nr {
-                    self.select_normal(Selection::Tab, Action::SelectIndex(i));
+                    self.select_tab(Selection::Index(i)).await;
                 }
             }
             Event::Key(Key::Char('\t')) => {
-                self.select_normal(Selection::Tab, Action::Next);
+                self.select_tab(Selection::Next).await;
             }
             Event::Key(Key::BackTab) => {
-                self.select_normal(Selection::Tab, Action::Previous);
+                self.select_tab(Selection::Previous).await;
             }
             Event::Key(Key::Char('v')) => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
@@ -303,7 +303,7 @@ impl<'a> MainUI<'a> {
                         suggested_values.push(archive.file_name().clone());
                     }
                     self.rectangles.extract_dialog.layouts.set_suggestions_len(suggested_values.len());
-                    self.popup_dialog.create_widget(suggested_values, dialog_title);
+                    self.extract_dialog.create_widget(suggested_values, dialog_title);
                     self.input_mode = InputMode::Extract;
                     self.render_all_visible();
                 }
@@ -341,14 +341,14 @@ impl<'a> MainUI<'a> {
         if let Event::Key(key) = event {
             match key {
                 Key::Up | Key::Left => {
-                    self.confirm_dialog.previous();
+                    self.extract_dialog.previous();
                 }
                 Key::Down | Key::Right => {
-                    self.confirm_dialog.next();
+                    self.extract_dialog.next();
                 }
                 Key::Char('\n') => {
-                    if let 0 = self.confirm_dialog.selected().unwrap() {
-                        let dest_dir = self.popup_dialog.get_content();
+                    if let 0 = self.extract_dialog.selected().unwrap() {
+                        let dest_dir = self.extract_dialog.get_content();
                         let index = self.tabs.archive_table.selected().unwrap();
                         let (file_name, _archive) = self.tabs.archive_table.get_by_index(index);
                         if let Err(e) = self.installer.extract(file_name.to_string(), dest_dir.to_string(), true).await
@@ -378,7 +378,7 @@ impl<'a> MainUI<'a> {
                     self.input_mode = InputMode::Normal;
                 }
                 Key::Char('\n') => {
-                    let dest_dir = self.popup_dialog.get_content();
+                    let dest_dir = self.extract_dialog.get_content();
                     let index = self.tabs.archive_table.selected().unwrap();
                     let (file_name, _archive) = self.tabs.archive_table.get_by_index(index);
                     match self.installer.extract(file_name.to_string(), dest_dir.to_string(), false).await {
@@ -396,36 +396,49 @@ impl<'a> MainUI<'a> {
                     }
                 }
                 _ => {
-                    self.popup_dialog.input(Event::Key(key));
+                    self.extract_dialog.input(Event::Key(key));
                 }
             }
             self.render_all_visible();
         }
     }
 
-    fn select_normal(&mut self, selection: Selection, direction: Action) {
-        let t: &mut dyn Select = match selection {
-            Selection::Tab => &mut self.tabs,
-            Selection::Widget => self.tabs.focused_widget_mut(),
-            Selection::InTab => self.tabs.focused_tab_mut(),
+    async fn select_widget(&mut self, selection: Selection) {
+        self.tabs.focused_widget_mut().remove_highlight();
+        let t = self.tabs.focused_tab_mut();
+        match selection {
+            Selection::Next => t.next(),
+            Selection::Previous => t.previous(),
+            Selection::Index(i) => t.select(Some(i)),
+        }
+        self.tabs.focused_widget_mut().add_highlight();
+        self.selected_has_changed().await;
+    }
+
+    async fn select_tab(&mut self, selection: Selection) {
+        let t = &mut self.tabs;
+        match selection {
+            Selection::Next => t.next(),
+            Selection::Previous => t.previous(),
+            Selection::Index(i) => t.select(Some(i)),
+        }
+        self.rectangles.normal.change_tab(t.focused_tab().widget_types.len());
+        self.selected_has_changed().await;
+    }
+
+    async fn select_in_widget(&mut self, selection: Selection) {
+        let t = self.tabs.focused_widget_mut();
+        match selection {
+            Selection::Next => t.next(),
+            Selection::Previous => t.previous(),
+            Selection::Index(i) => t.select(Some(i)),
         };
-        match direction {
-            Action::Next => t.next(),
-            Action::Previous => t.previous(),
-            Action::SelectIndex(i) => t.select(Some(i)),
-        };
-        self.render_all_visible();
+        self.selected_has_changed().await;
     }
 }
 
 enum Selection {
-    Tab,
-    Widget,
-    InTab,
-}
-
-enum Action {
     Next,
     Previous,
-    SelectIndex(usize),
+    Index(usize),
 }

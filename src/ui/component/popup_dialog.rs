@@ -9,7 +9,7 @@ use std::path::Path;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 use tui_textarea::{CursorMove, TextArea};
 
-pub struct PopupDialog<'a> {
+pub struct ExtractDialog<'a> {
     config: Config,
     pub textbox: TextArea<'a>,
     pub description: Paragraph<'a>,
@@ -23,7 +23,7 @@ pub struct PopupDialog<'a> {
     // layout_label_and_input: Layout,
 }
 
-impl PopupDialog<'_> {
+impl ExtractDialog<'_> {
     pub fn init(config: Config) -> Self {
         Self {
             config,

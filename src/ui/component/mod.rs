@@ -18,6 +18,6 @@ pub use download_table::DownloadsWidget;
 pub use hotkey_bar::HotkeyBar;
 pub use installed_mods_table::InstalledModsWidget;
 pub use log_list::LogWidget;
-pub use popup_dialog::PopupDialog;
+pub use popup_dialog::ExtractDialog;
 pub use request_counter::RequestCounterWidget;
-pub use tab_display::TabDisplay;
+pub use tab_display::*;

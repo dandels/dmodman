@@ -1,5 +1,5 @@
 use crate::ui::component::{
-    ArchivesWidget, ConfirmDialog, DownloadsWidget, InstalledModsWidget, LogWidget, PopupDialog,
+    ArchivesWidget, ConfirmDialog, DownloadsWidget, ExtractDialog, InstalledModsWidget, LogWidget,
 };
 
 macro_rules! impl_select {
@@ -29,7 +29,7 @@ impl_select!(ConfirmDialog<'_>);
 impl_select!(DownloadsWidget<'_>);
 impl_select!(LogWidget<'_>);
 impl_select!(InstalledModsWidget<'_>);
-impl_select!(PopupDialog<'_>);
+impl_select!(ExtractDialog<'_>);
 
 pub trait Select {
     fn len(&self) -> usize;

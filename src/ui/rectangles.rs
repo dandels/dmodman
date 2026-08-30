@@ -4,7 +4,6 @@ use std::rc::Rc;
 struct NormalLayouts {
     top_bar: Layout,
     main_vertical: Layout,
-    bottom_bar: Layout,
     main_content: Layout,
 }
 
@@ -22,15 +21,9 @@ impl NormalLayouts {
             .constraints([Constraint::Ratio(1, 4), Constraint::Ratio(3, 4)])
             .flex(Flex::End);
 
-        let bottom_bar = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Fill(1), Constraint::Length(1)])
-            .flex(Flex::Start);
-
         let mut ret = Self {
             top_bar,
             main_vertical,
-            bottom_bar,
             main_content: Default::default(),
         };
         ret.set_pane_count(main_pane_count);
@@ -85,6 +78,7 @@ pub struct Rectangles {
 
 pub struct NormalRects {
     layouts: NormalLayouts,
+    main_vertical: Rc<[Rect]>,
     pub tabs: Rect,
     pub request_counter: Rect,
     pub hotkey_bar: Rect,
@@ -116,6 +110,7 @@ impl Rectangles {
                 hotkey_bar: Default::default(),
                 main_content_panes: Default::default(),
                 bottom_bar: Default::default(),
+                main_vertical: Default::default(),
             },
             confirm_dialog: ConfirmDialogRects {
                 layout_horizontal: Layout::horizontal([Constraint::Max(50)]).flex(Flex::Center),
@@ -127,19 +122,24 @@ impl Rectangles {
 }
 impl NormalRects {
     pub fn recalculate(&mut self, window_size: Rect) {
-        let main_vertical = self.layouts.main_vertical.split(window_size);
-        let top_bar = self.layouts.top_bar.split(main_vertical[0]);
+        self.main_vertical = self.layouts.main_vertical.split(window_size);
+        let top_bar = self.layouts.top_bar.split(self.main_vertical[0]);
         self.tabs = top_bar[0];
         self.request_counter = top_bar[1];
-        self.hotkey_bar = main_vertical[1];
-        self.main_content_panes = self.layouts.main_content.split(main_vertical[2]);
-        self.bottom_bar = main_vertical[3];
+        self.hotkey_bar = self.main_vertical[1];
+        self.main_content_panes = self.layouts.main_content.split(self.main_vertical[2]);
+        self.bottom_bar = self.main_vertical[3];
+    }
+
+    pub fn change_tab(&mut self, pane_count: usize) {
+        self.layouts.set_pane_count(pane_count);
+        self.main_content_panes = self.layouts.main_content.split(self.main_vertical[2]);
     }
 }
 
 impl ConfirmDialogRects {
     pub fn recalculate(&mut self, list_height: usize, window_size: Rect) {
-        let dialog_vertical = Layout::vertical([Constraint::Length((list_height + 2) as u16)]).flex(Flex::Center);
+        let dialog_vertical = Layout::vertical([Constraint::Length((list_height) as u16)]).flex(Flex::Center);
         self.rect = dialog_vertical.split(self.layout_horizontal.split(window_size)[0])[0];
     }
 }

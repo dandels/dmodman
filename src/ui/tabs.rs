@@ -9,7 +9,7 @@ use crate::{
     },
 };
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[repr(usize)]
 pub enum Focused {
     #[default]
@@ -26,8 +26,13 @@ const WIDGET_COUNT: usize = 4;
 pub struct IndexMapping {
     pub tab: usize,
     pub widget: usize,
-    // pub needs_update: bool,
 }
+
+const WIDGET_LAYOUT: [&[Focused]; 3] = [
+    (&[Focused::ArchiveTable, Focused::DownloadTable]),
+    (&[Focused::InstalledMods]),
+    (&[Focused::LogList]),
+];
 
 // Hardcoded since this can seemingly not be done in a const context and not inlinining this is silly
 pub const INDEX_MAPPING: [IndexMapping; WIDGET_COUNT] = {
@@ -52,13 +57,7 @@ pub struct TabWidgets<'a> {
 
 impl<'a> TabWidgets<'a> {
     pub async fn new(db: Db, downloads: Downloads) -> Self {
-        const WIDGET_TYPES: [&[Focused]; 3] = [
-            (&[Focused::ArchiveTable, Focused::DownloadTable]),
-            (&[Focused::InstalledMods]),
-            (&[Focused::LogList]),
-        ];
-
-        let tabs: Vec<Tab> = WIDGET_TYPES.into_iter().map(Tab::new).collect();
+        let tabs: Vec<Tab> = WIDGET_LAYOUT.into_iter().map(Tab::new).collect();
         let tab_display = TabDisplay::new();
         let installed_mods_table = InstalledModsWidget::new(db.installed.clone()).await;
         let archives_table = ArchivesWidget::new(db).await;
@@ -80,6 +79,13 @@ impl<'a> TabWidgets<'a> {
         ret.widget_for_type_mut(ret.focused_tab().focused_widget_type()).add_highlight();
         // ret.widget_for_type_mut(TABS[ret.focused_index]).add_highlight();
         ret
+    }
+
+    pub fn add_urgency_for_widget(&mut self, widget: Focused) {
+        let mapping = INDEX_MAPPING[widget];
+        if mapping.tab != self.focused_index {
+            self.tab_display.add_urgency(mapping.tab);
+        }
     }
 
     pub fn focused_tab(&self) -> &Tab {

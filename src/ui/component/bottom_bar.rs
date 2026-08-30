@@ -27,7 +27,7 @@ impl<'a> BottomBar<'a> {
     pub async fn update_widget(&mut self, tabs: &TabWidgets<'a>) {
         match tabs.focused_widget_type() {
             Focused::ArchiveTable => self.refresh_for_archive_table(&tabs.archive_table).await,
-            Focused::DownloadTable => self.focus_downloads(&tabs.downloads_table).await,
+            Focused::DownloadTable => self.refresh_for_downloads(&tabs.downloads_table).await,
             Focused::InstalledMods => self.refresh_for_installed_mods(&tabs.installed_mods_table).await,
             Focused::LogList => self.focus_none(),
         }
@@ -66,7 +66,7 @@ impl<'a> BottomBar<'a> {
         }
     }
 
-    pub async fn focus_downloads(&mut self, downloads_table: &DownloadsWidget<'a>) {
+    pub async fn refresh_for_downloads(&mut self, downloads_table: &DownloadsWidget<'a>) {
         if let Some(focused_index) = downloads_table.selected() {
             let file_info = downloads_table.get_by_index(focused_index);
             if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_info.file_id).await {
