@@ -2,35 +2,35 @@
 name = "dmodman"
 version = "0.3.0"
 authors = ["dandels <dandels (at) hotmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-dirs = "5.0"
+dirs = "6.0"
 futures-util = "0.3"
-indexmap = "2.2"
-libc = "0.2.155"
-md-5 = "0.10"
+indexmap = "2.14"
+libc = "0.2.189"
+md-5 = "0.11"
 percent-encoding = "2.3"
-ratatui = { version = "0.29", default-features = false, features = ["termion", "unstable-widget-ref"] }
-reqwest = { version = "0.12", features = ["json", "stream"] }
+ratatui = { version = "0.30", default-features = false, features = [ "all-widgets", "layout-cache", "termion", "unstable-widget-ref"] }
+reqwest = { version = "0.13", features = ["json", "stream"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 shellexpand = "3.1"
-signal-hook = "0.3"
-signal-hook-tokio = { version = "0.3", features = [ "futures-v0_3" ] }
+signal-hook = "0.4"
+signal-hook-tokio = { version = "0.4", features = [ "futures-v0_3" ] }
 tokio = { version = "1", features = ["fs", "macros", "net", "sync", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = ["fs"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-tungstenite = { version = "0.28", features = ["native-tls"] }
-toml = "0.8"
+tungstenite = { version = "0.30", features = ["native-tls"] }
+toml = "1.1"
 url = { version = "2", features = [ "serde" ] }
 termion = "4"
-tui-textarea = { version = "0.7", default-features = false, features = ["termion"] }
-uuid = { version = "1.7", features = ["v4", "fast-rng"] }
+ratatui-textarea = { version = "0.9", default-features = false, features = ["termion"] }
+uuid = { version = "1.26", features = ["v4", "fast-rng"] }
 zstd = "0.13"
 
 [build-dependencies]
-bindgen = { version = "0.70", default-features = false }
+bindgen = { version = "0.72", default-features = false }
 
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.

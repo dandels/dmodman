@@ -5,9 +5,9 @@ use crate::Config;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, List, ListState, Paragraph};
 use ratatui::Frame;
+use ratatui_textarea::{CursorMove, TextArea};
 use std::path::Path;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
-use tui_textarea::{CursorMove, TextArea};
 
 pub struct ExtractDialog<'a> {
     config: Config,

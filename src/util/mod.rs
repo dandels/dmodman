@@ -1,7 +1,7 @@
 pub mod format;
 
 use md5::{Digest, Md5};
-use std::path::PathBuf;
+use std::{io::Read, path::PathBuf};
 use tokio::task;
 use url::Url;
 
@@ -9,8 +9,7 @@ pub fn file_name_from_url(url: &Url) -> String {
     let mut path_segments = url.path_segments().unwrap();
     let encoded = path_segments.next_back().unwrap();
     let decode = percent_encoding::percent_decode(encoded.as_bytes());
-    let file_name = decode.decode_utf8_lossy().to_string();
-    file_name
+    decode.decode_utf8_lossy().to_string()
 }
 
 /* The API doesn't offer other hash formats than md5. We could get the sha256 sum via the 3rd party virus scan URL for
@@ -21,9 +20,17 @@ pub async fn md5sum(path: PathBuf) -> Result<String, std::io::Error> {
     task::spawn_blocking(move || {
         let mut file = std::fs::File::open(path)?;
         let mut hasher = Md5::new();
-        let _bytes_read = std::io::copy(&mut file, &mut hasher)?;
+        let mut buf = [0; 4096];
+        loop {
+            let bytes_read = file.read(&mut buf)?;
+            if bytes_read == 0 {
+                break;
+            }
+            hasher.update(&buf[0..bytes_read]);
+        }
+        // let _bytes_read = std::io::copy(&mut file, &mut hasher)?;
         let hash = hasher.finalize();
-        Ok(format!("{:x}", hash))
+        Ok(format!("{:?}", hash))
     })
     .await?
 }

@@ -1,6 +1,6 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::widgets::StatefulWidgetRef;
+use ratatui::widgets::StatefulWidget;
 
 use crate::ui::component::traits::{Highlight, Select};
 use crate::ui::component::*;
@@ -10,7 +10,7 @@ macro_rules! impl_focusable_component {
         impl HighlightSelect for $T {
             fn draw(&mut self, rect: Rect, buf: &mut Buffer) {
                 // TODO it's unclear whether implementing Widget for a StatefulWidget would suffice
-                StatefulWidgetRef::render_ref(&self.widget, rect, buf, &mut self.state)
+                StatefulWidget::render(&self.widget, rect, buf, &mut self.state)
             }
         }
     };
