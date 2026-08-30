@@ -8,8 +8,6 @@ use ratatui::text::{Span, Text};
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 
 pub struct InstalledModsWidget<'a> {
-    headers: Row<'a>,
-    widths: [Constraint; 3],
     pub currently_shown: IndexMap<String, ModDirectory>,
     pub installed: Installed,
     pub block: Block<'a>,
@@ -34,15 +32,18 @@ impl<'a> InstalledModsWidget<'a> {
             Cell::from(header_text("Version")),
         ]);
 
+        let widget = Table::new(Vec::<Row>::new(), widths)
+            .header(headers)
+            .block(block.to_owned())
+            .row_highlight_style(Style::default());
+
         let mut ret = Self {
-            headers,
-            widths,
             currently_shown: IndexMap::new(),
             installed,
             block,
             highlight_style: Style::default(),
             state: TableState::default(),
-            widget: Table::default().widths(widths),
+            widget,
             len: 0,
         };
         ret.refresh().await;
@@ -67,11 +68,7 @@ impl<'a> InstalledModsWidget<'a> {
         }
 
         self.len = rows.len();
-
-        self.widget = Table::new(rows, self.widths)
-            .header(self.headers.to_owned())
-            .block(self.block.to_owned())
-            .row_highlight_style(self.highlight_style.to_owned());
+        self.widget = self.widget.to_owned().rows(rows);
     }
 
     pub fn get_by_index(&self, index: usize) -> (&String, &ModDirectory) {

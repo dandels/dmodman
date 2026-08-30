@@ -43,7 +43,8 @@ impl<'a> LogWidget<'a> {
             self.state.select(self.len.checked_sub(1));
         }
 
-        self.widget = self.widget.clone().items(self.list_items.clone());
+        // TODO Ratatui's API forces needless copying. Upstream seems to be slowly working on this.
+        self.widget = self.widget.to_owned().items(self.list_items.to_owned());
     }
 
     pub fn delete_selected(&mut self) {

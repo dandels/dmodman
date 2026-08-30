@@ -8,8 +8,6 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 
 pub struct ArchivesWidget<'a> {
-    headers: Row<'a>,
-    widths: [Constraint; 4],
     pub cache: Db,
     pub currently_shown: IndexMap<String, ArchiveEntry>,
     pub block: Block<'a>,
@@ -29,21 +27,19 @@ impl ArchivesWidget<'_> {
             Cell::from(header_text("Size")),
         ]);
         let widths = [
-            Constraint::Ratio(9, 12),
-            Constraint::Ratio(1, 12),
-            Constraint::Ratio(1, 12),
-            Constraint::Ratio(1, 12),
+            Constraint::Fill(1),
+            Constraint::Max(6),
+            Constraint::Max(5),
+            Constraint::Max(8),
         ];
 
         let mut ret = Self {
-            headers,
-            widths,
             currently_shown: IndexMap::new(),
             cache,
             block,
             highlight_style: Style::default(),
             state: TableState::default(),
-            widget: Table::default().widths(widths),
+            widget: Table::default().header(headers).widths(widths),
             len: 0,
         };
         ret.refresh().await;
@@ -81,10 +77,7 @@ impl ArchivesWidget<'_> {
             )
         }
         self.len = rows.len();
-        self.widget = Table::new(rows, self.widths)
-            .header(self.headers.to_owned())
-            .block(self.block.to_owned())
-            .row_highlight_style(self.highlight_style.to_owned());
+        self.widget = self.widget.to_owned().rows(rows);
     }
 
     pub fn get_by_index(&self, index: usize) -> (&String, &ArchiveEntry) {

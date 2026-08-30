@@ -5,8 +5,6 @@ use ratatui::style::Style;
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 
 pub struct DownloadsWidget<'a> {
-    headers: Row<'a>,
-    widths: [Constraint; 3],
     pub last_known_state: Vec<FileInfo>,
     pub downloads: Downloads,
     pub block: Block<'a>,
@@ -26,21 +24,20 @@ impl<'a> DownloadsWidget<'a> {
             Cell::from(header_text("Status")),
         ]);
 
-        let widths = [
-            Constraint::Percentage(65),
-            Constraint::Percentage(20),
-            Constraint::Percentage(15),
-        ];
+        let widths = [Constraint::Fill(1), Constraint::Max(15), Constraint::Max(11)];
+
+        let widget = Table::new(Vec::<Row>::new(), widths)
+            .header(headers.to_owned())
+            .block(block.to_owned())
+            .row_highlight_style(Style::default());
 
         let mut ret = Self {
-            headers,
-            widths,
             last_known_state: Vec::new(),
             downloads,
             block,
             state: TableState::default(),
             highlight_style: Style::default(),
-            widget: Table::default(),
+            widget,
             len: 0,
         };
         ret.refresh().await;
@@ -65,10 +62,7 @@ impl<'a> DownloadsWidget<'a> {
         self.last_known_state = current_values;
 
         self.len = rows.len();
-        self.widget = Table::new(rows, self.widths)
-            .header(self.headers.to_owned())
-            .block(self.block.to_owned())
-            .row_highlight_style(self.highlight_style);
+        self.widget = self.widget.to_owned().rows(rows);
     }
 
     pub fn get_by_index(&self, index: usize) -> &FileInfo {
