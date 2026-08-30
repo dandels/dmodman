@@ -187,7 +187,7 @@ impl Installer {
         dest_path: &PathBuf,
         dest_dir_name: &String,
     ) -> ModDirectory {
-        LOGGER.log(format!("Begin extracting: {:?}", &archive.file_name));
+        LOGGER.log(format!("Begin extracting: {:?}", archive.file_name));
         *archive.install_state.write().await = ArchiveStatus::Extracting;
         fs::create_dir_all(&dest_path).await.unwrap();
         EVENTS.send(EventSource::Archives);
@@ -203,7 +203,7 @@ impl Installer {
         EVENTS.send(EventSource::Archives);
         self.db.installed.add(dest_dir_name.clone(), mod_dir).await;
         self.extract_jobs.write().await.remove(&archive.file_name);
-        LOGGER.log(format!("Finished extracting: {:?}", &archive.file_name));
+        LOGGER.log(format!("Finished extracting: {:?}", archive.file_name));
     }
 }
 
@@ -217,13 +217,13 @@ async fn extract_entry(target_path: PathBuf, archive: Archive) -> Result<(), Ins
                         if let bindings::ARCHIVE_WARN = status {
                             LOGGER.log(format!(
                                 "Warning when extracting \"{:?}\": {}",
-                                &target_path,
+                                target_path,
                                 archive.get_err_msg().await
                             ));
                         }
                         if let Some(bytes) = bytes {
                             if let Err(e) = file.write_all(&bytes).await {
-                                LOGGER.log(format!("Writing {:?} reported error {e}", &target_path));
+                                LOGGER.log(format!("Writing {:?} reported error {e}", target_path));
                                 return Err(e.into());
                             }
                         }
@@ -234,14 +234,14 @@ async fn extract_entry(target_path: PathBuf, archive: Archive) -> Result<(), Ins
                     // TODO handle ARCHIVE_RETRY
                     _ => {
                         let msg = archive.get_err_msg().await;
-                        LOGGER.log(format!("Error when extracting \"{:?}\": {}", &target_path, &msg));
+                        LOGGER.log(format!("Error when extracting \"{:?}\": {}", target_path, msg));
                         return Err(ArchiveError::from_err_code(status, msg).into());
                     }
                 }
             }
         }
         Err(e) => {
-            LOGGER.log(format!("Failed to create file {:?}", &target_path));
+            LOGGER.log(format!("Failed to create file {:?}", target_path));
             Err(e.into())
         }
     }

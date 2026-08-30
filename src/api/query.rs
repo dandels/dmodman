@@ -57,7 +57,7 @@ impl Query {
                     Err(e) => {
                         LOGGER.log(format!(
                             "Failed to parse URI in response from Nexus: {}. Please file a bug report.",
-                            &location.URI
+                            location.URI
                         ));
                         Err(e.into())
                     }
@@ -98,7 +98,7 @@ impl Query {
                     } else {
                         LOGGER.log(format!(
                             "Warning: API returned unexpected response when checking hash for {}",
-                            &file_name
+                            file_name
                         ));
                         let mi = &md5result.mod_info;
                         let fd = &md5result.file_details;
@@ -117,7 +117,7 @@ impl Query {
                 }
             },
             Err(e) => {
-                LOGGER.log(format!("Unable to verify integrity of {}: {e}", &file_name));
+                LOGGER.log(format!("Unable to verify integrity of {}: {e}", file_name));
                 LOGGER.log("This could mean the download got corrupted.");
                 Err(e)
             }

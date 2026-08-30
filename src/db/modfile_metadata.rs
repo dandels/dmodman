@@ -57,7 +57,7 @@ impl ModFileMetadata {
     }
 
     pub async fn add_installed_dir(&self, dir_name: String, mod_dir: Arc<InstalledMod>) {
-        for (_, archive) in self.mod_archives.write().await.iter() {
+        for archive in self.mod_archives.write().await.values() {
             *archive.install_state.write().await = ArchiveStatus::Installed;
         }
         self.update_status.sync_with(&mod_dir.update_status);
@@ -89,7 +89,7 @@ impl ModFileMetadata {
         if let Some(mod_name) = self.mod_info.read().await.as_ref().and_then(|mi| mi.name.clone()) {
             return Some(mod_name);
         } else {
-            for (_, im) in self.installed_mods.read().await.iter() {
+            for im in self.installed_mods.read().await.values() {
                 if let Some(mod_name) = &im.mod_name {
                     return Some(mod_name.clone());
                 }
@@ -100,7 +100,7 @@ impl ModFileMetadata {
 
     pub async fn propagate_update_status(&self, config: &Config, status: &UpdateStatus) {
         self.update_status.set(status.clone());
-        for (_, archive) in self.mod_archives.write().await.iter() {
+        for archive in self.mod_archives.write().await.values() {
             if let Some(metadata) = &archive.mod_data {
                 metadata.update_status.set(status.clone());
                 if let Err(e) = metadata.save(DataPath::ArchiveMetadata(config, &archive.file_name)).await {

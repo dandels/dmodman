@@ -297,7 +297,7 @@ impl<'a> MainUI<'a> {
                             }
                         }
                     } else {
-                        LOGGER.log(format!("Warn: mod for {} doesn't exist in db", &file_name));
+                        LOGGER.log(format!("Warn: mod for {} doesn't exist in db", file_name));
                     }
                     if suggested_values.is_empty() {
                         suggested_values.push(archive.file_name().clone());

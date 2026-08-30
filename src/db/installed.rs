@@ -76,7 +76,7 @@ impl Installed {
                 if let ModDirectory::Nexus(im) = mod_dir {
                     let mfd =
                         self.metadata_index.get_by_file_id(&im.file_id).await.unwrap_or_else(|| {
-                            panic!("{} should have been present in the metadata index.", &im.file_id)
+                            panic!("{} should have been present in the metadata index.", im.file_id)
                         });
                     if mfd.remove_installed(dir_name).await {
                         EVENTS.send(EventSource::Archives);

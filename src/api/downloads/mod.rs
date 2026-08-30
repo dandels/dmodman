@@ -90,10 +90,10 @@ impl Downloads {
                 _ => {
                     task.dl_info.url = url.clone();
                     if let Err(()) = task.start().await {
-                        LOGGER.log(format!("Failed to restart download for {}", &file_name));
+                        LOGGER.log(format!("Failed to restart download for {}", file_name));
                     }
                     if let Err(e) = task.dl_info.save(DataPath::DownloadInfo(&self.config, &task.dl_info)).await {
-                        LOGGER.log(format!("Couldn't store new download url for {}: {}", &file_name, e));
+                        LOGGER.log(format!("Couldn't store new download url for {}: {}", file_name, e));
                     }
                     return;
                 }
@@ -186,12 +186,12 @@ impl Downloads {
         let path = self.config.download_dir().join(&fi.file_name);
         if let Ok(archive) = ArchiveFile::new(&self.cache.installed, &path, Some(archive_json.clone())).await {
             if let Err(e) = archive_json.save(DataPath::ArchiveMetadata(&self.config, &archive.file_name)).await {
-                LOGGER.log(format!("Unable to save metadata for {}: {e}", &fi.file_name));
+                LOGGER.log(format!("Unable to save metadata for {}: {e}", fi.file_name));
             }
             let entry = ArchiveEntry::File(Arc::new(archive));
             self.cache.archives.add_archive(entry.clone()).await;
         } else {
-            LOGGER.log(format!("Error: recently downloaded file {} is inaccessible..?", &fi.file_name));
+            LOGGER.log(format!("Error: recently downloaded file {} is inaccessible..?", fi.file_name));
         }
         Ok(())
     }
@@ -205,14 +205,14 @@ impl Downloads {
         }
         task.stop();
         let mut path = self.config.download_dir();
-        path.push(format!("{}.part", &task.dl_info.file_info.file_name));
+        path.push(format!("{}.part", task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            LOGGER.log(format!("Unable to delete {:?}.", &path));
+            LOGGER.log(format!("Unable to delete {:?}.", path));
         }
         path.pop();
-        path.push(format!("{}.part.json", &task.dl_info.file_info.file_name));
+        path.push(format!("{}.part.json", task.dl_info.file_info.file_name));
         if fs::remove_file(path.clone()).await.is_err() {
-            LOGGER.log(format!("Unable to delete {:?}.", &path));
+            LOGGER.log(format!("Unable to delete {:?}.", path));
         }
         EVENTS.send(EventSource::Downloads);
     }
