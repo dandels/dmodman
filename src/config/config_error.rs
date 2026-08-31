@@ -18,9 +18,9 @@ pub enum ConfigError {
 impl Error for ConfigError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ConfigError::IO { ref source } => Some(source),
-            ConfigError::Deserialization { ref source } => Some(source),
-            ConfigError::ShellExpand { ref source } => Some(source),
+            ConfigError::IO { source } => Some(source),
+            ConfigError::Deserialization { source } => Some(source),
+            ConfigError::ShellExpand { source } => Some(source),
         }
     }
 }

@@ -91,7 +91,7 @@ async fn handle_incoming_stream(stream: UnixStream, downloads: &Downloads) {
 }
 
 fn get_socket_path() -> String {
-    extern "C" {
+    unsafe extern "C" {
         fn getuid() -> u32;
     }
     let uid;

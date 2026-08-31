@@ -59,8 +59,8 @@ impl ConfigBuilder {
     }
 
     fn apply_settings_from_profile(&mut self) {
-        if let Some(selected_profile) = &self.profile {
-            if let Some(profile) = self.profiles.get(selected_profile) {
+        if let Some(selected_profile) = &self.profile
+            && let Some(profile) = self.profiles.get(selected_profile) {
                 if let Some(dls_dir) = &profile.download_dir {
                     self.download_dir = Some(dls_dir.to_owned());
                 };
@@ -68,7 +68,6 @@ impl ConfigBuilder {
                     self.install_dir = Some(ins_dir.to_owned());
                 };
             }
-        }
     }
 
     // These are used by tests

@@ -16,9 +16,9 @@ impl Error for InstallError {
         match self {
             InstallError::AlreadyExists => None,
             InstallError::ArchiveDeleted => None,
-            InstallError::ArchiveError { ref source } => Some(source),
+            InstallError::ArchiveError { source } => Some(source),
             InstallError::InProgress => None,
-            InstallError::IO { ref source } => Some(source),
+            InstallError::IO { source } => Some(source),
         }
     }
 }

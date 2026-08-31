@@ -102,20 +102,16 @@ impl ArchiveFiles {
         let mut lock = self.files.write().await;
         if let Some(_archive_file) = lock.get(file_name) {
             let path = self.config.download_dir().join(file_name);
-            if path.exists() {
-                if let Err(e) = fs::remove_file(&path).await {
-                    LOGGER.log(format!("Error when removing file: {e}"));
-                    return;
-                }
+            if path.exists() && let Err(e) = fs::remove_file(&path).await {
+                LOGGER.log(format!("Error when removing file: {e}"));
+                return;
             }
             let json_file_name = path.file_name().unwrap().to_string_lossy();
             let json_file = path.with_file_name(format!("{}.json", json_file_name));
-            if json_file.exists() {
-                if let Err(e) = fs::remove_file(&json_file).await {
+            if json_file.exists() && let Err(e) = fs::remove_file(&json_file).await {
                     LOGGER.log(format!("Error when removing file: {e}"));
                     return;
                 }
-            }
             lock.shift_remove(file_name);
             EVENTS.send(EventSource::Archives);
         }

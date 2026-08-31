@@ -28,8 +28,8 @@ impl UpdateChecker {
     }
 
     pub async fn ignore_file(&self, file_id: u64) {
-        if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_id).await {
-            if let Some(latest_remote_file) =
+        if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_id).await
+            && let Some(latest_remote_file) =
                 self.db.file_lists.get(mfd.game.clone(), mfd.mod_id).await.unwrap().file_updates.last()
             {
                 match mfd.update_status.to_enum() {
@@ -52,7 +52,6 @@ impl UpdateChecker {
                 EVENTS.send(EventSource::Archives);
                 EVENTS.send(EventSource::Installed);
             }
-        }
     }
 
     pub async fn update_all(&self) {
@@ -258,13 +257,11 @@ impl UpdateChecker {
             }
 
             // Is this file marked as an old file in the updates chain?
-            if let Some(index) = newer_updates_start_index {
-                if !has_update {
-                    for upd in &updates[index..] {
-                        if mfd.file_id == upd.old_file_id {
-                            has_update = true;
-                            break;
-                        }
+            if let Some(index) = newer_updates_start_index && !has_update {
+                for upd in &updates[index..] {
+                    if mfd.file_id == upd.old_file_id {
+                        has_update = true;
+                        break;
                     }
                 }
             }

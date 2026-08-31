@@ -25,15 +25,15 @@ pub enum ApiError {
 impl Error for ApiError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ApiError::ConnectionError { ref source } => Some(source),
-            ApiError::CacheError { ref source } => Some(source),
+            ApiError::ConnectionError { source } => Some(source),
+            ApiError::CacheError { source } => Some(source),
             ApiError::Expired => None,
             ApiError::HashMismatch => None,
-            ApiError::IOError { ref source } => Some(source),
-            ApiError::JoinError { ref source } => Some(source),
-            ApiError::ParseError { ref source } => Some(source),
-            ApiError::ParseIntError { ref source } => Some(source),
-            ApiError::SerializationError { ref source } => Some(source),
+            ApiError::IOError { source } => Some(source),
+            ApiError::JoinError { source } => Some(source),
+            ApiError::ParseError { source } => Some(source),
+            ApiError::ParseIntError { source } => Some(source),
+            ApiError::SerializationError { source } => Some(source),
             _ => None,
         }
     }

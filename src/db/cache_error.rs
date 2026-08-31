@@ -11,8 +11,8 @@ pub enum CacheError {
 impl Error for CacheError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            CacheError::IO { ref source } => Some(source),
-            CacheError::Deserialization { ref source } => Some(source),
+            CacheError::IO { source } => Some(source),
+            CacheError::Deserialization { source } => Some(source),
         }
     }
 }
