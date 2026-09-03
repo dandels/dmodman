@@ -9,8 +9,8 @@ use crate::util;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
-use std::io::prelude::Write;
 use std::io::Read;
+use std::io::prelude::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, fs::File};
@@ -60,14 +60,15 @@ impl ConfigBuilder {
 
     fn apply_settings_from_profile(&mut self) {
         if let Some(selected_profile) = &self.profile
-            && let Some(profile) = self.profiles.get(selected_profile) {
-                if let Some(dls_dir) = &profile.download_dir {
-                    self.download_dir = Some(dls_dir.to_owned());
-                };
-                if let Some(ins_dir) = &profile.install_dir {
-                    self.install_dir = Some(ins_dir.to_owned());
-                };
-            }
+            && let Some(profile) = self.profiles.get(selected_profile)
+        {
+            if let Some(dls_dir) = &profile.download_dir {
+                self.download_dir = Some(dls_dir.to_owned());
+            };
+            if let Some(ins_dir) = &profile.install_dir {
+                self.install_dir = Some(ins_dir.to_owned());
+            };
+        }
     }
 
     // These are used by tests

@@ -1,10 +1,10 @@
 use super::common::*;
 use super::traits::Select;
-use crate::ui::rectangles::ExtractDialogRects;
 use crate::Config;
+use crate::ui::rectangles::ExtractDialogRects;
+use ratatui::Frame;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, List, ListState, Paragraph};
-use ratatui::Frame;
 use ratatui_textarea::{CursorMove, TextArea};
 use std::path::Path;
 use termion::event::{Event, Key, MouseButton, MouseEvent};

@@ -1,7 +1,7 @@
 use super::common::*;
+use crate::Db;
 use crate::db::ArchiveEntry;
 use crate::util;
-use crate::Db;
 use indexmap::IndexMap;
 use ratatui::layout::Constraint;
 use ratatui::style::Style;

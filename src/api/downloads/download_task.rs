@@ -9,8 +9,8 @@ use reqwest::header::RANGE;
 use reqwest::{Response, StatusCode};
 use std::fmt::{Debug, Display};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, BufWriter};

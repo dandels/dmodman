@@ -4,7 +4,7 @@ use std::net::TcpStream;
 use serde::{Deserialize, Serialize};
 // use tokio::net::TcpStream;
 // use tokio_stream::StreamExt;
-use tungstenite::{stream::MaybeTlsStream, WebSocket};
+use tungstenite::{WebSocket, stream::MaybeTlsStream};
 // use tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 

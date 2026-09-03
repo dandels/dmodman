@@ -48,11 +48,13 @@ impl InputEvents {
             })
         };
         let _tick_handle = {
-            thread::spawn(move || loop {
-                if tx.send(TickEvent::Tick).is_err() {
-                    break;
+            thread::spawn(move || {
+                loop {
+                    if tx.send(TickEvent::Tick).is_err() {
+                        break;
+                    }
+                    thread::sleep(tick_rate);
                 }
-                thread::sleep(tick_rate);
             })
         };
         InputEvents { rx }

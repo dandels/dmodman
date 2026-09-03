@@ -1,7 +1,7 @@
 use super::Cacheable;
+use crate::Config;
 use crate::api::ModInfo;
 use crate::config::DataPath;
-use crate::Config;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;

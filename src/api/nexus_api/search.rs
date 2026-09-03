@@ -1,6 +1,6 @@
 use crate::api::ApiError;
 use crate::api::Query;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 
 // This is not used, but it should work in case it's needed

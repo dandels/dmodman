@@ -1,5 +1,5 @@
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::io::{BufReader, Error, Write};
 use std::path::PathBuf;
 use std::{fs, fs::File};

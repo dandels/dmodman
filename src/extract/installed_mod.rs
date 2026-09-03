@@ -1,9 +1,9 @@
+use crate::Db;
 use crate::api::update_status::*;
 use crate::db::{ArchiveFile, ArchiveMetadata, Cacheable};
-use crate::Db;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub enum ModDirectory {

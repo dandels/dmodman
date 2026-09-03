@@ -1,10 +1,10 @@
-use super::component::traits::Select;
 use super::component::ConfirmDialog;
+use super::component::traits::Select;
 use super::main_ui::*;
 use super::tabs::Focused;
+use crate::LOGGER;
 use crate::db::ArchiveEntry;
 use crate::extract::{InstallError, ModDirectory};
-use crate::LOGGER;
 use std::process::Command;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 

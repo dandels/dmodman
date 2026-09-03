@@ -1,9 +1,9 @@
 use super::{ArchivesWidget, DownloadsWidget, InstalledModsWidget};
+use crate::Db;
 use crate::api::UpdateStatus;
 use crate::extract::ModDirectory;
 use crate::ui::component::traits::Select;
 use crate::ui::tabs::{Focused, TabWidgets};
-use crate::Db;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;

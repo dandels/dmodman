@@ -1,8 +1,8 @@
-use super::request_counter::RequestCounter;
 use super::ApiError;
+use super::request_counter::RequestCounter;
 use crate::config::Config;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest::Response;
+use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use std::sync::Arc;
 use url::Url;
 

@@ -59,9 +59,10 @@ impl MetadataIndex {
     pub async fn fill_mod_file_data(&self, mfd: &ModFileMetadata) {
         {
             if mfd.file_details().await.is_none()
-                && let Some(fd) = self.file_lists.filedetails_for(mfd.game.to_owned(), mfd.mod_id, mfd.file_id).await {
-                    mfd.set_file_details(fd).await;
-                }
+                && let Some(fd) = self.file_lists.filedetails_for(mfd.game.to_owned(), mfd.mod_id, mfd.file_id).await
+            {
+                mfd.set_file_details(fd).await;
+            }
         }
         {
             let mut modinfo_lock = mfd.mod_info.write().await;

@@ -1,11 +1,11 @@
 use super::UpdateStatus;
 use super::{Client, FileList, Queriable};
+use crate::Config;
 use crate::api::{Query, Updated};
 use crate::db::{Db, ModFileMetadata};
 use crate::prelude::*;
-use crate::Config;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::task;
 
@@ -31,27 +31,27 @@ impl UpdateChecker {
         if let Some(mfd) = self.db.metadata_index.get_by_file_id(&file_id).await
             && let Some(latest_remote_file) =
                 self.db.file_lists.get(mfd.game.clone(), mfd.mod_id).await.unwrap().file_updates.last()
-            {
-                match mfd.update_status.to_enum() {
-                    UpdateStatus::OutOfDate(_) => {
-                        mfd.propagate_update_status(
-                            &self.config,
-                            &UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp),
-                        )
-                        .await;
-                    }
-                    UpdateStatus::HasNewFile(_) => {
-                        mfd.propagate_update_status(
-                            &self.config,
-                            &UpdateStatus::UpToDate(latest_remote_file.uploaded_timestamp),
-                        )
-                        .await;
-                    }
-                    _ => {}
+        {
+            match mfd.update_status.to_enum() {
+                UpdateStatus::OutOfDate(_) => {
+                    mfd.propagate_update_status(
+                        &self.config,
+                        &UpdateStatus::IgnoredUntil(latest_remote_file.uploaded_timestamp),
+                    )
+                    .await;
                 }
-                EVENTS.send(EventSource::Archives);
-                EVENTS.send(EventSource::Installed);
+                UpdateStatus::HasNewFile(_) => {
+                    mfd.propagate_update_status(
+                        &self.config,
+                        &UpdateStatus::UpToDate(latest_remote_file.uploaded_timestamp),
+                    )
+                    .await;
+                }
+                _ => {}
             }
+            EVENTS.send(EventSource::Archives);
+            EVENTS.send(EventSource::Installed);
+        }
     }
 
     pub async fn update_all(&self) {
@@ -257,7 +257,9 @@ impl UpdateChecker {
             }
 
             // Is this file marked as an old file in the updates chain?
-            if let Some(index) = newer_updates_start_index && !has_update {
+            if let Some(index) = newer_updates_start_index
+                && !has_update
+            {
                 for upd in &updates[index..] {
                     if mfd.file_id == upd.old_file_id {
                         has_update = true;
@@ -320,8 +322,8 @@ impl UpdateChecker {
 mod tests {
     use super::UpdateStatus;
     use crate::api::{ApiError, Client, Query, UpdateChecker};
-    use crate::config::tests::setup_test_env;
     use crate::config::ConfigBuilder;
+    use crate::config::tests::setup_test_env;
     use crate::db::Db;
 
     async fn init_structs() -> (Db, UpdateChecker) {

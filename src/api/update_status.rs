@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 pub const UP_TO_DATE: u8 = 0;
 pub const HAS_NEW_FILE: u8 = 1;
@@ -95,8 +95,7 @@ impl From<UpdateStatus> for UpdateStatusWrapper {
 impl Serialize for UpdateStatusWrapper {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
-    {
+        S: serde::Serializer, {
         self.to_enum().serialize(serializer)
     }
 }
@@ -104,8 +103,7 @@ impl Serialize for UpdateStatusWrapper {
 impl<'de> Deserialize<'de> for UpdateStatusWrapper {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
-    {
+        D: serde::Deserializer<'de>, {
         Ok(Self::new(UpdateStatus::deserialize(deserializer)?))
     }
 }

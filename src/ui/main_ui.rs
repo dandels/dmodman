@@ -1,6 +1,7 @@
 use std::io::Stdout;
 
 use super::component::*;
+use crate::Lib;
 use crate::api::{Downloads, Query, UpdateChecker};
 use crate::db::Db;
 use crate::events::EventSource;
@@ -9,7 +10,6 @@ use crate::prelude::*;
 use crate::ui::rectangles::Rectangles;
 use crate::ui::tabs::*;
 use crate::ui::*;
-use crate::Lib;
 use ratatui::prelude::{Backend, TermionBackend};
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;

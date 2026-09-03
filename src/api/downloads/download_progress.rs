@@ -1,8 +1,8 @@
 use crate::util::format;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct DownloadProgress {
@@ -23,8 +23,10 @@ impl DownloadProgress {
 impl fmt::Display for DownloadProgress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.size_and_unit {
-            Some((size, size_unit)) => write!(f, "{}/{size}", format::bytes_as_unit(self.bytes_read.load(Ordering::Relaxed), *size_unit)),
-            None => f.write_str("")
+            Some((size, size_unit)) => {
+                write!(f, "{}/{size}", format::bytes_as_unit(self.bytes_read.load(Ordering::Relaxed), *size_unit))
+            }
+            None => f.write_str(""),
         }
     }
 }

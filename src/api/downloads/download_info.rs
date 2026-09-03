@@ -3,8 +3,8 @@ use super::FileInfo;
 use crate::db::Cacheable;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use url::Url;
 
 const DL_STATE_DONE: u8 = 0;

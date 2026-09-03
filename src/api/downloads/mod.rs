@@ -167,15 +167,17 @@ impl Downloads {
 
         // If the mod info for this file doesn't exist, fetch it from the API
         if mfd.mod_info.read().await.is_none()
-            && let Err(e) = self.query.mod_info(&fi.game, fi.mod_id).await {
-                LOGGER.log(format!("Failed to query mod info for {}: {e}", fi.file_name));
-            }
+            && let Err(e) = self.query.mod_info(&fi.game, fi.mod_id).await
+        {
+            LOGGER.log(format!("Failed to query mod info for {}: {e}", fi.file_name));
+        }
 
         // Same for file list
         if mfd.file_details().await.is_none()
-            && let Err(e) = self.query.file_list(game, mod_id).await {
-                LOGGER.log(format!("Failed to query file list for {}: {e}", fi.file_name));
-            }
+            && let Err(e) = self.query.file_list(game, mod_id).await
+        {
+            LOGGER.log(format!("Failed to query file list for {}: {e}", fi.file_name));
+        }
 
         let update_status = self.refresh_update_status(fi).await;
 

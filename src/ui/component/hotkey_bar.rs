@@ -1,6 +1,6 @@
+use crate::ui::InputMode;
 use crate::ui::hotkeys::*;
 use crate::ui::tabs::Focused;
-use crate::ui::InputMode;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;

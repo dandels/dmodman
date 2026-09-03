@@ -1,5 +1,5 @@
-use crate::api::Downloads;
 use crate::LOGGER;
+use crate::api::Downloads;
 use std::io::{Error, ErrorKind};
 use std::str;
 use tokio::io::Interest;

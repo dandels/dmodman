@@ -1,8 +1,8 @@
+use crate::Config;
 use crate::config::DataPath;
 use crate::db::{Cacheable, MetadataIndex};
 use crate::extract::installed_mod::*;
 use crate::prelude::*;
-use crate::Config;
 use indexmap::IndexMap;
 use std::sync::Arc;
 use tokio::fs;
