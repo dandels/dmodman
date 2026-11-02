@@ -2,7 +2,7 @@ use crate::config;
 use crate::prelude::*;
 use std::fmt::{Debug, Display};
 
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
 use std::sync::RwLock;
 
@@ -27,6 +27,7 @@ impl Logger {
         }
 
         let mut path = config::config_dir();
+        fs::create_dir_all(&path).unwrap();
         path.push("dmodman.log");
         let mut logfile = File::options().create(true).append(true).open(path).unwrap();
         // TODO maybe only do this if configured to
