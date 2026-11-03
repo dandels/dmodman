@@ -5,10 +5,10 @@ authors = ["dandels <dandels (at) hotmail.com>"]
 edition = "2024"
 
 [dependencies]
-dirs = "6.0"
+dirs = "7.0"
 futures-util = "0.3"
 indexmap = "2.14"
-libc = "0.2.189"
+libc = "0.2.191"
 md-5 = "0.11"
 percent-encoding = "2.3"
 ratatui = { version = "0.30", default-features = false, features = [ "all-widgets", "layout-cache", "termion", "unstable-widget-ref"] }
@@ -26,11 +26,11 @@ toml = "1.1"
 url = { version = "2", features = [ "serde" ] }
 termion = "4"
 ratatui-textarea = { version = "0.9", default-features = false, features = ["termion"] }
-uuid = { version = "1.26", features = ["v4", "fast-rng"] }
-zstd = "0.13"
+uuid = { version = "1.29", features = ["v4", "fast-rng"] }
+zstd = "0.14"
 
 [build-dependencies]
-bindgen = { version = "0.72", default-features = false }
+bindgen = { version = "0.73", default-features = false }
 
 [profile.release]
 #This significantly reduces executable size at the cost of compilation time.
