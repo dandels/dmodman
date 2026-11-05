@@ -107,8 +107,13 @@ impl<'a> MainUI<'a> {
             }
             Event::Key(Key::Alt(ch)) => {
                 let nr = ch.to_digit(10).map(|d| d as usize);
-                if let Some(i) = nr {
-                    self.select_tab(Selection::Index(i)).await;
+                if let Some(mut i) = nr {
+                    // 0 - 1 Would underflow below, so we might as well special case the theoretical case of 10 tabs
+                    // existing.
+                    if i == 0 {
+                        i = 10;
+                    }
+                    self.select_tab(Selection::Index(i - 1)).await;
                 }
             }
             Event::Key(Key::Char('\t')) => {
