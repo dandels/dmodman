@@ -34,6 +34,9 @@ pub static LOGGER: LazyLock<Logger> = LazyLock::new(Logger::new);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Parse args before anything else
+    let _ = CLI_OPTS.daemonize;
+
     let mut config = ConfigBuilder::load().unwrap_or_default().build()?;
     // let config = config_builder.build()?;
 
