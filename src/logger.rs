@@ -8,20 +8,20 @@ use std::sync::RwLock;
 
 pub struct Logger {
     pub messages: RwLock<Vec<String>>,
-    is_interactive: bool,
+    daemonize: bool,
 }
 
 impl Logger {
     pub fn new() -> Self {
         Self {
             messages: Default::default(),
-            is_interactive: CLI_OPTS.is_interactive,
+            daemonize: CLI_OPTS.daemonize,
         }
     }
 
     // TODO allow optionally logging to file (maybe with log levels?)
     pub fn log<S: Into<String> + Debug + Display>(&self, msg: S) {
-        if !self.is_interactive {
+        if self.daemonize {
             println!("{}", msg);
             return;
         }
