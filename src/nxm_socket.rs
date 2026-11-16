@@ -56,10 +56,10 @@ pub async fn listen_for_downloads(nxm_sock: NxmSocketListener, downloads: Downlo
     loop {
         match nxm_sock.listener.accept().await {
             Ok((stream, _addr)) => {
-                if let Ok(ready) = stream.ready(Interest::READABLE).await {
-                    if ready.is_readable() {
-                        handle_incoming_stream(stream, &downloads).await;
-                    }
+                if let Ok(ready) = stream.ready(Interest::READABLE).await
+                    && ready.is_readable()
+                {
+                    handle_incoming_stream(stream, &downloads).await;
                 } // It doesn't seem like the two else {} paths here require dealing with
             }
             Err(e) => {

@@ -24,12 +24,12 @@ impl<'a> TabDisplay<'a> {
     // Urgency is useful and could have its own trait
     pub fn add_urgency(&mut self, index: usize) {
         self.title_lines.get_mut(index).unwrap().to_owned().set_style(Style::new().fg(Color::LightYellow));
-        self.widget = self.widget.to_owned().titles(&mut self.title_lines.iter().cloned());
+        self.widget = self.widget.to_owned().titles(self.title_lines.iter().cloned());
     }
 
     pub fn remove_urgency(&mut self, index: usize) {
         self.title_lines.get_mut(index).unwrap().to_owned().set_style(Style::new());
-        self.widget = self.widget.to_owned().titles(&mut self.title_lines.iter().cloned());
+        self.widget = self.widget.to_owned().titles(self.title_lines.iter().cloned());
     }
 
     pub fn focus_tab(&mut self, index: usize) {

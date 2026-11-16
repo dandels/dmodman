@@ -24,10 +24,10 @@ impl Select for Tab {
     }
 
     fn select(&mut self, index: Option<usize>) {
-        if let Some(index) = index {
-            if index < self.len() {
-                self.focused_widget_index = index;
-            }
+        if let Some(index) = index
+            && index < self.len()
+        {
+            self.focused_widget_index = index;
         }
     }
 

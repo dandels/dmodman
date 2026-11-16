@@ -38,10 +38,10 @@ impl<'a> BottomBar<'a> {
             let (_, mod_dir) = installed_mods_table.get_by_index(focused_index);
             if let ModDirectory::Nexus(im) = mod_dir {
                 let mut modname = StatusField::from_mod_name(im.mod_name.clone());
-                if modname.is_none() {
-                    if let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await {
-                        modname = StatusField::from_mod_name(mfd.mod_name().await);
-                    }
+                if modname.is_none()
+                    && let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await
+                {
+                    modname = StatusField::from_mod_name(mfd.mod_name().await);
                 }
                 let flags = StatusField::from_update_status(im.update_status.to_enum());
                 self.widget = Paragraph::new(Line::from(format_fields(vec![modname, flags])));

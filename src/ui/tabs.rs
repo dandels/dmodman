@@ -133,14 +133,14 @@ impl<'a> Select for TabWidgets<'a> {
     }
 
     fn select(&mut self, index: Option<usize>) {
-        if let Some(index) = index {
-            if index < self.len() {
-                self.focused_widget_mut().remove_highlight();
-                self.focused_index = index;
-                self.focused_widget_mut().add_highlight();
-                self.tab_display.remove_urgency(index);
-                self.tab_display.focus_tab(index);
-            }
+        if let Some(index) = index
+            && index < self.len()
+        {
+            self.focused_widget_mut().remove_highlight();
+            self.focused_index = index;
+            self.focused_widget_mut().add_highlight();
+            self.tab_display.remove_urgency(index);
+            self.tab_display.focus_tab(index);
         }
     }
 

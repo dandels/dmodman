@@ -124,19 +124,19 @@ impl MetadataIndex {
     }
 
     pub async fn remove_if_unreferenced(&self, file_id: &u64) {
-        if let Some(mfd) = self.get_by_file_id(file_id).await {
-            if mfd.is_unreferenced().await {
-                /* the entry in self.by_archive_name should be taken care of by the archives struct because
-                 * mfd.mod_archives is empty. */
-                self.by_file_id.write().await.remove(&mfd.file_id);
-                let mut games_lock = self.by_game_and_mod_sorted.write().await;
-                let mods_in_game = games_lock.get_mut(&mfd.game).unwrap();
-                let files = mods_in_game.get_mut(&mfd.mod_id).unwrap();
-                let index = files
-                    .binary_search_by(|f| f.file_id.cmp(&mfd.file_id))
-                    .expect("Should have found file by id {file_id} to delete in game->mods->files map.");
-                files.remove(index);
-            }
+        if let Some(mfd) = self.get_by_file_id(file_id).await
+            && mfd.is_unreferenced().await
+        {
+            /* the entry in self.by_archive_name should be taken care of by the archives struct because
+             * mfd.mod_archives is empty. */
+            self.by_file_id.write().await.remove(&mfd.file_id);
+            let mut games_lock = self.by_game_and_mod_sorted.write().await;
+            let mods_in_game = games_lock.get_mut(&mfd.game).unwrap();
+            let files = mods_in_game.get_mut(&mfd.mod_id).unwrap();
+            let index = files
+                .binary_search_by(|f| f.file_id.cmp(&mfd.file_id))
+                .expect("Should have found file by id {file_id} to delete in game->mods->files map.");
+            files.remove(index);
         }
     }
 }

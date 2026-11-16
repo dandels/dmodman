@@ -169,12 +169,12 @@ impl Installer {
     pub async fn cancel(&self, archive: &ArchiveFile) {
         if let Some(token) = self.extract_jobs.write().await.remove(&archive.file_name) {
             token.cancel();
-            if let Some(mfd) = self.db.metadata_index.get_by_archive_name(&archive.file_name).await {
-                if mfd.is_installed().await {
-                    *archive.install_state.write().await = ArchiveStatus::Installed;
-                    EVENTS.send(EventSource::Archives);
-                    return;
-                }
+            if let Some(mfd) = self.db.metadata_index.get_by_archive_name(&archive.file_name).await
+                && mfd.is_installed().await
+            {
+                *archive.install_state.write().await = ArchiveStatus::Installed;
+                EVENTS.send(EventSource::Archives);
+                return;
             }
             *archive.install_state.write().await = ArchiveStatus::Downloaded;
             EVENTS.send(EventSource::Archives);
@@ -221,11 +221,11 @@ async fn extract_entry(target_path: PathBuf, archive: Archive) -> Result<(), Ins
                                 archive.get_err_msg().await
                             ));
                         }
-                        if let Some(bytes) = bytes {
-                            if let Err(e) = file.write_all(&bytes).await {
-                                LOGGER.log(format!("Writing {:?} reported error {e}", target_path));
-                                return Err(e.into());
-                            }
+                        if let Some(bytes) = bytes
+                            && let Err(e) = file.write_all(&bytes).await
+                        {
+                            LOGGER.log(format!("Writing {:?} reported error {e}", target_path));
+                            return Err(e.into());
                         }
                     }
                     bindings::ARCHIVE_EOF => {

@@ -104,10 +104,10 @@ impl Db {
                     }
                 };
 
-                if let Some(fd) = fd {
-                    if earliest_timestamp < fd.uploaded_timestamp {
-                        earliest_timestamp = fd.uploaded_timestamp;
-                    }
+                if let Some(fd) = fd
+                    && earliest_timestamp < fd.uploaded_timestamp
+                {
+                    earliest_timestamp = fd.uploaded_timestamp;
                 }
             }
 

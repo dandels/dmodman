@@ -76,27 +76,24 @@ impl<'a> MainUI<'a> {
                 self.select_in_widget(Selection::Previous).await;
             }
             Event::Key(Key::Char('J')) => {
-                if let Some(i) = self.tabs.focused_widget().selected() {
-                    if let Focused::InstalledMods = self.tabs.focused_widget_type() {
-                        // TODO wrap around?
-                        self.db.installed.move_to_index(i, i.saturating_add(1)).await;
-                        self.select_in_widget(Selection::Next).await;
-                    }
+                if let Some(i) = self.tabs.focused_widget().selected()
+                    && let Focused::InstalledMods = self.tabs.focused_widget_type()
+                {
+                    // TODO wrap around?
+                    self.db.installed.move_to_index(i, i.saturating_add(1)).await;
+                    self.select_in_widget(Selection::Next).await;
                 }
             }
             Event::Key(Key::Char('K')) => {
-                if let Some(i) = self.tabs.focused_widget().selected() {
-                    if let Focused::InstalledMods = self.tabs.focused_widget_type() {
-                        if i == 0 {
-                            self.db
-                                .installed
-                                .move_to_index(i, self.tabs.focused_widget().len().saturating_sub(1))
-                                .await;
-                        } else {
-                            self.db.installed.move_to_index(i, i.saturating_sub(1)).await;
-                        }
-                        self.select_in_widget(Selection::Previous).await;
+                if let Some(i) = self.tabs.focused_widget().selected()
+                    && let Focused::InstalledMods = self.tabs.focused_widget_type()
+                {
+                    if i == 0 {
+                        self.db.installed.move_to_index(i, self.tabs.focused_widget().len().saturating_sub(1)).await;
+                    } else {
+                        self.db.installed.move_to_index(i, i.saturating_sub(1)).await;
                     }
+                    self.select_in_widget(Selection::Previous).await;
                 }
             }
             Event::Key(Key::Left) | Event::Key(Key::Char('h')) => {
@@ -165,15 +162,15 @@ impl<'a> MainUI<'a> {
                         }
                         Focused::InstalledMods => {
                             let (_, mod_dir) = self.tabs.installed_mods_table.get_by_index(i);
-                            if let ModDirectory::Nexus(im) = mod_dir {
-                                if let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await {
-                                    let query = self.query.clone();
-                                    let events_tx = self.ui_events_tx.clone();
-                                    tokio::task::spawn(async move {
-                                        query.verify_metadata(mfd).await;
-                                        events_tx.send(NeedsRefresh::BottomBar).unwrap();
-                                    });
-                                }
+                            if let ModDirectory::Nexus(im) = mod_dir
+                                && let Some(mfd) = self.db.metadata_index.get_by_file_id(&im.file_id).await
+                            {
+                                let query = self.query.clone();
+                                let events_tx = self.ui_events_tx.clone();
+                                tokio::task::spawn(async move {
+                                    query.verify_metadata(mfd).await;
+                                    events_tx.send(NeedsRefresh::BottomBar).unwrap();
+                                });
                             }
                         }
                         _ => {}
@@ -224,20 +221,19 @@ impl<'a> MainUI<'a> {
                     match self.tabs.focused_widget_type() {
                         Focused::ArchiveTable => {
                             let (_, archive) = self.tabs.archive_table.get_by_index(i);
-                            if let Some(metadata) = archive.metadata() {
-                                if let Some(files) =
+                            if let Some(metadata) = archive.metadata()
+                                && let Some(files) =
                                     self.db.metadata_index.get_modfiles(&metadata.game, &metadata.mod_id).await
-                                {
-                                    self.updater.update_mod(metadata.game.clone(), metadata.mod_id, files).await;
-                                }
+                            {
+                                self.updater.update_mod(metadata.game.clone(), metadata.mod_id, files).await;
                             }
                         }
                         Focused::InstalledMods => {
                             let (_, mod_dir) = self.tabs.installed_mods_table.get_by_index(i);
-                            if let ModDirectory::Nexus(im) = mod_dir {
-                                if let Some(files) = self.db.metadata_index.get_modfiles(&im.game, &im.mod_id).await {
-                                    self.updater.update_mod(im.game.clone(), im.mod_id, files).await;
-                                }
+                            if let ModDirectory::Nexus(im) = mod_dir
+                                && let Some(files) = self.db.metadata_index.get_modfiles(&im.game, &im.mod_id).await
+                            {
+                                self.updater.update_mod(im.game.clone(), im.mod_id, files).await;
                             }
                         }
                         _ => {}
@@ -272,12 +268,11 @@ impl<'a> MainUI<'a> {
     async fn handle_downloads_keys(&mut self, event: Event) {
         let key = if let Event::Key(key) = event { key } else { return };
 
-        if let Key::Char('p') = key {
-            if let Focused::DownloadTable = self.tabs.focused_widget_type() {
-                if let Some(i) = self.tabs.focused_widget().selected() {
-                    self.downloads.toggle_pause_for(i).await;
-                }
-            }
+        if let Key::Char('p') = key
+            && let Focused::DownloadTable = self.tabs.focused_widget_type()
+            && let Some(i) = self.tabs.focused_widget().selected()
+        {
+            self.downloads.toggle_pause_for(i).await;
         }
     }
 
