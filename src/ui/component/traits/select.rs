@@ -24,6 +24,7 @@ macro_rules! impl_select {
     };
 }
 
+// Use macros to implement the above types that don't require any special logic for this.
 impl_select!(ArchivesWidget<'_>);
 impl_select!(ConfirmDialog<'_>);
 impl_select!(DownloadsWidget<'_>);

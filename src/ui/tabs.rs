@@ -1,4 +1,5 @@
 use super::component::*;
+use crate::LOGGER;
 use crate::ui::component::traits::{HighlightSelect, Select};
 use crate::{
     api::Downloads,
@@ -62,6 +63,9 @@ impl<'a> TabWidgets<'a> {
         let installed_mods_table = InstalledModsWidget::new(db.installed.clone()).await;
         let archives_table = ArchivesWidget::new(db).await;
         let downloads_table = DownloadsWidget::new(downloads).await;
+
+        // Creating the Log widget will empty the log, so check it beforehand. Not very tidy, though.
+        let has_log_msgs: bool = !LOGGER.messages.write().unwrap().is_empty();
         let log_list = LogWidget::new().await;
 
         let mut ret = Self {
@@ -75,9 +79,13 @@ impl<'a> TabWidgets<'a> {
             focused_index: 0,
             // index_mapping,
         };
+
         // Add highlight to initally focused widget
         ret.widget_for_type_mut(ret.focused_tab().focused_widget_type()).add_highlight();
-        // ret.widget_for_type_mut(TABS[ret.focused_index]).add_highlight();
+
+        if has_log_msgs {
+            ret.add_urgency_for_widget(Focused::LogList);
+        }
         ret
     }
 
