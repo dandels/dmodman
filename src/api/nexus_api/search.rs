@@ -39,6 +39,7 @@ pub struct SearchQuery {
 }
 
 #[allow(dead_code)]
+#[allow(clippy::needless_range_loop)]
 impl SearchQuery {
     pub async fn send(&self, query: Query) -> Result<Search, ApiError> {
         query.mod_search(self.format()).await
