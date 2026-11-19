@@ -44,7 +44,7 @@ impl<'a> MainUI<'a> {
         match self.input_mode {
             InputMode::Normal => self.handle_normal_mode_keys(event).await,
             InputMode::Confirm => self.handle_confirm_dialog(event).await,
-            InputMode::Extract => self.handle_popup_dialog(event).await,
+            InputMode::Extract => self.handle_extract_dialog(event).await,
         }
     }
 
@@ -304,7 +304,9 @@ impl<'a> MainUI<'a> {
                     }
                     self.rectangles.extract_dialog.layouts.set_suggestions_len(suggested_values.len());
                     self.extract_dialog.create_widget(suggested_values, dialog_title);
-                    self.input_mode = InputMode::Extract;
+                    // self.input_mode = InputMode::Extract;
+                    self.change_input_mode(InputMode::Extract);
+                    // self.hotkey_bar.update_state(&self.input_mode, &self.tabs.focused_widget_type());
                     self.render_all_visible();
                 }
             }
@@ -355,13 +357,13 @@ impl<'a> MainUI<'a> {
                         {
                             LOGGER.log(format!("Error when extracting {file_name}: {e}"));
                         }
-                        self.input_mode = InputMode::Normal;
+                        self.change_input_mode(InputMode::Normal);
                     } else {
-                        self.input_mode = InputMode::Extract;
+                        self.change_input_mode(InputMode::Extract);
                     }
                 }
                 Key::Ctrl('c') | Key::Esc => {
-                    self.input_mode = InputMode::Extract;
+                    self.change_input_mode(InputMode::Extract);
                 }
                 _ => {
                     return;
@@ -371,27 +373,28 @@ impl<'a> MainUI<'a> {
         }
     }
 
-    async fn handle_popup_dialog(&mut self, event: Event) {
+    // TODO the switching of UI modes is error prone
+    async fn handle_extract_dialog(&mut self, event: Event) {
         if let Event::Key(key) = event {
             match key {
                 Key::Ctrl('c') | Key::Esc => {
-                    self.input_mode = InputMode::Normal;
+                    self.change_input_mode(InputMode::Normal);
                 }
                 Key::Char('\n') => {
                     let dest_dir = self.extract_dialog.get_content();
                     let index = self.tabs.archive_table.selected().unwrap();
                     let (file_name, _archive) = self.tabs.archive_table.get_by_index(index);
                     match self.installer.extract(file_name.to_string(), dest_dir.to_string(), false).await {
-                        Ok(()) => self.input_mode = InputMode::Normal,
+                        Ok(()) => self.change_input_mode(InputMode::Normal),
                         Err(InstallError::AlreadyExists) => {
+                            // This should be handled somewhere else
                             self.confirm_dialog =
-                                // This should be handled somewhere else
                                 ConfirmDialog::new(" Target directory already exists. Overwrite? ".to_string());
-                            self.input_mode = InputMode::Confirm;
+                            self.change_input_mode(InputMode::Confirm);
                         }
                         Err(e) => {
                             LOGGER.log(format!("Failed to extract to {dest_dir}: {}", e));
-                            self.input_mode = InputMode::Normal;
+                            self.change_input_mode(InputMode::Normal);
                         }
                     }
                 }
@@ -403,37 +406,36 @@ impl<'a> MainUI<'a> {
         }
     }
 
+    fn change_input_mode(&mut self, mode: InputMode) {
+        self.input_mode = mode;
+        self.hotkey_bar.change_mode(mode);
+    }
+
     async fn select_widget(&mut self, selection: Selection) {
         self.tabs.focused_widget_mut().remove_highlight();
-        let t = self.tabs.focused_tab_mut();
-        match selection {
-            Selection::Next => t.next(),
-            Selection::Previous => t.previous(),
-            Selection::Index(i) => t.select(Some(i)),
-        }
+        do_select(selection, self.tabs.focused_tab_mut());
         self.tabs.focused_widget_mut().add_highlight();
         self.selected_has_changed().await;
     }
 
     async fn select_tab(&mut self, selection: Selection) {
         let t = &mut self.tabs;
-        match selection {
-            Selection::Next => t.next(),
-            Selection::Previous => t.previous(),
-            Selection::Index(i) => t.select(Some(i)),
-        }
+        do_select(selection, t);
         self.rectangles.normal.change_tab(t.focused_tab().widget_types.len());
         self.selected_has_changed().await;
     }
 
     async fn select_in_widget(&mut self, selection: Selection) {
-        let t = self.tabs.focused_widget_mut();
-        match selection {
-            Selection::Next => t.next(),
-            Selection::Previous => t.previous(),
-            Selection::Index(i) => t.select(Some(i)),
-        };
+        do_select(selection, self.tabs.focused_widget_mut());
         self.selected_has_changed().await;
+    }
+}
+
+fn do_select(selection: Selection, t: &mut dyn Select) {
+    match selection {
+        Selection::Next => t.next(),
+        Selection::Previous => t.previous(),
+        Selection::Index(i) => t.select(Some(i)),
     }
 }
 

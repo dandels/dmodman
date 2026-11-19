@@ -64,6 +64,7 @@ impl ExtractDialogLayouts {
     pub fn set_suggestions_len(&mut self, len: usize) {
         self.vertical = Layout::vertical([
             Constraint::Length(1),          // Paragraph with install dir path
+            Constraint::Length(1),          // Hotkeys
             Constraint::Length(3),          // Input box
             Constraint::Length(len as u16), // List with suggested values
         ]);
@@ -91,8 +92,9 @@ pub struct ExtractDialogRects {
     pub layouts: ExtractDialogLayouts,
     pub description: Rect,
     pub prompt: Rect,
-    pub textbox: Rect,
     pub suggestions: Rect,
+    pub textbox: Rect,
+    pub hotkeys: Rect,
 }
 
 pub struct ConfirmDialogRects {
@@ -156,9 +158,10 @@ impl ExtractDialogRects {
     pub fn recalculate(&mut self, window_size: Rect) {
         let split = self.layouts.vertical.split(self.layouts.horizontal.split(window_size)[0]);
         self.description = split[0];
-        let dialog_and_textbox = self.layouts.label_and_textbox.split(split[1]);
+        self.hotkeys = split[1];
+        let dialog_and_textbox = self.layouts.label_and_textbox.split(split[2]);
         self.prompt = dialog_and_textbox[0];
         self.textbox = dialog_and_textbox[1];
-        self.suggestions = split[2];
+        self.suggestions = split[3];
     }
 }

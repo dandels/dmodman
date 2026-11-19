@@ -239,6 +239,7 @@ impl<'a> MainUI<'a> {
 
     pub async fn selected_has_changed(&mut self) {
         self.bottom_bar.update_widget(&self.tabs).await;
+        self.hotkey_bar.change_focus(self.tabs.focused_widget_type());
         self.render_all_visible();
     }
 

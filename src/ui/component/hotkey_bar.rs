@@ -7,21 +7,35 @@ use ratatui::widgets::Paragraph;
 
 pub struct HotkeyBar<'a> {
     pub widget: Paragraph<'a>,
+    focused: Focused,
+    input_mode: InputMode,
 }
 
 impl<'a> HotkeyBar<'a> {
     pub fn new() -> Self {
         let mut ret = Self {
             widget: Paragraph::default(),
+            focused: Focused::default(),
+            input_mode: InputMode::default(),
         };
-        ret.update_state(&InputMode::default(), &Focused::default());
+        ret.create_text();
         ret
     }
 
-    pub fn update_state(&mut self, input_mode: &InputMode, focused: &Focused) {
+    pub fn change_focus(&mut self, focused: Focused) {
+        self.focused = focused;
+        self.create_text();
+    }
+
+    pub fn change_mode(&mut self, input_mode: InputMode) {
+        self.input_mode = input_mode;
+        self.create_text();
+    }
+
+    fn create_text(&mut self) {
         let keys = {
-            match input_mode {
-                InputMode::Normal => match focused {
+            match self.input_mode {
+                InputMode::Normal => match self.focused {
                     Focused::ArchiveTable => ARCHIVES_KEYS,
                     Focused::InstalledMods => FILES_KEYS,
                     Focused::LogList => LOG_KEYS,
