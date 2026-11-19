@@ -5,8 +5,8 @@ use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
 pub fn start_apikey_flow() -> Option<String> {
-    println!("dmodman requires an API key to work.");
-    println!("Would you like to create one?");
+    println!("dmodman requires an API key for Nexus Mods features.");
+    println!("Would you like to create one? Previously created keys will be reused.");
     println!("[y]es, [n]o");
 
     let mut yes = read_y_n();

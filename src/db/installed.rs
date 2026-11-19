@@ -29,7 +29,7 @@ impl Installed {
                             add_dir(&config, &metadata_index, dir, &mut installed).await;
                         }
                         Err(_) => {
-                            LOGGER.log(format!("Warn: \"{dir}\" is missing but exists in load order."));
+                            LOGGER.log(format!("Warn: mod dir \"{dir}\" is missing but exists in load order."));
                         }
                     }
                 }
