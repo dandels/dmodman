@@ -22,7 +22,7 @@ tokio = { version = "1", features = ["fs", "macros", "net", "sync", "rt-multi-th
 tokio-stream = { version = "0.1", features = ["fs"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tungstenite = { version = "0.30", features = ["native-tls"] }
-toml = "1.1"
+toml = "1.2"
 url = { version = "2", features = [ "serde" ] }
 termion = "4"
 ratatui-textarea = { version = "0.9", default-features = false, features = ["termion"] }
