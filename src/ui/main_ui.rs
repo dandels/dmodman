@@ -89,7 +89,7 @@ impl<'a> MainUI<'a> {
         let extract_dialog = ExtractDialog::init(config.clone());
         let requests_widget = RequestCounterWidget::new(client.request_counter.clone()).await;
 
-        // Contains tab and tab-switchable widgets
+        // Contains both tabs and the widgets like Archives, Downloads that can be cycled through.
         let tabs = TabWidgets::new(db.clone(), downloads.clone()).await;
 
         let terminal = init_term().expect("Failed to initialize terminal: {}");
@@ -139,11 +139,8 @@ impl<'a> MainUI<'a> {
 
         self.recalc_rects();
         self.render_all_visible();
-        // self.render_active_widget();
 
         while self.should_run {
-            // set redraw_terminal to true if any of the widgets have changed
-            // self = self.refresh_widgets().await;
             // Using the suggested ratatui draw method is probably redundant since the UI tracks state internally and only renders widgets when needed
             if let Some(e) = event_stream.next().await {
                 match e {
@@ -204,6 +201,8 @@ impl<'a> MainUI<'a> {
         self.flush_terminal();
     }
 
+    // Using this instead of redrawing all widgets would be nice, but it requires careful state tracking.
+    //
     // pub fn render_active_widget(&mut self) {
     //     let frame = &mut self.terminal.get_frame();
     //     match self.input_mode {
