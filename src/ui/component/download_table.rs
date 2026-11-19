@@ -40,6 +40,7 @@ impl<'a> DownloadsWidget<'a> {
             widget,
             len: 0,
         };
+        ret.state.select_first();
         ret.refresh().await;
         ret
     }

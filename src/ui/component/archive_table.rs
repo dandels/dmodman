@@ -42,6 +42,7 @@ impl ArchivesWidget<'_> {
             widget: Table::default().header(headers).widths(widths),
             len: 0,
         };
+        ret.state.select_first();
         ret.refresh().await;
         ret
     }
