@@ -11,7 +11,8 @@ mod ui;
 mod util;
 
 use api::{Client, Downloads, Query};
-use cli::CliOpts;
+use clap::Parser;
+use cli::Cli;
 use config::{Config, ConfigBuilder};
 use db::Db;
 use events::Events;
@@ -20,7 +21,7 @@ use std::error::Error;
 use std::io::ErrorKind;
 use std::sync::LazyLock;
 
-pub static CLI_OPTS: LazyLock<CliOpts> = LazyLock::new(CliOpts::new);
+pub static CLI_OPTS: LazyLock<Cli> = LazyLock::new(Cli::parse);
 pub static EVENTS: LazyLock<Events> = LazyLock::new(Events::new);
 pub static LOGGER: LazyLock<Logger> = LazyLock::new(Logger::new);
 
@@ -33,6 +34,9 @@ pub static LOGGER: LazyLock<Logger> = LazyLock::new(Logger::new);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Parse args before anything else
+    let _ = CLI_OPTS.daemonize;
+
     let mut config = ConfigBuilder::load().unwrap_or_default().build()?;
     // let config = config_builder.build()?;
 
@@ -55,7 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Ok(nxm_socket) => nxm_socket,
         Err(e) if e.kind() == ErrorKind::AddrInUse => {
             println!("Another instance of dmodman is already running.");
-            if let Some(nxm_str) = &CLI_OPTS.nxm_str_opt {
+            if let Some(nxm_str) = &CLI_OPTS.nxm_url {
                 println!("Sending download to already running instance.");
                 nxm_socket::send_msg(nxm_str).await.unwrap();
             }
@@ -69,13 +73,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     downloads.resume_on_startup().await;
 
-    if let Some(nxm_str) = &CLI_OPTS.nxm_str_opt {
+    if let Some(nxm_str) = &CLI_OPTS.nxm_url {
         downloads.try_queue(nxm_str).await;
     }
 
     /* Start UI only if running interactively.
      * Otherwise we block the main thread with the listen loop so the program doesn't exit. */
-    if CLI_OPTS.is_interactive {
+    if CLI_OPTS.daemonize {
+        nxm_socket::listen_for_downloads(nxm_socket, downloads).await;
+    } else {
         {
             let downloads = downloads.clone();
             tokio::task::spawn(async move {
@@ -92,8 +98,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         };
 
         ui::MainUI::start(lib).await;
-    } else {
-        nxm_socket::listen_for_downloads(nxm_socket, downloads).await;
     }
 
     Ok(())
