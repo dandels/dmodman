@@ -18,6 +18,7 @@ impl NxmSocketListener {
     }
 }
 
+// TODO this is not called when the program is closed with Ctrl+C.
 impl Drop for NxmSocketListener {
     fn drop(&mut self) {
         remove_socket().unwrap()
