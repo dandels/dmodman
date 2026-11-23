@@ -26,6 +26,8 @@ I'm not particularly happy about working with working with Ratatui, though it's 
     - Maybe it's more logical to show the installed mods as the default view.
 - [ ] Implement Home, End and Page Up/Down keys.
 - [ ] Fix the word-wrapping of list items somehow, since Ratatui doesn't support this.
+- [ ] There's backend functionality for listing archive contents. This should perhaps take the current place of the Download listing.
+    - [ ] Showing the amount of ongoing downloads in a panel somewhere, with a separate tab that could be changed to, would perhaps be the best.
 - [x] Remember order of installed mods (can currently only be sorted in a text editor). The same order would be used by the overlayfs
     - [x] Rudimentary manual sort exists with J/K.
         - [ ] Improved sorting of table items

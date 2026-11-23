@@ -310,18 +310,20 @@ impl<'a> MainUI<'a> {
                     self.render_all_visible();
                 }
             }
+            // TODO this would make some sense as its own UI window where the Downloads are currently displayed.
             Key::Char('L') => {
                 if let Some(i) = self.tabs.focused_widget().selected() {
                     let (_file_name, archive) = self.tabs.archive_table.get_by_index(i);
                     if let Some(res) = self.installer.list_content(archive.file_name()).await {
                         match res {
                             Ok(content) => {
+                                LOGGER.log("Archive contents:");
                                 for c in content {
                                     LOGGER.log(c.to_string());
                                 }
                             }
                             Err(e) => {
-                                LOGGER.log(format!("{:?}", e));
+                                LOGGER.log(format!("Unable to read archive contents: {:?}", e));
                             }
                         }
                     }
